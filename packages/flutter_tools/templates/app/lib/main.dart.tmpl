@@ -2,7 +2,15 @@ import 'package:flutter/material.dart';
 {{#withEmptyMain}}
 
 void main() {
-  runApp(const MainApp());
+  runWidget(MultiWindowApp(
+      initialWindows: [
+          (context) => createRegularWindow(
+            context: context,
+            size: const Size(640, 480),
+            builder: (context) {
+              return const MyApp();
+            })
+        ]));
 }
 
 class MainApp extends StatelessWidget {
@@ -34,7 +42,15 @@ import 'package:{{pluginProjectName}}/{{pluginProjectName}}.dart' as {{pluginPro
 {{/withFfi}}
 
 void main() {
-  runApp(const MyApp());
+  runWidget(MultiWindowApp(
+      initialWindows: [
+          (context) => createRegularWindow(
+            context: context,
+            size: const Size(640, 480),
+            builder: (context) {
+              return const MyApp();
+            })
+        ]));
 }
 
 {{^withPluginHook}}

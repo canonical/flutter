@@ -357,7 +357,7 @@ class MultiWindowApp extends StatefulWidget {
 /// accessing the [WindowController] directly.
 class WindowController extends State<MultiWindowApp> {
   Map<int, Window> _windows = <int, Window>{};
-  final MethodChannel _channel = const MethodChannel('flw/window');
+  final MethodChannel _channel = const MethodChannel('flutter/windowing');
 
   @override
   void initState() {
