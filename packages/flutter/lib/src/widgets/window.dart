@@ -378,19 +378,11 @@ class WindowController extends State<MultiWindowApp> {
         final int width = arguments['width'] as int;
         final int height = arguments['height'] as int;
         final Size size = Size(width.toDouble(), height.toDouble());
-
-        setState(() {
-          final Window? viewData = _windows[viewId];
-          if (viewData != null) {
-            viewData.size = size;
-            final List<Window> copy = List<Window>.from(_windows);
-            copy[viewId] = viewData;
-            _windows = copy;
-          }
-        });
+        break;
       case 'onWindowDestroyed':
         final int viewId = arguments['viewId'] as int;
         _remove(viewId);
+        break;
     }
   }
 
@@ -417,11 +409,11 @@ class WindowController extends State<MultiWindowApp> {
     Window? parent = null;
     if (parentViewId != null) {
       for (final window in _windows) {
-        if (window.view.viewId == parentViewId) {
-          parent = window;
-          break;
-        }
+        parent = _findWindow(parentViewId, window);
+        if (parent != null) break;
       }
+      assert(parent != null,
+          'No matching window found for parentViewId: $parentViewId');
     }
 
     final Window window = Window(
@@ -514,14 +506,14 @@ class WindowController extends State<MultiWindowApp> {
   }
 
   void _add(Window window) {
-    setState(() {
-      final List<Window> copy = List<Window>.from(_windows);
-      if (window.parent != null) {
-        window.parent!.children.add(window);
-      } else {
-        copy.add(window);
-      }
+    final List<Window> copy = List<Window>.from(_windows);
+    if (window.parent != null) {
+      window.parent!.children.add(window);
+    } else {
+      copy.add(window);
+    }
 
+    setState(() {
       _windows = copy;
     });
   }
@@ -541,27 +533,27 @@ class WindowController extends State<MultiWindowApp> {
   }
 
   void _remove(int viewId) {
+    Window? toDelete;
+    final List<Window> copy = List<Window>.from(_windows);
+
+    for (final Window window in copy) {
+      toDelete = _findWindow(viewId, window);
+      if (toDelete != null) {
+        break;
+      }
+    }
+
+    if (toDelete == null) {
+      return;
+    }
+
+    if (toDelete.parent == null) {
+      copy.remove(toDelete);
+    } else {
+      toDelete.parent!.children.remove(toDelete);
+    }
+
     setState(() {
-      Window? toDelete;
-      final List<Window> copy = List<Window>.from(_windows);
-
-      for (final Window window in copy) {
-        toDelete = _findWindow(viewId, window);
-        if (toDelete != null) {
-          break;
-        }
-      }
-
-      if (toDelete == null) {
-        return;
-      }
-
-      if (toDelete.parent == null) {
-        copy.remove(toDelete);
-      } else {
-        toDelete.parent!.children.remove(toDelete);
-      }
-
       _windows = copy;
     });
   }
@@ -635,12 +627,7 @@ class _MultiWindowAppViewState extends State<_MultiWindowAppView> {
     });
   }
 
-  Widget buildViewCollection(BuildContext context, Window window) {
-    final List<Widget> children = <Widget>[];
-    for (final Window child in window.children) {
-      children.add(buildViewCollection(context, child));
-    }
-
+  Widget buildView(BuildContext context, Window window) {
     return View(
         key: window._key,
         view: window.view,
@@ -651,7 +638,7 @@ class _MultiWindowAppViewState extends State<_MultiWindowAppView> {
   Widget build(BuildContext context) {
     final List<Widget> views = <Widget>[];
     for (final Window window in widget.windows) {
-      views.add(buildViewCollection(context, window));
+      views.add(buildView(context, window));
     }
     return ViewCollection(views: views);
   }
@@ -734,6 +721,25 @@ class _WindowCreatorState extends State<WindowCreator> {
       setState(() {
         _window = null;
       });
+    }
+  }
+
+  @override
+  void didUpdateWidget(WindowCreator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (_window != null) {
+      final int viewId = _window!.view.viewId;
+      final bool viewExists = WidgetsBinding.instance!.platformDispatcher.views
+          .any((FlutterView view) => view.viewId == viewId);
+      // Update the state if the view was destroyed by the embedder.
+      // This fixes the issue of having to click twice on the menu bar to open a new menu
+      // after the embedder has destroyed the view of a previous menu.
+      if (!viewExists) {
+        setState(() {
+          _window = null;
+        });
+      }
     }
   }
 

@@ -334,7 +334,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
   bool get _isOpen =>
-      _overlayController.isShowing || _windowCreatorController.isShowing();
+      _overlayController.isShowing && _windowCreatorController.isShowing();
   bool get _isRoot => _parent == null;
   bool get _isTopLevel => _parent?._isRoot ?? false;
   MenuController get _menuController =>
