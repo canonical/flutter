@@ -185,7 +185,7 @@ class WindowPositioner {
     this.constraintAdjustment = const <WindowPositionerConstraintAdjustment>{},
   });
 
-  /// Copy a [WindowPositioner] with some fields replaced.`
+  /// Copy a [WindowPositioner] with some fields replaced.
   WindowPositioner copyWith({
     WindowPositionerAnchor? parentAnchor,
     WindowPositionerAnchor? childAnchor,
@@ -243,7 +243,7 @@ class WindowPositioner {
 }
 
 /// Defines a [Window] created by the application. To use [Window]s, you must wrap
-/// your application in the [MultiWindowApp] widget New [Window]s are created via
+/// your application in the [MultiWindowApp] widget. New [Window]s are created via
 /// global functions like [createRegularWindow] and [createPopupWindow].
 class Window {
   /// [view] the underlying [FlutterView]
@@ -256,7 +256,7 @@ class Window {
       required this.builder,
       required this.archetype,
       required this.size,
-      required this.parentViewId});
+      required this.parent});
 
   /// The underlying [FlutterView] associated with this [Window]
   final FlutterView view;
@@ -265,13 +265,18 @@ class Window {
   final Widget Function(BuildContext context) builder;
 
   /// Defines the archetype of the [Window]
-  WindowArchetype? archetype;
+  final WindowArchetype archetype;
 
   /// The current [Size] of the [Window]
-  Size? size;
+  Size size;
 
   /// The view ID of the parent of this [Window] if any
-  int? parentViewId;
+  final Window? parent;
+
+  /// A list of child [Window]s associated with this window
+  final List<Window> children = [];
+
+  final GlobalKey _key = GlobalKey();
 }
 
 /// Creates a new regular [Window].
@@ -356,7 +361,7 @@ class MultiWindowApp extends StatefulWidget {
 /// you use the global functions like [createRegularWindow] and [destroyWindow] over
 /// accessing the [WindowController] directly.
 class WindowController extends State<MultiWindowApp> {
-  Map<int, Window> _windows = <int, Window>{};
+  List<Window> _windows = [];
   final MethodChannel _channel = const MethodChannel('flutter/windowing');
 
   @override
@@ -375,19 +380,11 @@ class WindowController extends State<MultiWindowApp> {
         final int width = arguments['width'] as int;
         final int height = arguments['height'] as int;
         final Size size = Size(width.toDouble(), height.toDouble());
-
-        setState(() {
-          final Window? viewData = _windows[viewId];
-          if (viewData != null) {
-            viewData.size = size;
-            final Map<int, Window> copy = Map<int, Window>.from(_windows);
-            copy[viewId] = viewData;
-            _windows = copy;
-          }
-        });
+        break;
       case 'onWindowDestroyed':
         final int viewId = arguments['viewId'] as int;
         _remove(viewId);
+        break;
     }
   }
 
@@ -411,12 +408,22 @@ class WindowController extends State<MultiWindowApp> {
       },
     );
 
+    Window? parent = null;
+    if (parentViewId != null) {
+      for (final window in _windows) {
+        parent = _findWindow(parentViewId, window);
+        if (parent != null) break;
+      }
+      assert(parent != null,
+          'No matching window found for parentViewId: $parentViewId');
+    }
+
     final Window window = Window(
         view: flView,
         builder: builder,
         archetype: archetype,
         size: Size(width.toDouble(), height.toDouble()),
-        parentViewId: parentViewId);
+        parent: parent);
     _add(window);
     return window;
   }
@@ -501,17 +508,54 @@ class WindowController extends State<MultiWindowApp> {
   }
 
   void _add(Window window) {
+    final List<Window> copy = List<Window>.from(_windows);
+    if (window.parent != null) {
+      window.parent!.children.add(window);
+    } else {
+      copy.add(window);
+    }
+
     setState(() {
-      final Map<int, Window> copy = Map<int, Window>.from(_windows);
-      copy[window.view.viewId] = window;
       _windows = copy;
     });
   }
 
+  Window? _findWindow(int viewId, Window window) {
+    if (window.view.viewId == viewId) {
+      return window;
+    }
+    for (final Window other in window.children) {
+      final Window? result = _findWindow(viewId, other);
+      if (result != null) {
+        return result;
+      }
+    }
+
+    return null;
+  }
+
   void _remove(int viewId) {
+    Window? toDelete;
+    final List<Window> copy = List<Window>.from(_windows);
+
+    for (final Window window in copy) {
+      toDelete = _findWindow(viewId, window);
+      if (toDelete != null) {
+        break;
+      }
+    }
+
+    if (toDelete == null) {
+      return;
+    }
+
+    if (toDelete.parent == null) {
+      copy.remove(toDelete);
+    } else {
+      toDelete.parent!.children.remove(toDelete);
+    }
+
     setState(() {
-      final Map<int, Window> copy = Map<int, Window>.from(_windows);
-      copy.removeWhere((int key, Window data) => data.view.viewId == viewId);
       _windows = copy;
     });
   }
@@ -526,7 +570,7 @@ class WindowController extends State<MultiWindowApp> {
   }
 }
 
-/// Provides access to a mapping from [int] identifiers to [Window]s.
+/// Provides access to the list of [Window]s.
 /// Users may provide the identifier of a [View] to look up a particular
 /// [Window] if any exists.
 ///
@@ -534,7 +578,7 @@ class WindowController extends State<MultiWindowApp> {
 /// used internally to provide access to create, update, and delete methods
 /// on the windowing system.
 class MultiWindowAppContext extends InheritedWidget {
-  /// [windows] a mapping from the [int] [View] identifier to its associated [Window]
+  /// [windows] a list of [Window]s
   /// [windowController] the [WindowController] active in this context
   const MultiWindowAppContext(
       {super.key,
@@ -542,8 +586,8 @@ class MultiWindowAppContext extends InheritedWidget {
       required this.windows,
       required this.windowController});
 
-  /// A mapping from the [int] [View] identifier to its associated [Window].
-  final Map<int, Window> windows;
+  /// The list of Windows
+  final List<Window> windows;
 
   /// The [WindowController] active in this context
   final WindowController windowController;
@@ -565,7 +609,7 @@ class _MultiWindowAppView extends StatefulWidget {
       {required this.initialWindows, required this.windows});
 
   final List<Future<Window> Function(BuildContext)>? initialWindows;
-  final Map<int, Window> windows;
+  final List<Window> windows;
 
   @override
   State<StatefulWidget> createState() => _MultiWindowAppViewState();
@@ -585,104 +629,29 @@ class _MultiWindowAppViewState extends State<_MultiWindowAppView> {
     });
   }
 
-  Widget? _buildTree(FlutterView? parentView) {
-    final List<Window> children = widget.windows.values
-        .where((Window window) => window.parentViewId == parentView?.viewId)
-        .toList();
-
-    if (children.isEmpty) {
-      return null;
-    }
-
-    Widget getChild(Window viewData) =>
-        _buildTree(viewData.view) ?? viewData.builder(context);
-
-    if (parentView == null) {
-      if (children.length == 1) {
-        return children.first.archetype != null
-            ? WindowContext(
-                window: children.first,
-                child: View(
-                  view: children.first.view,
-                  child: getChild(children.first),
-                ))
-            : null;
-      } else {
-        final List<Widget> widgets = <Widget>[];
-        for (final Window window in children
-            .where((Window otherWindow) => otherWindow.archetype != null)) {
-          widgets.add(WindowContext(
-              window: window,
-              child: View(
-                view: window.view,
-                child: getChild(window),
-              )));
-        }
-        return widgets.isNotEmpty ? ViewCollection(views: widgets) : null;
-      }
-    } else {
-      if (children.length == 1) {
-        return children.first.archetype != null
-            ? WindowContext(
-                window: children.first,
-                child: ViewAnchor(
-                  view: View(
-                    view: children.first.view,
-                    child: getChild(children.first),
-                  ),
-                  child: widget.windows.values
-                      .where((Window otherWindow) =>
-                          otherWindow.view == parentView)
-                      .single
-                      .builder(context),
-                ))
-            : null;
-      } else {
-        final List<Widget> widgets = <Widget>[];
-        for (final Window window in children
-            .where((Window otherWindow) => otherWindow.archetype != null)) {
-          widgets.add(WindowContext(
-              window: window,
-              child: View(view: window.view, child: getChild(window))));
-        }
-        return widgets.isNotEmpty
-            ? WindowContext(
-                window: children.first,
-                child: ViewAnchor(
-                  view: ViewCollection(views: widgets),
-                  child: widget.windows.values
-                      .where((Window otherWindow) =>
-                          otherWindow.view == parentView)
-                      .single
-                      .builder(context),
-                ))
-            : null;
-      }
-    }
+  Widget buildView(BuildContext context, Window window) {
+    return View(
+        key: window._key,
+        view: window.view,
+        child: WindowContext(window: window, child: window.builder(context)));
   }
 
   @override
   Widget build(BuildContext context) {
-    Widget? result = _buildTree(null);
-    if (result == null) {
-      if (widget.windows.isNotEmpty) {
-        final Window window = widget.windows.entries.first.value;
-        result = View(view: window.view, child: window.builder(context));
-      } else {
-        result = const ViewCollection(views: <View>[]);
-      }
+    final List<Widget> views = <Widget>[];
+    for (final Window window in widget.windows) {
+      views.add(buildView(context, window));
     }
-
-    return result;
+    return ViewCollection(views: views);
   }
 }
 
-/// Provides descendents with access to the [Window] in which their rendered
+/// Provides descendents with access to the [Window] in which they are rendered
 class WindowContext extends InheritedWidget {
   /// [window] the [Window]
   const WindowContext({super.key, required this.window, required super.child});
 
-  /// he [Window] in this context
+  /// The [Window] in this context
   final Window window;
 
   /// Returns the [WindowContext] if any
@@ -693,5 +662,98 @@ class WindowContext extends InheritedWidget {
   @override
   bool updateShouldNotify(WindowContext oldWidget) {
     return window != oldWidget.window;
+  }
+}
+
+class WindowCreatorController {
+  _WindowCreatorState? _impl;
+
+  Future<void> show(BuildContext context) async {
+    if (_impl != null) {
+      await _impl!._show(context);
+    }
+  }
+
+  Future<void> hide(BuildContext context) async {
+    try {
+      if (_impl != null) {
+        await _impl!._hide(context);
+      }
+    } on Exception {}
+  }
+
+  bool isShowing() {
+    return _impl?._window != null;
+  }
+}
+
+class WindowCreator extends StatefulWidget {
+  WindowCreator(
+      {required this.builder, required this.controller, required this.child});
+
+  final Widget child;
+  final Future<Window> Function(BuildContext, Window window) builder;
+  final WindowCreatorController controller;
+
+  @override
+  State<WindowCreator> createState() => _WindowCreatorState();
+}
+
+class _WindowCreatorState extends State<WindowCreator> {
+  Window? _window;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller._impl = this;
+  }
+
+  Future<void> _show(BuildContext context) async {
+    final windowContext = WindowContext.of(context)!;
+    final newWindow = await widget.builder(context, windowContext.window);
+    await _hide(context);
+    setState(() {
+      _window = newWindow;
+    });
+  }
+
+  Future<void> _hide(BuildContext context) async {
+    if (_window != null) {
+      await destroyWindow(context, _window!);
+      setState(() {
+        _window = null;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(WindowCreator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (_window != null) {
+      final int viewId = _window!.view.viewId;
+      final bool viewExists = WidgetsBinding.instance!.platformDispatcher.views
+          .any((FlutterView view) => view.viewId == viewId);
+      // Update the state if the view was destroyed by the embedder.
+      // This fixes the issue of having to click twice on the menu bar to open a new menu
+      // after the embedder has destroyed the view of a previous menu.
+      if (!viewExists) {
+        setState(() {
+          _window = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ViewAnchor(
+        view: _window == null
+            ? null
+            : View(
+                view: _window!.view,
+                child: WindowContext(
+                    window: _window!, child: _window!.builder(context))),
+        child: widget.child);
   }
 }
