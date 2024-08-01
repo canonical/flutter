@@ -185,7 +185,7 @@ class WindowPositioner {
     this.constraintAdjustment = const <WindowPositionerConstraintAdjustment>{},
   });
 
-  /// Copy a [WindowPositioner] with some fields replaced.`
+  /// Copy a [WindowPositioner] with some fields replaced.
   WindowPositioner copyWith({
     WindowPositionerAnchor? parentAnchor,
     WindowPositionerAnchor? childAnchor,
@@ -243,7 +243,7 @@ class WindowPositioner {
 }
 
 /// Defines a [Window] created by the application. To use [Window]s, you must wrap
-/// your application in the [MultiWindowApp] widget New [Window]s are created via
+/// your application in the [MultiWindowApp] widget. New [Window]s are created via
 /// global functions like [createRegularWindow] and [createPopupWindow].
 class Window {
   /// [view] the underlying [FlutterView]
@@ -272,6 +272,8 @@ class Window {
 
   /// The view ID of the parent of this [Window] if any
   final Window? parent;
+
+  /// A list of child [Window]s associated with this window
   final List<Window> children = [];
 
   final GlobalKey _key = GlobalKey();
@@ -644,12 +646,12 @@ class _MultiWindowAppViewState extends State<_MultiWindowAppView> {
   }
 }
 
-/// Provides descendents with access to the [Window] in which their rendered
+/// Provides descendents with access to the [Window] in which they are rendered
 class WindowContext extends InheritedWidget {
   /// [window] the [Window]
   const WindowContext({super.key, required this.window, required super.child});
 
-  /// he [Window] in this context
+  /// The [Window] in this context
   final Window window;
 
   /// Returns the [WindowContext] if any
