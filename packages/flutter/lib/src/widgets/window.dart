@@ -665,15 +665,18 @@ class WindowContext extends InheritedWidget {
   }
 }
 
+/// Provides access to the show/hide capabilities of a [WindowCreator]
 class WindowCreatorController {
   _WindowCreatorState? _impl;
 
+  /// Ask the [WindowCreator] to show the child [Window]
   Future<void> show(BuildContext context) async {
     if (_impl != null) {
       await _impl!._show(context);
     }
   }
 
+  /// Ask the [WindowCreator] to hide the child [Window]
   Future<void> hide(BuildContext context) async {
     try {
       if (_impl != null) {
@@ -682,17 +685,25 @@ class WindowCreatorController {
     } on Exception {}
   }
 
+  /// Check whether or not the [WindowCreator] is showing the child [Window]
   bool isShowing() {
     return _impl?._window != null;
   }
 }
 
+/// Utility widget that wraps the child in a [ViewAnchor] and provides a controller
+/// for opening and closing a [Window].
 class WindowCreator extends StatefulWidget {
   WindowCreator(
       {required this.builder, required this.controller, required this.child});
 
+  /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
+
+  /// When [WindowCreatorController.open] is caled, this function will be triggered
   final Future<Window> Function(BuildContext, Window window) builder;
+
+  /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
 
   @override
@@ -709,8 +720,9 @@ class _WindowCreatorState extends State<WindowCreator> {
   }
 
   Future<void> _show(BuildContext context) async {
-    final windowContext = WindowContext.of(context)!;
-    final newWindow = await widget.builder(context, windowContext.window);
+    final WindowContext windowContext = WindowContext.of(context)!;
+    final Window newWindow =
+        await widget.builder(context, windowContext.window);
     await _hide(context);
     setState(() {
       _window = newWindow;
@@ -755,5 +767,125 @@ class _WindowCreatorState extends State<WindowCreator> {
                 child: WindowContext(
                     window: _window!, child: _window!.builder(context))),
         child: widget.child);
+  }
+}
+
+/// Automatically sizes the [Window] created by the [windowBuilder]
+/// to match the size of the [Widget] returned by [widgetBuilder].
+class AutoSizedWindowCreator extends StatefulWidget {
+  AutoSizedWindowCreator(
+      {required this.widgetBuilder,
+      required this.windowBuilder,
+      required this.controller,
+      required this.child});
+
+  /// The [Widget] that is wrapped by a [ViewAnchor]
+  final Widget child;
+
+  /// Creates the [Widget] that will be rendered inside of the new [Window].
+  final WidgetBuilder widgetBuilder;
+
+  /// When [WindowCreatorController.open] is caled, this function will be triggered
+  /// to create the new [Window]. [widgetBuilder] will provide the content that
+  /// should be rendered into this [Window]. The [Size] is the size that the
+  /// new [Window] should be, as represented by the
+  final Future<Window> Function(WidgetBuilder, Size size, Window window)
+      windowBuilder;
+
+  /// Provides access to controls on the [WindowCreator].
+  final WindowCreatorController controller;
+
+  @override
+  State<AutoSizedWindowCreator> createState() => _AutoSizedWindowCreator();
+}
+
+class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
+  Size? size;
+
+  @override
+  Widget build(BuildContext context) {
+    final autoSizedWindowCreatorContext =
+        _AutoSizedWindowCreatorContext.of(context);
+
+    if (autoSizedWindowCreatorContext != null) {
+      // If we are recursively sizing the contents that will wind up
+      // in a [Window], then we should not be calculating the [Size]
+      // of potentially nested [AutoSizedWindowCreator]s.
+      return widget.child;
+    }
+
+    if (size == null) {
+      return _WidgetSizeHelper(onSizeReported: (Size reported) {
+        setState(() => size = reported);
+      }, builder: (BuildContext context) {
+        return _AutoSizedWindowCreatorContext(
+            child: widget.widgetBuilder(context));
+      });
+    }
+
+    return WindowCreator(
+        builder: (BuildContext context, Window parent) =>
+            widget.windowBuilder(widget.widgetBuilder, size!, parent),
+        controller: widget.controller,
+        child: widget.child);
+  }
+}
+
+class _AutoSizedWindowCreatorContext extends InheritedWidget {
+  const _AutoSizedWindowCreatorContext({super.key, required super.child});
+
+  static _AutoSizedWindowCreatorContext? of(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<_AutoSizedWindowCreatorContext>();
+  }
+
+  @override
+  bool updateShouldNotify(_AutoSizedWindowCreatorContext oldWidget) {
+    return false;
+  }
+}
+
+class _WidgetSizeHelper extends StatefulWidget {
+  _WidgetSizeHelper({required this.onSizeReported, required this.builder});
+
+  final void Function(Size) onSizeReported;
+  final Widget Function(BuildContext) builder;
+
+  @override
+  State<_WidgetSizeHelper> createState() {
+    return _WidgetSizeHelperState();
+  }
+}
+
+class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
+    with WidgetsBindingObserver {
+  final GlobalKey _key = GlobalKey();
+
+  @override
+  void initState() {
+    WidgetsBinding.instance.addObserver(this);
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final Size size = _key.currentContext!.size!;
+      widget.onSizeReported(size);
+    });
+
+    final Widget finalWidget =
+        KeyedSubtree(key: _key, child: widget.builder(context));
+
+    return Offstage(
+      child: Material(
+        child: Stack(
+          children: [
+            Container(),
+            Positioned(top: 0, left: 0, child: finalWidget),
+          ],
+        ),
+      ),
+    );
   }
 }
