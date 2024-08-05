@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'my_app.dart';
-
 class PopupWindow extends StatelessWidget {
   const PopupWindow({super.key});
 
@@ -9,7 +7,7 @@ class PopupWindow extends StatelessWidget {
   Widget build(BuildContext context) {
     final window = WindowContext.of(context)!.window;
 
-    return Container(
+    final widget = Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -56,7 +54,7 @@ class PopupWindow extends StatelessWidget {
                             WindowPositionerConstraintAdjustment.slideY,
                           },
                         ),
-                        builder: (BuildContext context) => const MyApp());
+                        builder: (BuildContext context) => const PopupWindow());
                   },
                   child: const Text('Another popup'),
                 ),
@@ -73,5 +71,17 @@ class PopupWindow extends StatelessWidget {
         ),
       ),
     );
+
+    final List<Widget> childViews = window.children.map((childWindow) {
+      return View(
+        view: childWindow.view,
+        child: WindowContext(
+          window: childWindow,
+          child: childWindow.builder(context),
+        ),
+      );
+    }).toList();
+
+    return ViewAnchor(view: ViewCollection(views: childViews), child: widget);
   }
 }

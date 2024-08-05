@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'my_app.dart';
+import 'popup_window.dart';
 
 class RegularWindow extends StatelessWidget {
   const RegularWindow({super.key});
@@ -9,7 +9,7 @@ class RegularWindow extends StatelessWidget {
   Widget build(BuildContext context) {
     final window = WindowContext.of(context)!.window;
 
-    return MaterialApp(
+    final widget = MaterialApp(
       home: Scaffold(
         appBar: AppBar(title: Text('${window.archetype}')),
         body: Center(
@@ -22,7 +22,7 @@ class RegularWindow extends StatelessWidget {
                   await createRegularWindow(
                       context: context,
                       size: const Size(400, 300),
-                      builder: (BuildContext context) => const MyApp());
+                      builder: (BuildContext context) => const RegularWindow());
                 },
                 child: const Text('Create Regular Window'),
               ),
@@ -44,7 +44,7 @@ class RegularWindow extends StatelessWidget {
                           WindowPositionerConstraintAdjustment.slideY,
                         },
                       ),
-                      builder: (BuildContext context) => const MyApp());
+                      builder: (BuildContext context) => const PopupWindow());
                 },
                 child: const Text('Create Popup Window'),
               ),
@@ -61,5 +61,17 @@ class RegularWindow extends StatelessWidget {
         ),
       ),
     );
+
+    final List<Widget> childViews = window.children.map((childWindow) {
+      return View(
+        view: childWindow.view,
+        child: WindowContext(
+          window: childWindow,
+          child: childWindow.builder(context),
+        ),
+      );
+    }).toList();
+
+    return ViewAnchor(view: ViewCollection(views: childViews), child: widget);
   }
 }

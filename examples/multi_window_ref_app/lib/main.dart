@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app/my_app.dart';
+import 'app/main_window.dart';
 
 void main() {
   runWidget(MultiWindowApp(initialWindows: [
@@ -8,7 +8,7 @@ void main() {
         context: context,
         size: const Size(800, 600),
         builder: (context) {
-          return const MyApp();
+          return const MainWindow();
         })
   ]));
 }
