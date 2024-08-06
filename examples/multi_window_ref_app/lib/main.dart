@@ -8,7 +8,7 @@ void main() {
         context: context,
         size: const Size(800, 600),
         builder: (context) {
-          return const MainWindow();
+          return const MaterialApp(home: MainWindow());
         })
   ]));
 }
