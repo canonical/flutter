@@ -314,6 +314,39 @@ class MenuAnchor extends StatefulWidget {
   }
 }
 
+class _MenuAnchorStateController {
+  bool _supportsMultiWindow = false;
+  final OverlayPortalController _overlayController = OverlayPortalController(
+      debugLabel: kReleaseMode ? null : 'MenuAnchor controller');
+  final WindowCreatorController _windowCreatorController =
+      WindowCreatorController();
+
+  set supportsMultiWindow(bool value) {
+    _supportsMultiWindow = value;
+  }
+
+  bool get isOpen =>
+      _overlayController.isShowing && _windowCreatorController.isShowing();
+
+  void hide(BuildContext context) {
+    if (_overlayController.isShowing) {
+      _overlayController.hide();
+    }
+
+    if (_windowCreatorController.isShowing()) {
+      _windowCreatorController.hide(context);
+    }
+  }
+
+  void show(BuildContext context) {
+    if (_supportsMultiWindow) {
+      _windowCreatorController.show(context);
+    } else {
+      _overlayController.show();
+    }
+  }
+}
+
 class _MenuAnchorState extends State<MenuAnchor> {
   // This is the global key that is used later to determine the bounding rect
   // for the anchor's region that the CustomSingleChildLayout's delegate
@@ -327,15 +360,12 @@ class _MenuAnchorState extends State<MenuAnchor> {
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  final OverlayPortalController _overlayController = OverlayPortalController(
-      debugLabel: kReleaseMode ? null : 'MenuAnchor controller');
-  final WindowCreatorController _windowCreatorController =
-      WindowCreatorController();
+  final _MenuAnchorStateController _anchorStateController =
+      _MenuAnchorStateController();
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
-  bool get _isOpen =>
-      _overlayController.isShowing && _windowCreatorController.isShowing();
   bool get _isRoot => _parent == null;
+  bool get _isOpen => _anchorStateController.isOpen;
   bool get _isTopLevel => _parent?._isRoot ?? false;
   MenuController get _menuController =>
       widget.controller ?? _internalMenuController!;
@@ -354,7 +384,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
   @override
   void dispose() {
     assert(_debugMenuInfo('Disposing of $this'));
-    if (_isOpen) {
+    if (_anchorStateController.isOpen) {
       _close(inDispose: true);
     }
 
@@ -415,17 +445,25 @@ class _MenuAnchorState extends State<MenuAnchor> {
     final _MenuAnchorState anchor = this;
 
     if (multiWindowAppContext != null && windowContext != null) {
-      child = WindowCreator(
-          builder: (BuildContext context, Window window) async {
+      _anchorStateController.supportsMultiWindow = true;
+      child = AutoSizedWindowCreator(
+          widgetBuilder: (BuildContext context) {
+            return _MenuPanel(
+              orientation: anchor._orientation,
+              menuStyle: anchorWidget.style,
+              children: anchorWidget.menuChildren,
+            );
+          },
+          windowBuilder:
+              (WidgetBuilder builder, Size windowSize, Window parent) {
             final BuildContext anchorContext = _anchorKey.currentContext!;
-
             final RenderBox box =
                 anchorContext.findRenderObject()! as RenderBox;
             final Offset position = box.localToGlobal(Offset.zero);
             return createPopupWindow(
                 context: context,
                 parent: windowContext.window,
-                size: Size(160, 400),
+                size: windowSize,
                 anchorRect: Rect.fromPoints(
                     position,
                     Offset(position.dx + box.size.width,
@@ -434,19 +472,14 @@ class _MenuAnchorState extends State<MenuAnchor> {
                     parentAnchor: WindowPositionerAnchor.bottomRight,
                     childAnchor: WindowPositionerAnchor.topLeft),
                 builder: (BuildContext context) {
-                  return MaterialApp(
-                      home: _MenuPanel(
-                    orientation: anchor._orientation,
-                    menuStyle: anchorWidget.style,
-                    children: anchorWidget.menuChildren,
-                  ));
+                  return MaterialApp(home: builder(context));
                 });
           },
-          controller: _windowCreatorController,
+          controller: _anchorStateController._windowCreatorController,
           child: _buildContents(context));
     } else {
       child = OverlayPortal(
-        controller: _overlayController,
+        controller: _anchorStateController._overlayController,
         overlayChildBuilder: (BuildContext context) {
           return _Submenu(
             anchor: this,
@@ -642,8 +675,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
 
     _parent?._childChangedOpenState();
     _menuPosition = position;
-    _overlayController.show();
-    _windowCreatorController.show(context);
+    _anchorStateController.show(context);
 
     widget.onOpen?.call();
   }
@@ -664,24 +696,10 @@ class _MenuAnchorState extends State<MenuAnchor> {
     // Don't hide if we're in the middle of a build.
     if (SchedulerBinding.instance.schedulerPhase !=
         SchedulerPhase.persistentCallbacks) {
-      if (_overlayController.isShowing) {
-        _overlayController.hide();
-      }
-      if (_windowCreatorController.isShowing()) {
-        try {
-          _windowCreatorController.hide(context);
-        } on Exception {}
-      }
+      _anchorStateController.hide(context);
     } else if (!inDispose) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (_overlayController.isShowing) {
-          _overlayController.hide();
-        }
-        if (_windowCreatorController.isShowing()) {
-          try {
-            _windowCreatorController.hide(context);
-          } on Exception {}
-        }
+        _anchorStateController.hide(context);
       }, debugLabel: 'MenuAnchor.hide');
     }
     if (!inDispose) {
