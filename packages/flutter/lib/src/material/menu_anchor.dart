@@ -334,9 +334,7 @@ class _MenuAnchorStateController {
     }
 
     if (_windowCreatorController.isShowing()) {
-      try {
-        _windowCreatorController.hide(context);
-      } on Exception {}
+      _windowCreatorController.hide(context);
     }
   }
 

@@ -700,7 +700,7 @@ class WindowCreator extends StatefulWidget {
   /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
 
-  /// When [WindowCreatorController.open] is caled, this function will be triggered
+  /// When [WindowCreatorController.open] is called, this function will be triggered
   final Future<Window> Function(BuildContext, Window window) builder;
 
   /// Provides access to controls on the [WindowCreator].
@@ -773,8 +773,10 @@ class _WindowCreatorState extends State<WindowCreator> {
 /// Automatically sizes the [Window] created by the [windowBuilder]
 /// to match the size of the [Widget] returned by [widgetBuilder].
 class AutoSizedWindowCreator extends StatefulWidget {
-  AutoSizedWindowCreator(
-      {required this.widgetBuilder,
+  /// Creates an AutoSizedWindowCreator
+  const AutoSizedWindowCreator(
+      {super.key,
+      required this.widgetBuilder,
       required this.windowBuilder,
       required this.controller,
       required this.child});
@@ -785,10 +787,10 @@ class AutoSizedWindowCreator extends StatefulWidget {
   /// Creates the [Widget] that will be rendered inside of the new [Window].
   final WidgetBuilder widgetBuilder;
 
-  /// When [WindowCreatorController.open] is caled, this function will be triggered
+  /// When [WindowCreatorController.open] is called, this function will be triggered
   /// to create the new [Window]. [widgetBuilder] will provide the content that
   /// should be rendered into this [Window]. The [Size] is the size that the
-  /// new [Window] should be, as represented by the
+  /// new [Window] should be.
   final Future<Window> Function(WidgetBuilder, Size size, Window window)
       windowBuilder;
 
@@ -840,21 +842,17 @@ class _AutoSizedWindowCreatorContext extends InheritedWidget {
   }
 
   @override
-  bool updateShouldNotify(_AutoSizedWindowCreatorContext oldWidget) {
-    return false;
-  }
+  bool updateShouldNotify(_AutoSizedWindowCreatorContext oldWidget) => false;
 }
 
 class _WidgetSizeHelper extends StatefulWidget {
-  _WidgetSizeHelper({required this.onSizeReported, required this.builder});
+  const _WidgetSizeHelper({required this.onSizeReported, required this.builder});
 
   final void Function(Size) onSizeReported;
   final Widget Function(BuildContext) builder;
 
   @override
-  State<_WidgetSizeHelper> createState() {
-    return _WidgetSizeHelperState();
-  }
+  State<_WidgetSizeHelper> createState() => _WidgetSizeHelperState();
 }
 
 class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
@@ -863,8 +861,14 @@ class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
 
   @override
   void initState() {
-    WidgetsBinding.instance.addObserver(this);
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
