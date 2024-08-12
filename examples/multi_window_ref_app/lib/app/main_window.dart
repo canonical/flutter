@@ -608,7 +608,7 @@ class _MainWindowState extends State<MainWindow> {
     return ViewAnchor(view: ViewCollection(views: childViews), child: widget);
   }
 
-  Rect clampRectToSize(Rect anchorRect, Size? size) {
+  Rect _clampRectToSize(Rect anchorRect, Size? size) {
     double left = anchorRect.left.clamp(0, size?.width as double);
     double top = anchorRect.top.clamp(0, size?.height as double);
     double right = anchorRect.right.clamp(0, size?.width as double);
