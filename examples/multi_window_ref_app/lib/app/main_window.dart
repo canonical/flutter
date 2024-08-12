@@ -486,9 +486,7 @@ class _MainWindowState extends State<MainWindow> {
                                                 .then(
                                               (Map<String, dynamic>? settings) {
                                                 if (settings != null) {
-                                                  setState(() {
-                                                    windowSettings = settings;
-                                                  });
+                                                  windowSettings = settings;
                                                 }
                                               },
                                             );
