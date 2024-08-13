@@ -392,10 +392,12 @@ class _MainWindowState extends State<MainWindow> {
                                                     parent: selectedParent,
                                                     size: windowSettings[
                                                         'popupSize'],
-                                                    anchorRect: clampRectToSize(
-                                                        windowSettings[
-                                                            'anchorRect'],
-                                                        selectedParent.size),
+                                                    anchorRect:
+                                                        _clampRectToSize(
+                                                            windowSettings[
+                                                                'anchorRect'],
+                                                            selectedParent
+                                                                .size),
                                                     positioner:
                                                         WindowPositioner(
                                                       parentAnchor:
