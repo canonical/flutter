@@ -52,7 +52,7 @@ class RegularWindow extends StatelessWidget {
             Text(
               'View #${window.view.viewId}\n'
               'Parent View: ${window.parent?.view.viewId}\n'
-              'Logical ${MediaQuery.of(context).size}\n'
+              'Logical Size: ${window.size.width}\u00D7${window.size.height}\n'
               'DPR: ${MediaQuery.of(context).devicePixelRatio}',
               textAlign: TextAlign.center,
             ),

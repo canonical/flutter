@@ -329,6 +329,28 @@ Future<Window> createPopupWindow(
       builder: builder);
 }
 
+/// Creates a new dialog [Window]
+///
+/// [context] the current [BuildContext], which must include a [MultiWindowAppContext]
+/// [parent] the [Window] to which this dialog is associated
+/// [size] the [Size] of the dialog
+/// [builder] a builder function that returns the contents of the new [Window]
+Future<Window> createDialogWindow(
+    {required BuildContext context,
+    required Window? parent,
+    required Size size,
+    required WidgetBuilder builder}) async {
+  final MultiWindowAppContext? multiViewAppContext =
+      MultiWindowAppContext.of(context);
+  if (multiViewAppContext == null) {
+    throw Exception(
+        'Cannot create a window: your application does not use MultiViewApp. Try wrapping your toplevel application in a MultiViewApp widget');
+  }
+
+  return multiViewAppContext.windowController
+      .createDialogWindow(parent: parent, size: size, builder: builder);
+}
+
 /// Destroys the provided [Window]
 ///
 /// [context] the current [BuildContext], which must include a [MultiWindowAppContext]
@@ -409,7 +431,7 @@ class WindowController extends State<MultiWindowApp> {
     );
 
     Window? parent = null;
-    if (parentViewId != null) {
+    if (parentViewId != null && parentViewId != -1) {
       for (final window in _windows) {
         parent = _findWindow(parentViewId, window);
         if (parent != null) break;
@@ -428,7 +450,7 @@ class WindowController extends State<MultiWindowApp> {
     return window;
   }
 
-  /// Creates a new regular [Window].
+  /// Creates a new regular [Window]
   ///
   /// [size] the size of the new [Window] in pixels
   /// [builder] a builder function that returns the contents of the new [Window]
@@ -460,6 +482,25 @@ class WindowController extends State<MultiWindowApp> {
       required Rect anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
+    const compatibleParentArchetypes = [
+      WindowArchetype.regular,
+      WindowArchetype.floatingRegular,
+      WindowArchetype.dialog,
+      WindowArchetype.satellite,
+      WindowArchetype.popup,
+    ];
+    if (!compatibleParentArchetypes.contains(parent!.archetype)) {
+      throw ArgumentError(
+          'Cannot create a dialog that is parented to a window with archetype=${parent!.archetype}. Compatible parent archetypes are WindowArchetype.regular, WindowArchetype.floatingRegular, WindowArchetype.dialog, WindowArchetype.satellite, WindowArchetype.popup');
+    }
+
+    for (final child in parent!.children) {
+      if (child.archetype == WindowArchetype.dialog) {
+        throw ArgumentError(
+            'Cannot create a popup that is parented to a window with a child dialog');
+      }
+    }
+
     int clampToZeroInt(double value) => value < 0 ? 0 : value.toInt();
     int constraintAdjustmentBitmask = 0;
     for (final WindowPositionerConstraintAdjustment adjustment
@@ -494,6 +535,50 @@ class WindowController extends State<MultiWindowApp> {
         builder: builder);
   }
 
+  /// Creates a new dialog [Window]
+  ///
+  /// [parent] the [Window] to which this dialog is associated
+  /// [size] the [Size] of the dialog
+  /// [builder] a builder function that returns the contents of the new [Window]
+  Future<Window> createDialogWindow(
+      {required Window? parent,
+      required Size size,
+      required WidgetBuilder builder}) async {
+    if (parent != null) {
+      const compatibleParentArchetypes = [
+        WindowArchetype.regular,
+        WindowArchetype.floatingRegular,
+        WindowArchetype.dialog,
+        WindowArchetype.satellite,
+      ];
+      if (!compatibleParentArchetypes.contains(parent!.archetype)) {
+        throw ArgumentError(
+            'Cannot create a dialog that is parented to a window with archetype=${parent!.archetype}. Compatible parent archetypes are WindowArchetype.regular, WindowArchetype.floatingRegular, WindowArchetype.dialog, WindowArchetype.satellite');
+      }
+
+      for (final child in parent!.children) {
+        if (child.archetype == WindowArchetype.dialog) {
+          throw ArgumentError(
+              'Cannot create a dialog that is parented to a window with an existing child dialog');
+        }
+      }
+    }
+
+    int clampToZeroInt(double value) => value < 0 ? 0 : value.toInt();
+    final int width = clampToZeroInt(size.width);
+    final int height = clampToZeroInt(size.height);
+
+    return _createWindow(
+        viewBuilder: (MethodChannel channel) async {
+          return await channel
+              .invokeMethod('createDialogWindow', <String, dynamic>{
+            'parent': parent != null ? parent!.view.viewId : -1,
+            'size': <int>[width, height],
+          }) as Map<Object?, Object?>;
+        },
+        builder: builder);
+  }
+
   /// Destroys the provided [Window]
   ///
   /// [window] the [Window] to be destroyed
@@ -511,7 +596,11 @@ class WindowController extends State<MultiWindowApp> {
     final List<Window> copy = List<Window>.from(_windows);
     if (window.parent != null) {
       window.parent!.children.add(window);
-      window.parent!._key = UniqueKey();
+      Window rootWindow = window;
+      while (rootWindow.parent != null) {
+        rootWindow = rootWindow.parent!;
+      }
+      rootWindow._key = UniqueKey();
     } else {
       copy.add(window);
     }
@@ -847,7 +936,8 @@ class _AutoSizedWindowCreatorContext extends InheritedWidget {
 }
 
 class _WidgetSizeHelper extends StatefulWidget {
-  const _WidgetSizeHelper({required this.onSizeReported, required this.builder});
+  const _WidgetSizeHelper(
+      {required this.onSizeReported, required this.builder});
 
   final void Function(Size) onSizeReported;
   final Widget Function(BuildContext) builder;

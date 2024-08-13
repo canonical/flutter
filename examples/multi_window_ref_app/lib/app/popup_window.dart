@@ -60,7 +60,7 @@ class PopupWindow extends StatelessWidget {
               Text(
                 'View #${window.view.viewId}\n'
                 'Parent View: ${window.parent?.view.viewId}\n'
-                'Logical ${MediaQuery.of(context).size}',
+                'Logical Size: ${window.size.width}\u00D7${window.size.height}',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onPrimary,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'custom_positioner_dialog.dart';
+import 'dialog_window.dart';
 import 'popup_window.dart';
 import 'regular_window.dart';
 import 'window_settings_dialog.dart';
@@ -16,7 +17,7 @@ class _MainWindowState extends State<MainWindow> {
   Map<String, dynamic> windowSettings = {
     'regularSize': const Size(400, 300),
     'floatingRegularSize': const Size(300, 300),
-    'dialogSize': const Size(200, 200),
+    'dialogSize': const Size(300, 250),
     'satelliteSize': const Size(150, 300),
     'popupSize': const Size(200, 200),
     'tipSize': const Size(140, 140),
@@ -125,6 +126,70 @@ class _MainWindowState extends State<MainWindow> {
 
     final windows =
         getWindowsInTree(MultiWindowAppContext.of(context)!.windows);
+
+    // Check if `windows[indexOfParent]` can be made the parent of a popup.
+    // The parent must have an archetype of `regular`, `floatingRegular`,
+    // `dialog`, `satellite`, or `popup`, and it cannot have a child dialog.
+    // This function is used to determine the appropriate label for the
+    // "create popup" button (`Popup` or `Popup of ID ...`) and whether it
+    // should be enabled.
+    bool canBeParentOfPopup(int indexOfParent) {
+      bool compatible = true;
+      if (indexOfParent < 0 || indexOfParent >= windows.length) {
+        compatible = false;
+      } else {
+        final parentWindow = windows[indexOfParent];
+
+        const compatibleParentArchetypes = [
+          WindowArchetype.regular,
+          WindowArchetype.floatingRegular,
+          WindowArchetype.dialog,
+          WindowArchetype.satellite,
+          WindowArchetype.popup,
+        ];
+        compatible =
+            compatibleParentArchetypes.contains(parentWindow.archetype);
+
+        for (final child in parentWindow.children) {
+          if (child.archetype == WindowArchetype.dialog) {
+            compatible = false;
+            break;
+          }
+        }
+      }
+      return compatible;
+    }
+
+    // Check if `windows[indexOfParent]` can be made the parent of a dialog.
+    // The parent must have an archetype of `regular`, `floatingRegular`,
+    // `dialog`, or `satellite`, and it cannot have another child dialog.
+    // This function is used to determine the appropriate label for the
+    // "create dialog" button (`Dialog` or `Dialog of ID ...`).
+    bool canBeParentOfDialog(int indexOfParent) {
+      bool compatible = true;
+      if (indexOfParent < 0 || indexOfParent >= windows.length) {
+        compatible = false;
+      } else {
+        final parentWindow = windows[indexOfParent];
+
+        const compatibleParentArchetypes = [
+          WindowArchetype.regular,
+          WindowArchetype.floatingRegular,
+          WindowArchetype.dialog,
+          WindowArchetype.satellite,
+        ];
+        compatible =
+            compatibleParentArchetypes.contains(parentWindow.archetype);
+
+        for (final child in parentWindow.children) {
+          if (child.archetype == WindowArchetype.dialog) {
+            compatible = false;
+            break;
+          }
+        }
+      }
+      return compatible;
+    }
 
     final window = WindowContext.of(context)!.window;
 
@@ -301,27 +366,29 @@ class _MainWindowState extends State<MainWindow> {
                                       //   child: const Text('Floating Regular'),
                                       // ),
                                       // const SizedBox(height: 8),
-                                      // OutlinedButton(
-                                      //   onPressed: () async {
-                                      //     final windowId =
-                                      //         await createDialogWindow(
-                                      //             windowSettings['dialogSize'],
-                                      //             selectedRowIndex >= 0 &&
-                                      //                     isMirShellWindow(
-                                      //                         selectedRowIndex)
-                                      //                 ? windows[
-                                      //                         selectedRowIndex]
-                                      //                     ['id']
-                                      //                 : null);
-                                      //     await setWindowId(windowId);
-                                      //   },
-                                      //   child: Text(selectedRowIndex >= 0 &&
-                                      //           isMirShellWindow(
-                                      //               selectedRowIndex)
-                                      //       ? 'Dialog of ID ${windows[selectedRowIndex]['id']}'
-                                      //       : 'Dialog'),
-                                      // ),
-                                      // const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: () async {
+                                          final selectedParent =
+                                              canBeParentOfDialog(
+                                                      selectedRowIndex)
+                                                  ? windows[selectedRowIndex]
+                                                  : null;
+                                          await createDialogWindow(
+                                              context: context,
+                                              parent: selectedParent,
+                                              size:
+                                                  windowSettings['dialogSize'],
+                                              builder: (BuildContext context) {
+                                                return const MaterialApp(
+                                                    home: DialogWindow());
+                                              });
+                                        },
+                                        child: Text(canBeParentOfDialog(
+                                                selectedRowIndex)
+                                            ? 'Dialog of ID ${windows[selectedRowIndex].view.viewId}'
+                                            : 'Dialog'),
+                                      ),
+                                      const SizedBox(height: 8),
                                       // OutlinedButton(
                                       //   onPressed: selectedRowIndex >= 0 &&
                                       //           isMirShellWindow(
@@ -378,9 +445,8 @@ class _MainWindowState extends State<MainWindow> {
                                       // ),
                                       // const SizedBox(height: 8),
                                       OutlinedButton(
-                                        onPressed: selectedRowIndex >= 0 &&
-                                                selectedRowIndex <
-                                                    windows.length
+                                        onPressed: canBeParentOfPopup(
+                                                selectedRowIndex)
                                             ? () async {
                                                 final selectedPositionerSettings =
                                                     positionerSettings[
@@ -419,9 +485,8 @@ class _MainWindowState extends State<MainWindow> {
                                                     });
                                               }
                                             : null,
-                                        child: Text(selectedRowIndex >= 0 &&
-                                                selectedRowIndex <
-                                                    windows.length
+                                        child: Text(canBeParentOfPopup(
+                                                selectedRowIndex)
                                             ? 'Popup of ID ${windows[selectedRowIndex].view.viewId}'
                                             : 'Popup'),
                                       ),
