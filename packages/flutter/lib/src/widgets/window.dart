@@ -276,7 +276,7 @@ class Window {
   /// A list of child [Window]s associated with this window
   final List<Window> children = [];
 
-  final GlobalKey _key = GlobalKey();
+  UniqueKey _key = UniqueKey();
 }
 
 /// Creates a new regular [Window].
@@ -511,6 +511,7 @@ class WindowController extends State<MultiWindowApp> {
     final List<Window> copy = List<Window>.from(_windows);
     if (window.parent != null) {
       window.parent!.children.add(window);
+      window.parent!._key = UniqueKey();
     } else {
       copy.add(window);
     }
