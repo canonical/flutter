@@ -294,6 +294,11 @@ class Window {
         WindowArchetype.dialog,
         WindowArchetype.satellite,
       ],
+      WindowArchetype.satellite: [
+        WindowArchetype.regular,
+        WindowArchetype.floatingRegular,
+        WindowArchetype.dialog,
+      ],
       // TODO: Handle remaining archetypes
     };
 
@@ -379,6 +384,36 @@ Future<Window> createDialogWindow(
 
   return multiViewAppContext.windowController
       .createDialogWindow(parent: parent, size: size, builder: builder);
+}
+
+/// Creates a new satellite [Window]
+///
+/// [context] the current [BuildContext], which must include a [MultiWindowAppContext]
+/// [parent] the [Window] to which this satellite is associated
+/// [size] the [Size] of the satellite
+/// [anchorRect] the [Rect] to which this satellite is anchored
+/// [positioner] defines the constraints by which the satellite is positioned
+/// [builder] a builder function that returns the contents of the new [Window]
+Future<Window> createSatelliteWindow(
+    {required BuildContext context,
+    required Window parent,
+    required Size size,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+    required WidgetBuilder builder}) async {
+  final MultiWindowAppContext? multiViewAppContext =
+      MultiWindowAppContext.of(context);
+  if (multiViewAppContext == null) {
+    throw Exception(
+        'Cannot create a window: your application does not use MultiViewApp. Try wrapping your toplevel application in a MultiViewApp widget');
+  }
+
+  return multiViewAppContext.windowController.createSatelliteWindow(
+      parent: parent,
+      size: size,
+      anchorRect: anchorRect,
+      positioner: positioner,
+      builder: builder);
 }
 
 /// Destroys the provided [Window]
@@ -581,6 +616,61 @@ class WindowController extends State<MultiWindowApp> {
               size.width.clamp(0, size.width).toInt(),
               size.height.clamp(0, size.height).toInt()
             ],
+          }) as Map<Object?, Object?>;
+        },
+        builder: builder);
+  }
+
+  /// Creates a new satellite [Window]
+  ///
+  /// [parent] the [Window] to which this satellite is associated
+  /// [size] the [Size] of the satellite
+  /// [anchorRect] the [Rect] to which this satellite is anchored
+  /// [positioner] defines the constraints by which the satellite is positioned
+  /// [builder] a builder function that returns the contents of the new [Window]
+  Future<Window> createSatelliteWindow(
+      {required Window parent,
+      required Size size,
+      required Rect anchorRect,
+      required WindowPositioner positioner,
+      required WidgetBuilder builder}) async {
+    if (!parent.canBeParentOf(WindowArchetype.satellite)) {
+      throw ArgumentError(
+          'Incompatible parent window. The parent window must have one of '
+          'the following archetypes: WindowArchetype.regular, '
+          'WindowArchetype.floatingRegular, WindowArchetype.dialog, or '
+          'WindowArchetype.popup. Additionally, it cannot have a child with a '
+          'WindowArchetype.dialog.');
+    }
+
+    int constraintAdjustmentBitmask = 0;
+    for (final WindowPositionerConstraintAdjustment adjustment
+        in positioner.constraintAdjustment) {
+      constraintAdjustmentBitmask |= 1 << adjustment.index;
+    }
+
+    return _createWindow(
+        viewBuilder: (MethodChannel channel) async {
+          return await channel
+              .invokeMethod('createSatelliteWindow', <String, dynamic>{
+            'parent': parent.view.viewId,
+            'size': <int>[
+              size.width.clamp(0, size.width).toInt(),
+              size.height.clamp(0, size.height).toInt()
+            ],
+            'anchorRect': <int>[
+              anchorRect.left.toInt(),
+              anchorRect.top.toInt(),
+              anchorRect.width.toInt(),
+              anchorRect.height.toInt()
+            ],
+            'positionerParentAnchor': positioner.parentAnchor.index,
+            'positionerChildAnchor': positioner.childAnchor.index,
+            'positionerOffset': <int>[
+              positioner.offset.dx.toInt(),
+              positioner.offset.dy.toInt()
+            ],
+            'positionerConstraintAdjustment': constraintAdjustmentBitmask
           }) as Map<Object?, Object?>;
         },
         builder: builder);

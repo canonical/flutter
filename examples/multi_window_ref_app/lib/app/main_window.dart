@@ -4,6 +4,7 @@ import 'custom_positioner_dialog.dart';
 import 'dialog_window.dart';
 import 'popup_window.dart';
 import 'regular_window.dart';
+import 'satellite_window.dart';
 import 'window_settings_dialog.dart';
 
 class MainWindow extends StatefulWidget {
@@ -333,61 +334,53 @@ class _MainWindowState extends State<MainWindow> {
                                             : 'Dialog'),
                                       ),
                                       const SizedBox(height: 8),
-                                      // OutlinedButton(
-                                      //   onPressed: selectedRowIndex >= 0 &&
-                                      //           isMirShellWindow(
-                                      //               selectedRowIndex)
-                                      //       ? () async {
-                                      //           final windowId =
-                                      //               await createSatelliteWindow(
-                                      //             windows[selectedRowIndex]
-                                      //                 ['id'],
-                                      //             windowSettings[
-                                      //                 'satelliteSize'],
-                                      //             clampAnchorRectToSize(
-                                      //                 await getWindowSize(windows[
-                                      //                         selectedRowIndex]
-                                      //                     ['id'])),
-                                      //             FlutterViewPositioner(
-                                      //               parentAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['parentAnchor'],
-                                      //               childAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['childAnchor'],
-                                      //               offset: positionerSettings[
-                                      //                       positionerIndex]
-                                      //                   ['offset'],
-                                      //               constraintAdjustment:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       [
-                                      //                       'constraintAdjustments'],
-                                      //             ),
-                                      //           );
-                                      //           await setWindowId(windowId);
-                                      //           setState(() {
-                                      //             // Cycle through presets when the last one (Custom preset) is not selected
-                                      //             if (positionerIndex !=
-                                      //                 positionerSettings
-                                      //                         .length -
-                                      //                     1) {
-                                      //               positionerIndex =
-                                      //                   (positionerIndex + 1) %
-                                      //                       (positionerSettings
-                                      //                               .length -
-                                      //                           1);
-                                      //             }
-                                      //           });
-                                      //         }
-                                      //       : null,
-                                      //   child: Text(selectedRowIndex >= 0
-                                      //       ? 'Satellite of ID ${windows[selectedRowIndex]['id']}'
-                                      //       : 'Satellite'),
-                                      // ),
-                                      // const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: canBeParentOf(
+                                                WindowArchetype.satellite)
+                                            ? () async {
+                                                final selectedPositionerSettings =
+                                                    positionerSettings[
+                                                        positionerIndex];
+                                                final selectedParent =
+                                                    windows[selectedRowIndex];
+                                                await createSatelliteWindow(
+                                                    context: context,
+                                                    parent: selectedParent,
+                                                    size: windowSettings[
+                                                        'satelliteSize'],
+                                                    anchorRect:
+                                                        _clampRectToSize(
+                                                            windowSettings[
+                                                                'anchorRect'],
+                                                            selectedParent
+                                                                .size),
+                                                    positioner:
+                                                        WindowPositioner(
+                                                      parentAnchor:
+                                                          selectedPositionerSettings[
+                                                              'parentAnchor'],
+                                                      childAnchor:
+                                                          selectedPositionerSettings[
+                                                              'childAnchor'],
+                                                      offset:
+                                                          selectedPositionerSettings[
+                                                              'offset'],
+                                                      constraintAdjustment:
+                                                          selectedPositionerSettings[
+                                                              'constraintAdjustments'],
+                                                    ),
+                                                    builder:
+                                                        (BuildContext context) {
+                                                      return const SatelliteWindow();
+                                                    });
+                                              }
+                                            : null,
+                                        child: Text(canBeParentOf(
+                                                WindowArchetype.satellite)
+                                            ? 'Satellite of ID ${windows[selectedRowIndex].view.viewId}'
+                                            : 'Satellite'),
+                                      ),
+                                      const SizedBox(height: 8),
                                       OutlinedButton(
                                         onPressed: canBeParentOf(
                                                 WindowArchetype.popup)
