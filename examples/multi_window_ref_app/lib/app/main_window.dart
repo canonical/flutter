@@ -127,68 +127,13 @@ class _MainWindowState extends State<MainWindow> {
     final windows =
         getWindowsInTree(MultiWindowAppContext.of(context)!.windows);
 
-    // Check if `windows[indexOfParent]` can be made the parent of a popup.
-    // The parent must have an archetype of `regular`, `floatingRegular`,
-    // `dialog`, `satellite`, or `popup`, and it cannot have a child dialog.
-    // This function is used to determine the appropriate label for the
-    // "create popup" button (`Popup` or `Popup of ID ...`) and whether it
-    // should be enabled.
-    bool canBeParentOfPopup(int indexOfParent) {
-      bool compatible = true;
-      if (indexOfParent < 0 || indexOfParent >= windows.length) {
-        compatible = false;
-      } else {
-        final parentWindow = windows[indexOfParent];
-
-        const compatibleParentArchetypes = [
-          WindowArchetype.regular,
-          WindowArchetype.floatingRegular,
-          WindowArchetype.dialog,
-          WindowArchetype.satellite,
-          WindowArchetype.popup,
-        ];
-        compatible =
-            compatibleParentArchetypes.contains(parentWindow.archetype);
-
-        for (final child in parentWindow.children) {
-          if (child.archetype == WindowArchetype.dialog) {
-            compatible = false;
-            break;
-          }
-        }
+    // Check if the currently selected window can be made the parent of a
+    // window with the specified archetype.
+    bool canBeParentOf(WindowArchetype archetype) {
+      if (selectedRowIndex < 0 || selectedRowIndex >= windows.length) {
+        return false;
       }
-      return compatible;
-    }
-
-    // Check if `windows[indexOfParent]` can be made the parent of a dialog.
-    // The parent must have an archetype of `regular`, `floatingRegular`,
-    // `dialog`, or `satellite`, and it cannot have another child dialog.
-    // This function is used to determine the appropriate label for the
-    // "create dialog" button (`Dialog` or `Dialog of ID ...`).
-    bool canBeParentOfDialog(int indexOfParent) {
-      bool compatible = true;
-      if (indexOfParent < 0 || indexOfParent >= windows.length) {
-        compatible = false;
-      } else {
-        final parentWindow = windows[indexOfParent];
-
-        const compatibleParentArchetypes = [
-          WindowArchetype.regular,
-          WindowArchetype.floatingRegular,
-          WindowArchetype.dialog,
-          WindowArchetype.satellite,
-        ];
-        compatible =
-            compatibleParentArchetypes.contains(parentWindow.archetype);
-
-        for (final child in parentWindow.children) {
-          if (child.archetype == WindowArchetype.dialog) {
-            compatible = false;
-            break;
-          }
-        }
-      }
-      return compatible;
+      return windows[selectedRowIndex].canBeParentOf(archetype);
     }
 
     final window = WindowContext.of(context)!.window;
@@ -368,11 +313,10 @@ class _MainWindowState extends State<MainWindow> {
                                       // const SizedBox(height: 8),
                                       OutlinedButton(
                                         onPressed: () async {
-                                          final selectedParent =
-                                              canBeParentOfDialog(
-                                                      selectedRowIndex)
-                                                  ? windows[selectedRowIndex]
-                                                  : null;
+                                          final selectedParent = canBeParentOf(
+                                                  WindowArchetype.dialog)
+                                              ? windows[selectedRowIndex]
+                                              : null;
                                           await createDialogWindow(
                                               context: context,
                                               parent: selectedParent,
@@ -383,8 +327,8 @@ class _MainWindowState extends State<MainWindow> {
                                                     home: DialogWindow());
                                               });
                                         },
-                                        child: Text(canBeParentOfDialog(
-                                                selectedRowIndex)
+                                        child: Text(canBeParentOf(
+                                                WindowArchetype.dialog)
                                             ? 'Dialog of ID ${windows[selectedRowIndex].view.viewId}'
                                             : 'Dialog'),
                                       ),
@@ -445,8 +389,8 @@ class _MainWindowState extends State<MainWindow> {
                                       // ),
                                       // const SizedBox(height: 8),
                                       OutlinedButton(
-                                        onPressed: canBeParentOfPopup(
-                                                selectedRowIndex)
+                                        onPressed: canBeParentOf(
+                                                WindowArchetype.popup)
                                             ? () async {
                                                 final selectedPositionerSettings =
                                                     positionerSettings[
@@ -485,8 +429,8 @@ class _MainWindowState extends State<MainWindow> {
                                                     });
                                               }
                                             : null,
-                                        child: Text(canBeParentOfPopup(
-                                                selectedRowIndex)
+                                        child: Text(canBeParentOf(
+                                                WindowArchetype.popup)
                                             ? 'Popup of ID ${windows[selectedRowIndex].view.viewId}'
                                             : 'Popup'),
                                       ),

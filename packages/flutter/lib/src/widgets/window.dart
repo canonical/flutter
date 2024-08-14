@@ -277,6 +277,36 @@ class Window {
   final List<Window> children = [];
 
   UniqueKey _key = UniqueKey();
+
+  /// Check if this [Window] can be made the parent of the specified [WindowArchetype]
+  bool canBeParentOf(WindowArchetype archetype) {
+    final Map<WindowArchetype, List<WindowArchetype>> compatibilityMap = {
+      WindowArchetype.popup: [
+        WindowArchetype.regular,
+        WindowArchetype.floatingRegular,
+        WindowArchetype.dialog,
+        WindowArchetype.satellite,
+        WindowArchetype.popup,
+      ],
+      WindowArchetype.dialog: [
+        WindowArchetype.regular,
+        WindowArchetype.floatingRegular,
+        WindowArchetype.dialog,
+        WindowArchetype.satellite,
+      ],
+      // TODO: Handle remaining archetypes
+    };
+
+    final List<WindowArchetype>? compatibleParentArchetypes =
+        compatibilityMap[archetype];
+
+    if (compatibleParentArchetypes == null) {
+      return false;
+    }
+
+    return compatibleParentArchetypes.contains(this.archetype) &&
+        !children.any((child) => child.archetype == WindowArchetype.dialog);
+  }
 }
 
 /// Creates a new regular [Window].
@@ -431,7 +461,7 @@ class WindowController extends State<MultiWindowApp> {
     );
 
     Window? parent = null;
-    if (parentViewId != null && parentViewId != -1) {
+    if (parentViewId != null) {
       for (final window in _windows) {
         parent = _findWindow(parentViewId, window);
         if (parent != null) break;
@@ -456,15 +486,13 @@ class WindowController extends State<MultiWindowApp> {
   /// [builder] a builder function that returns the contents of the new [Window]
   Future<Window> createRegularWindow(
       {required Size size, required WidgetBuilder builder}) {
-    int clampToZeroInt(double value) => value < 0 ? 0 : value.toInt();
-    final int width = clampToZeroInt(size.width);
-    final int height = clampToZeroInt(size.height);
-
     return _createWindow(
         viewBuilder: (MethodChannel channel) async {
-          return await channel.invokeMethod('createRegularWindow',
-                  <String, int>{'width': width, 'height': height})
-              as Map<Object?, Object?>;
+          return await channel
+              .invokeMethod('createRegularWindow', <String, int>{
+            'width': size.width.clamp(0, size.width).toInt(),
+            'height': size.height.clamp(0, size.height).toInt()
+          }) as Map<Object?, Object?>;
         },
         builder: builder);
   }
@@ -482,26 +510,15 @@ class WindowController extends State<MultiWindowApp> {
       required Rect anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
-    const compatibleParentArchetypes = [
-      WindowArchetype.regular,
-      WindowArchetype.floatingRegular,
-      WindowArchetype.dialog,
-      WindowArchetype.satellite,
-      WindowArchetype.popup,
-    ];
-    if (!compatibleParentArchetypes.contains(parent!.archetype)) {
+    if (!parent.canBeParentOf(WindowArchetype.popup)) {
       throw ArgumentError(
-          'Cannot create a dialog that is parented to a window with archetype=${parent!.archetype}. Compatible parent archetypes are WindowArchetype.regular, WindowArchetype.floatingRegular, WindowArchetype.dialog, WindowArchetype.satellite, WindowArchetype.popup');
+          'Incompatible parent window. The parent window must have one of '
+          'the following archetypes: WindowArchetype.regular, '
+          'WindowArchetype.floatingRegular, WindowArchetype.dialog, '
+          'WindowArchetype.satellite, or WindowArchetype.popup. Additionally, '
+          'it cannot have a child with a WindowArchetype.dialog.');
     }
 
-    for (final child in parent!.children) {
-      if (child.archetype == WindowArchetype.dialog) {
-        throw ArgumentError(
-            'Cannot create a popup that is parented to a window with a child dialog');
-      }
-    }
-
-    int clampToZeroInt(double value) => value < 0 ? 0 : value.toInt();
     int constraintAdjustmentBitmask = 0;
     for (final WindowPositionerConstraintAdjustment adjustment
         in positioner.constraintAdjustment) {
@@ -514,8 +531,8 @@ class WindowController extends State<MultiWindowApp> {
               .invokeMethod('createPopupWindow', <String, dynamic>{
             'parent': parent.view.viewId,
             'size': <int>[
-              clampToZeroInt(size.width),
-              clampToZeroInt(size.height)
+              size.width.clamp(0, size.width).toInt(),
+              size.height.clamp(0, size.height).toInt()
             ],
             'anchorRect': <int>[
               anchorRect.left.toInt(),
@@ -545,35 +562,25 @@ class WindowController extends State<MultiWindowApp> {
       required Size size,
       required WidgetBuilder builder}) async {
     if (parent != null) {
-      const compatibleParentArchetypes = [
-        WindowArchetype.regular,
-        WindowArchetype.floatingRegular,
-        WindowArchetype.dialog,
-        WindowArchetype.satellite,
-      ];
-      if (!compatibleParentArchetypes.contains(parent!.archetype)) {
+      if (!parent!.canBeParentOf(WindowArchetype.dialog)) {
         throw ArgumentError(
-            'Cannot create a dialog that is parented to a window with archetype=${parent!.archetype}. Compatible parent archetypes are WindowArchetype.regular, WindowArchetype.floatingRegular, WindowArchetype.dialog, WindowArchetype.satellite');
-      }
-
-      for (final child in parent!.children) {
-        if (child.archetype == WindowArchetype.dialog) {
-          throw ArgumentError(
-              'Cannot create a dialog that is parented to a window with an existing child dialog');
-        }
+            'Incompatible parent window. The parent window must have one of '
+            'the following archetypes: WindowArchetype.regular, '
+            'WindowArchetype.floatingRegular, WindowArchetype.dialog, or '
+            'WindowArchetype.satellite. Additionally, it cannot have a child '
+            'with a WindowArchetype.dialog.');
       }
     }
-
-    int clampToZeroInt(double value) => value < 0 ? 0 : value.toInt();
-    final int width = clampToZeroInt(size.width);
-    final int height = clampToZeroInt(size.height);
 
     return _createWindow(
         viewBuilder: (MethodChannel channel) async {
           return await channel
               .invokeMethod('createDialogWindow', <String, dynamic>{
             'parent': parent != null ? parent!.view.viewId : -1,
-            'size': <int>[width, height],
+            'size': <int>[
+              size.width.clamp(0, size.width).toInt(),
+              size.height.clamp(0, size.height).toInt()
+            ],
           }) as Map<Object?, Object?>;
         },
         builder: builder);
