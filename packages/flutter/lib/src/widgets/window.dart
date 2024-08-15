@@ -991,3 +991,68 @@ class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
     );
   }
 }
+
+/// A route that displays widgets in a modal dialog [Window] with
+/// the help of the [Navigator].
+///
+/// See also:
+///
+///  * [Route], which documents the meaning of the `T` generic type argument.
+class ModalWindowRoute<T> extends Route<T> {
+  ModalWindowRoute({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    Size? size,
+    super.settings,
+  })  : _context = context,
+        _builder = builder,
+        _size = size;
+
+  final BuildContext _context;
+  final WidgetBuilder _builder;
+  final Size? _size;
+  Window? _window;
+
+  Future<Window> _createWindow() {
+    final WindowContext? windowContext = WindowContext.of(_context);
+    return createDialogWindow(
+        context: _context,
+        parent: windowContext?.window,
+        size: _size ?? Size(640, 480), // TODO: Support dynamic sizing
+        builder: _builder);
+  }
+
+  @override
+  void install() async {
+    super.install();
+    _window = await _createWindow();
+  }
+
+  @override
+  void didComplete(T? result) {
+    // TODO: Remove the window
+    super.didComplete(result);
+  }
+
+  @override
+  void didPopNext(Route<dynamic> nextRoute) {
+    super.didPopNext(nextRoute);
+    // TODO: Bring the window into focus
+  }
+
+  @override
+  void didChangePevious(Route<dynamic>? previousRoute) {
+    // TODO: We might have to rehome this window if our parent was removed
+    super.didChangePrevious(previousRoute);
+  }
+
+  @override
+  void dispose() {
+    // TODO: Or maybe remove the window here?
+    super.dispose();
+
+    if (_window != null) {
+      destroyWindow(_context, _window!);
+    }
+  }
+}
