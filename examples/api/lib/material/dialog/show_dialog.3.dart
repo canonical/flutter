@@ -21,22 +21,18 @@ class DialogExample extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AlertDialog Sample')),
+      appBar: AppBar(title: const Text('showDialog Sample')),
       body: Center(
         child: OutlinedButton(
-          onPressed: () {
-            Navigator.of(context).restorablePush(_dialogBuilder);
-          },
+          onPressed: () => _dialogBuilder(context),
           child: const Text('Open Dialog'),
         ),
       ),
     );
   }
 
-  @pragma('vm:entry-point')
-  static Route<Object?> _dialogBuilder(
-      BuildContext context, Object? arguments) {
-    return DialogRoute<void>(
+  Future<void> _dialogBuilder(BuildContext context) {
+    return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(

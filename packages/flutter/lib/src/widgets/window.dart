@@ -792,7 +792,10 @@ class WindowCreatorController {
 /// for opening and closing a [Window].
 class WindowCreator extends StatefulWidget {
   WindowCreator(
-      {required this.builder, required this.controller, required this.child});
+      {required this.builder,
+      required this.controller,
+      required this.child,
+      this.openImmediately = false});
 
   /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
@@ -802,6 +805,9 @@ class WindowCreator extends StatefulWidget {
 
   /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
+
+  /// If set to true, the [Window] will be created as soon as the [Widget] mounts.
+  final bool? openImmediately;
 
   @override
   State<WindowCreator> createState() => _WindowCreatorState();
@@ -814,6 +820,12 @@ class _WindowCreatorState extends State<WindowCreator> {
   void initState() {
     super.initState();
     widget.controller._impl = this;
+
+    if (widget.openImmediately != null && widget.openImmediately!) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _show(context);
+      });
+    }
   }
 
   Future<void> _show(BuildContext context) async {
@@ -1011,26 +1023,40 @@ class ModalWindowRoute<T> extends Route<T> {
   final BuildContext _context;
   final WidgetBuilder _builder;
   final Size? _size;
-  Window? _window;
+  final WindowCreatorController _controller = WindowCreatorController();
 
-  Future<Window> _createWindow() {
+  @override
+  List<OverlayEntry> get overlayEntries => _overlayEntries;
+  final List<OverlayEntry> _overlayEntries = <OverlayEntry>[];
+
+  Future<Window> _createWindow(BuildContext context) {
     final WindowContext? windowContext = WindowContext.of(_context);
     return createDialogWindow(
-        context: _context,
+        context: context,
         parent: windowContext?.window,
         size: _size ?? Size(640, 480), // TODO: Support dynamic sizing
         builder: _builder);
   }
 
   @override
-  void install() async {
+  void install() {
+    _overlayEntries.add(OverlayEntry(builder: (BuildContext context) {
+      return WindowCreator(
+          builder: (BuildContext context, Window window) {
+            return _createWindow(context);
+          },
+          controller: _controller,
+          child: Container(),
+          openImmediately: true);
+    }));
     super.install();
-    _window = await _createWindow();
   }
 
   @override
   void didComplete(T? result) {
     // TODO: Remove the window
+    print("didComplete");
+    _controller.hide(_context);
     super.didComplete(result);
   }
 
@@ -1050,9 +1076,5 @@ class ModalWindowRoute<T> extends Route<T> {
   void dispose() {
     // TODO: Or maybe remove the window here?
     super.dispose();
-
-    if (_window != null) {
-      destroyWindow(_context, _window!);
-    }
   }
 }
