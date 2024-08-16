@@ -7,6 +7,6 @@ settings:
     opened: Triaged
     closed: Done
   components:
-  - Mir
+  - Flutter
   label_mapping:
     enhancement: Story
