@@ -888,7 +888,8 @@ class AutoSizedWindowCreator extends StatefulWidget {
       required this.widgetBuilder,
       required this.windowBuilder,
       required this.controller,
-      required this.child});
+      required this.child,
+      this.openImmediately = false});
 
   /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
@@ -905,6 +906,8 @@ class AutoSizedWindowCreator extends StatefulWidget {
 
   /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
+
+  final bool? openImmediately;
 
   @override
   State<AutoSizedWindowCreator> createState() => _AutoSizedWindowCreator();
@@ -938,6 +941,7 @@ class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
         builder: (BuildContext context, Window parent) =>
             widget.windowBuilder(widget.widgetBuilder, size!, parent),
         controller: widget.controller,
+        openImmediately: widget.openImmediately,
         child: widget.child);
   }
 }
@@ -1029,33 +1033,41 @@ class ModalWindowRoute<T> extends Route<T> {
   List<OverlayEntry> get overlayEntries => _overlayEntries;
   final List<OverlayEntry> _overlayEntries = <OverlayEntry>[];
 
-  Future<Window> _createWindow(BuildContext context) {
-    final WindowContext? windowContext = WindowContext.of(_context);
+  Future<Window> _createWindow(
+      BuildContext context, WidgetBuilder builder, Size size, Window? parent) {
     return createDialogWindow(
-        context: context,
-        parent: windowContext?.window,
-        size: _size ?? Size(640, 480), // TODO: Support dynamic sizing
-        builder: _builder);
+        context: context, parent: parent, size: size, builder: builder);
   }
 
   @override
   void install() {
     _overlayEntries.add(OverlayEntry(builder: (BuildContext context) {
-      return WindowCreator(
-          builder: (BuildContext context, Window window) {
-            return _createWindow(context);
-          },
-          controller: _controller,
-          child: Container(),
-          openImmediately: true);
+      if (_size == null) {
+        return AutoSizedWindowCreator(
+            widgetBuilder: _builder,
+            windowBuilder: (WidgetBuilder builder, Size size, Window window) {
+              return _createWindow(context, builder, size, window);
+            },
+            controller: _controller,
+            openImmediately: true,
+            child: Container());
+      } else {
+        return WindowCreator(
+            builder: (BuildContext context, Window window) {
+              final WindowContext? windowContext = WindowContext.of(_context);
+              return _createWindow(
+                  context, _builder, _size, windowContext?.window);
+            },
+            controller: _controller,
+            openImmediately: true,
+            child: Container());
+      }
     }));
     super.install();
   }
 
   @override
   void didComplete(T? result) {
-    // TODO: Remove the window
-    print("didComplete");
     _controller.hide(_context);
     super.didComplete(result);
   }
@@ -1070,11 +1082,5 @@ class ModalWindowRoute<T> extends Route<T> {
   void didChangePevious(Route<dynamic>? previousRoute) {
     // TODO: We might have to rehome this window if our parent was removed
     super.didChangePrevious(previousRoute);
-  }
-
-  @override
-  void dispose() {
-    // TODO: Or maybe remove the window here?
-    super.dispose();
   }
 }
