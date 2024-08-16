@@ -1371,15 +1371,21 @@ Widget _buildMaterialDialogTransitions(
   return child;
 }
 
-/// Displays a Material dialog above the current contents of the app, with
+/// When a [MultiWindowAppContext] is unavailable, this function
+/// displays a Material dialog above the current contents of the app, with
 /// Material entrance and exit animations, modal barrier color, and modal
 /// barrier behavior (dialog is dismissible with a tap on the barrier).
 ///
+/// When  a [MultiWindowAppContext] is available, this function creates a
+/// dialog [Window] and renders the contents of the `builder` function inside
+/// of it.
+///
 /// This function takes a `builder` which typically builds a [Dialog] widget.
-/// Content below the dialog is dimmed with a [ModalBarrier]. The widget
-/// returned by the `builder` does not share a context with the location that
-/// [showDialog] is originally called from. Use a [StatefulBuilder] or a
-/// custom [StatefulWidget] if the dialog needs to update dynamically.
+/// Content below the dialog is dimmed with a [ModalBarrier] only when a
+/// [MultiWindowAppContext] is unavailable. The widget returned by the `builder`
+/// does not share a context with the location that [showDialog] is originally
+/// called from. Use a [StatefulBuilder] or a custom [StatefulWidget] if the
+/// dialog needs to update dynamically.
 ///
 /// The `context` argument is used to look up the [Navigator] and [Theme] for
 /// the dialog. It is only used when the method is called. Its corresponding
@@ -1387,17 +1393,20 @@ Widget _buildMaterialDialogTransitions(
 ///
 /// The `barrierDismissible` argument is used to indicate whether tapping on the
 /// barrier will dismiss the dialog. It is `true` by default and can not be `null`.
+/// This argument has no effect when a [MultiWindowAppContext] is available.
 ///
 /// The `barrierColor` argument is used to specify the color of the modal
 /// barrier that darkens everything below the dialog. If `null` the `barrierColor`
 /// field from `DialogTheme` is used. If that is `null` the default color
-/// `Colors.black54` is used.
+/// `Colors.black54` is used. This argument has no effect when a
+/// [MultiWindowAppContext] is available.
 ///
 /// The `useSafeArea` argument is used to indicate if the dialog should only
 /// display in 'safe' areas of the screen not used by the operating system
 /// (see [SafeArea] for more details). It is `true` by default, which means
 /// the dialog will not overlap operating system areas. If it is set to `false`
 /// the dialog will only be constrained by the screen size. It can not be `null`.
+/// This argument has no effect when a [MultiWindowAppContext] is available.
 ///
 /// The `useRootNavigator` argument is used to determine whether to push the
 /// dialog to the [Navigator] furthest from or nearest to the given `context`.
@@ -1411,6 +1420,7 @@ Widget _buildMaterialDialogTransitions(
 /// focus beyond the first and the last items of the dialog route. By default,
 /// [TraversalEdgeBehavior.closedLoop] is used, because it's typical for dialogs
 /// to allow users to cycle through dialog widgets without leaving the dialog.
+/// This argument has no effect when a [MultiWindowAppContext] is available.
 ///
 /// {@macro flutter.widgets.RawDialogRoute}
 ///

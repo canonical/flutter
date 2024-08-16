@@ -1015,6 +1015,13 @@ class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
 ///
 ///  * [Route], which documents the meaning of the `T` generic type argument.
 class ModalWindowRoute<T> extends Route<T> {
+  /// Creates a [Route] that creates a new modal dialog [Window].
+  ///
+  /// [context] the build conext
+  /// [builder] the content that will end up in the dialog
+  /// [size] the [Size] of the dialog. If not provided, the dialog
+  ///        will be sized to fit the content from [builder].
+  /// [settings] settings for the [Route]
   ModalWindowRoute({
     required BuildContext context,
     required WidgetBuilder builder,
@@ -1070,17 +1077,5 @@ class ModalWindowRoute<T> extends Route<T> {
   void didComplete(T? result) {
     _controller.hide(_context);
     super.didComplete(result);
-  }
-
-  @override
-  void didPopNext(Route<dynamic> nextRoute) {
-    super.didPopNext(nextRoute);
-    // TODO: Bring the window into focus
-  }
-
-  @override
-  void didChangePevious(Route<dynamic>? previousRoute) {
-    // TODO: We might have to rehome this window if our parent was removed
-    super.didChangePrevious(previousRoute);
   }
 }
