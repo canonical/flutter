@@ -807,7 +807,7 @@ class WindowCreator extends StatefulWidget {
   final WindowCreatorController controller;
 
   /// If set to true, the [Window] will be created as soon as the [Widget] mounts.
-  final bool? openImmediately;
+  final bool openImmediately;
 
   @override
   State<WindowCreator> createState() => _WindowCreatorState();
@@ -821,7 +821,7 @@ class _WindowCreatorState extends State<WindowCreator> {
     super.initState();
     widget.controller._impl = this;
 
-    if (widget.openImmediately != null && widget.openImmediately!) {
+    if (widget.openImmediately) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _show(context);
       });
@@ -907,7 +907,7 @@ class AutoSizedWindowCreator extends StatefulWidget {
   /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
 
-  final bool? openImmediately;
+  final bool openImmediately;
 
   @override
   State<AutoSizedWindowCreator> createState() => _AutoSizedWindowCreator();

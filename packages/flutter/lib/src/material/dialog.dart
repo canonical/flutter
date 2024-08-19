@@ -32,6 +32,8 @@ import 'theme_data.dart';
 const EdgeInsets _defaultInsetPadding =
     EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0);
 
+const EdgeInsets _defaultInsetPaddingMultiWindow = EdgeInsets.zero;
+
 /// A Material Design dialog.
 ///
 /// This dialog widget does not have any opinion about the contents of the
@@ -233,7 +235,11 @@ class Dialog extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final DialogTheme dialogTheme = DialogTheme.of(context);
     final EdgeInsets effectivePadding = MediaQuery.viewInsetsOf(context) +
-        (insetPadding ?? dialogTheme.insetPadding ?? _defaultInsetPadding);
+        (insetPadding ??
+            dialogTheme.insetPadding ??
+            (MultiWindowAppContext.of(context) != null
+                ? _defaultInsetPaddingMultiWindow
+                : _defaultInsetPadding));
     final DialogTheme defaults = theme.useMaterial3
         ? (_fullscreen
             ? _DialogFullscreenDefaultsM3(context)
