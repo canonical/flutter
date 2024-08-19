@@ -1,10 +1,36 @@
 import 'package:flutter/material.dart';
 
 import 'custom_positioner_dialog.dart';
+import 'positioner_settings.dart';
 import 'dialog_window.dart';
 import 'popup_window.dart';
 import 'regular_window.dart';
+import 'window_settings.dart';
 import 'window_settings_dialog.dart';
+
+class PositionerSettingsModifier with ChangeNotifier {
+  int _positionerIndex = 0;
+  int get positionerIndex => _positionerIndex;
+
+  final PositionerSettingsContainer _mapping = PositionerSettingsContainer();
+  PositionerSettingsContainer get mapping => _mapping;
+
+  void setAtIndex(PositionerSetting setting, int index) {
+    if (index >= 0 && index < _mapping.positionerSettingsList.length) {
+      _mapping.positionerSettingsList[index] = setting;
+      notifyListeners();
+    }
+  }
+
+  void setSelectedIndex(int index) {
+    _positionerIndex =
+        index.clamp(0, _mapping.positionerSettingsList.length - 1);
+    notifyListeners();
+  }
+
+  PositionerSetting? getPositionerSetting(int? index) =>
+      index == null ? null : _mapping.positionerSettingsList[index];
+}
 
 class MainWindow extends StatefulWidget {
   const MainWindow({super.key});
@@ -14,589 +40,53 @@ class MainWindow extends StatefulWidget {
 }
 
 class _MainWindowState extends State<MainWindow> {
-  Map<String, dynamic> windowSettings = {
-    'regularSize': const Size(400, 300),
-    'floatingRegularSize': const Size(300, 300),
-    'dialogSize': const Size(300, 250),
-    'satelliteSize': const Size(150, 300),
-    'popupSize': const Size(200, 200),
-    'tipSize': const Size(140, 140),
-    'anchorRect': const Rect.fromLTWH(0, 0, 1000, 1000),
-  };
-
-  int positionerIndex = 0;
-  List<Map<String, dynamic>> positionerSettings = [
-    // Left
-    <String, dynamic>{
-      'name': 'Left',
-      'parentAnchor': WindowPositionerAnchor.left,
-      'childAnchor': WindowPositionerAnchor.right,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Right
-    <String, dynamic>{
-      'name': 'Right',
-      'parentAnchor': WindowPositionerAnchor.right,
-      'childAnchor': WindowPositionerAnchor.left,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Bottom Left
-    <String, dynamic>{
-      'name': 'Bottom Left',
-      'parentAnchor': WindowPositionerAnchor.bottomLeft,
-      'childAnchor': WindowPositionerAnchor.topRight,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Bottom
-    <String, dynamic>{
-      'name': 'Bottom',
-      'parentAnchor': WindowPositionerAnchor.bottom,
-      'childAnchor': WindowPositionerAnchor.top,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Bottom Right
-    <String, dynamic>{
-      'name': 'Bottom Right',
-      'parentAnchor': WindowPositionerAnchor.bottomRight,
-      'childAnchor': WindowPositionerAnchor.topLeft,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Center
-    <String, dynamic>{
-      'name': 'Center',
-      'parentAnchor': WindowPositionerAnchor.center,
-      'childAnchor': WindowPositionerAnchor.center,
-      'offset': const Offset(0, 0),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    },
-    // Custom
-    <String, dynamic>{
-      'name': 'Custom',
-      'parentAnchor': WindowPositionerAnchor.left,
-      'childAnchor': WindowPositionerAnchor.right,
-      'offset': const Offset(0, 50),
-      'constraintAdjustments': <WindowPositionerConstraintAdjustment>{
-        WindowPositionerConstraintAdjustment.slideX,
-        WindowPositionerConstraintAdjustment.slideY,
-      }
-    }
-  ];
-
   int selectedRowIndex = -1;
+  final positionerSettingsModifier = PositionerSettingsModifier();
 
   @override
   Widget build(BuildContext context) {
-    List<Window> getWindowsInTree(List<Window> topLevelWindows) {
-      List<Window> allWindows = [];
-      void getWindowsInSubtree(Window window) {
-        allWindows.add(window);
-        for (final child in window.children) {
-          getWindowsInSubtree(child);
-        }
-      }
-
-      for (final window in topLevelWindows) {
-        getWindowsInSubtree(window);
-      }
-      return allWindows;
+    List<Window> getWindowsInTree(List<Window> windows) {
+      return windows
+          .expand((window) => [window, ...getWindowsInTree(window.children)])
+          .toList();
     }
 
     final windows =
         getWindowsInTree(MultiWindowAppContext.of(context)!.windows);
 
-    // Check if the currently selected window can be made the parent of a
-    // window with the specified archetype.
-    bool canBeParentOf(WindowArchetype archetype) {
-      if (selectedRowIndex < 0 || selectedRowIndex >= windows.length) {
-        return false;
-      }
-      return windows[selectedRowIndex].canBeParentOf(archetype);
-    }
-
-    final window = WindowContext.of(context)!.window;
-
     final widget = Scaffold(
       appBar: AppBar(
         title: const Text('Multi Window Test'),
       ),
-      body: Column(
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            flex: 60,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: _ActiveWindowsTable(
+                windows: windows,
+                selectedRowIndex: selectedRowIndex,
+                onSelectedRowIndexChanged: (int index) =>
+                    setState(() => selectedRowIndex = index),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 40,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 60,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          SizedBox(
-                            width: 400,
-                            height: 500,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
-                              child: DataTable(
-                                showBottomBorder: true,
-                                onSelectAll: (selected) {
-                                  selectedRowIndex = -1;
-                                },
-                                columns: const [
-                                  DataColumn(
-                                    label: SizedBox(
-                                      width: 20,
-                                      child: Text(
-                                        'ID',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  DataColumn(
-                                    label: SizedBox(
-                                      width: 120,
-                                      child: Text(
-                                        'Type',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  DataColumn(
-                                      label: SizedBox(
-                                        width: 20,
-                                        child: Text(''),
-                                      ),
-                                      numeric: true),
-                                ],
-                                rows: windows
-                                    .asMap()
-                                    .entries
-                                    .map<DataRow>((indexedEntry) {
-                                  final index = indexedEntry.key;
-                                  final Window entry = indexedEntry.value;
-                                  final window = entry;
-                                  final viewId = window.view.viewId;
-                                  final archetype = window.archetype;
-                                  final isSelected = selectedRowIndex == index;
-
-                                  return DataRow(
-                                    color:
-                                        WidgetStateColor.resolveWith((states) {
-                                      if (states
-                                          .contains(WidgetState.selected)) {
-                                        return Theme.of(context)
-                                            .colorScheme
-                                            .primary
-                                            .withOpacity(0.08);
-                                      }
-                                      return Colors.transparent;
-                                    }),
-                                    selected: isSelected,
-                                    onSelectChanged: (selected) {
-                                      if (selected != null) {
-                                        setState(() {
-                                          selectedRowIndex =
-                                              selected ? index : -1;
-                                        });
-                                      }
-                                    },
-                                    cells: [
-                                      DataCell(
-                                        Text('$viewId'),
-                                      ),
-                                      DataCell(
-                                        Text(archetype.toString().replaceFirst(
-                                            'WindowArchetype.', '')),
-                                      ),
-                                      DataCell(
-                                        IconButton(
-                                          icon:
-                                              const Icon(Icons.delete_outlined),
-                                          onPressed: () {
-                                            destroyWindow(context, window);
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 40,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Card.outlined(
-                            margin: const EdgeInsets.symmetric(horizontal: 25),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(25, 0, 25, 5),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Padding(
-                                    padding:
-                                        EdgeInsets.only(top: 10, bottom: 10),
-                                    child: Text(
-                                      'New Window',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16.0,
-                                      ),
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      OutlinedButton(
-                                        onPressed: () async {
-                                          await createRegularWindow(
-                                              context: context,
-                                              size:
-                                                  windowSettings['regularSize'],
-                                              builder: (BuildContext context) {
-                                                return const MaterialApp(
-                                                    home: RegularWindow());
-                                              });
-                                        },
-                                        child: const Text('Regular'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // OutlinedButton(
-                                      //   onPressed: () async {
-                                      //     final windowId =
-                                      //         await createFloatingRegularWindow(
-                                      //             windowSettings[
-                                      //                 'floatingRegularSize']);
-                                      //     await setWindowId(windowId);
-                                      //     setState(() {
-                                      //       selectedRowIndex =
-                                      //           windows.indexWhere((window) =>
-                                      //               window['id'] == windowId);
-                                      //     });
-                                      //   },
-                                      //   child: const Text('Floating Regular'),
-                                      // ),
-                                      // const SizedBox(height: 8),
-                                      OutlinedButton(
-                                        onPressed: () async {
-                                          final selectedParent = canBeParentOf(
-                                                  WindowArchetype.dialog)
-                                              ? windows[selectedRowIndex]
-                                              : null;
-                                          await createDialogWindow(
-                                              context: context,
-                                              parent: selectedParent,
-                                              size:
-                                                  windowSettings['dialogSize'],
-                                              builder: (BuildContext context) {
-                                                return const MaterialApp(
-                                                    home: DialogWindow());
-                                              });
-                                        },
-                                        child: Text(canBeParentOf(
-                                                WindowArchetype.dialog)
-                                            ? 'Dialog of ID ${windows[selectedRowIndex].view.viewId}'
-                                            : 'Dialog'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // OutlinedButton(
-                                      //   onPressed: selectedRowIndex >= 0 &&
-                                      //           isMirShellWindow(
-                                      //               selectedRowIndex)
-                                      //       ? () async {
-                                      //           final windowId =
-                                      //               await createSatelliteWindow(
-                                      //             windows[selectedRowIndex]
-                                      //                 ['id'],
-                                      //             windowSettings[
-                                      //                 'satelliteSize'],
-                                      //             clampAnchorRectToSize(
-                                      //                 await getWindowSize(windows[
-                                      //                         selectedRowIndex]
-                                      //                     ['id'])),
-                                      //             FlutterViewPositioner(
-                                      //               parentAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['parentAnchor'],
-                                      //               childAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['childAnchor'],
-                                      //               offset: positionerSettings[
-                                      //                       positionerIndex]
-                                      //                   ['offset'],
-                                      //               constraintAdjustment:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       [
-                                      //                       'constraintAdjustments'],
-                                      //             ),
-                                      //           );
-                                      //           await setWindowId(windowId);
-                                      //           setState(() {
-                                      //             // Cycle through presets when the last one (Custom preset) is not selected
-                                      //             if (positionerIndex !=
-                                      //                 positionerSettings
-                                      //                         .length -
-                                      //                     1) {
-                                      //               positionerIndex =
-                                      //                   (positionerIndex + 1) %
-                                      //                       (positionerSettings
-                                      //                               .length -
-                                      //                           1);
-                                      //             }
-                                      //           });
-                                      //         }
-                                      //       : null,
-                                      //   child: Text(selectedRowIndex >= 0
-                                      //       ? 'Satellite of ID ${windows[selectedRowIndex]['id']}'
-                                      //       : 'Satellite'),
-                                      // ),
-                                      // const SizedBox(height: 8),
-                                      OutlinedButton(
-                                        onPressed: canBeParentOf(
-                                                WindowArchetype.popup)
-                                            ? () async {
-                                                final selectedPositionerSettings =
-                                                    positionerSettings[
-                                                        positionerIndex];
-                                                final selectedParent =
-                                                    windows[selectedRowIndex];
-                                                await createPopupWindow(
-                                                    context: context,
-                                                    parent: selectedParent,
-                                                    size: windowSettings[
-                                                        'popupSize'],
-                                                    anchorRect:
-                                                        _clampRectToSize(
-                                                            windowSettings[
-                                                                'anchorRect'],
-                                                            selectedParent
-                                                                .size),
-                                                    positioner:
-                                                        WindowPositioner(
-                                                      parentAnchor:
-                                                          selectedPositionerSettings[
-                                                              'parentAnchor'],
-                                                      childAnchor:
-                                                          selectedPositionerSettings[
-                                                              'childAnchor'],
-                                                      offset:
-                                                          selectedPositionerSettings[
-                                                              'offset'],
-                                                      constraintAdjustment:
-                                                          selectedPositionerSettings[
-                                                              'constraintAdjustments'],
-                                                    ),
-                                                    builder:
-                                                        (BuildContext context) {
-                                                      return const PopupWindow();
-                                                    });
-                                              }
-                                            : null,
-                                        child: Text(canBeParentOf(
-                                                WindowArchetype.popup)
-                                            ? 'Popup of ID ${windows[selectedRowIndex].view.viewId}'
-                                            : 'Popup'),
-                                      ),
-                                      // const SizedBox(height: 8),
-                                      // OutlinedButton(
-                                      //   onPressed: selectedRowIndex >= 0
-                                      //       ? () async {
-                                      //           final windowId =
-                                      //               await createTipWindow(
-                                      //             windows[selectedRowIndex]
-                                      //                 ['id'],
-                                      //             windowSettings['tipSize'],
-                                      //             clampAnchorRectToSize(
-                                      //                 await getWindowSize(windows[
-                                      //                         selectedRowIndex]
-                                      //                     ['id'])),
-                                      //             FlutterViewPositioner(
-                                      //               parentAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['parentAnchor'],
-                                      //               childAnchor:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       ['childAnchor'],
-                                      //               offset: positionerSettings[
-                                      //                       positionerIndex]
-                                      //                   ['offset'],
-                                      //               constraintAdjustment:
-                                      //                   positionerSettings[
-                                      //                           positionerIndex]
-                                      //                       [
-                                      //                       'constraintAdjustments'],
-                                      //             ),
-                                      //           );
-                                      //           await setWindowId(windowId);
-                                      //           setState(() {
-                                      //             // Cycle through presets when the last one (Custom preset) is not selected
-                                      //             if (positionerIndex !=
-                                      //                 positionerSettings
-                                      //                         .length -
-                                      //                     1) {
-                                      //               positionerIndex =
-                                      //                   (positionerIndex + 1) %
-                                      //                       (positionerSettings
-                                      //                               .length -
-                                      //                           1);
-                                      //             }
-                                      //           });
-                                      //         }
-                                      //       : null,
-                                      //   child: Text(selectedRowIndex >= 0
-                                      //       ? 'Tip of ID ${windows[selectedRowIndex]['id']}'
-                                      //       : 'Tip'),
-                                      // ),
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        alignment: Alignment.bottomRight,
-                                        child: TextButton(
-                                          child: const Text('SETTINGS'),
-                                          onPressed: () {
-                                            windowSettingsDialog(
-                                                    context, windowSettings)
-                                                .then(
-                                              (Map<String, dynamic>? settings) {
-                                                if (settings != null) {
-                                                  windowSettings = settings;
-                                                }
-                                              },
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Card.outlined(
-                            margin: const EdgeInsets.symmetric(horizontal: 25),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(25, 0, 15, 5),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 10),
-                                    child: Text(
-                                      'Positioner',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16.0,
-                                      ),
-                                    ),
-                                  ),
-                                  ListTile(
-                                    title: const Text('Preset'),
-                                    subtitle: DropdownButton(
-                                      items: positionerSettings
-                                          .map((map) => map['name'] as String)
-                                          .toList()
-                                          .map<DropdownMenuItem<String>>(
-                                              (String value) {
-                                        return DropdownMenuItem<String>(
-                                          value: value,
-                                          child: Text(value),
-                                        );
-                                      }).toList(),
-                                      value: positionerSettings
-                                          .map((map) => map['name'] as String)
-                                          .toList()[positionerIndex],
-                                      isExpanded: true,
-                                      focusColor: Colors.transparent,
-                                      onChanged: (String? value) {
-                                        setState(() {
-                                          positionerIndex = positionerSettings
-                                              .map((map) =>
-                                                  map['name'] as String)
-                                              .toList()
-                                              .indexOf(value!);
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                  Container(
-                                    alignment: Alignment.bottomRight,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(right: 10),
-                                      child: TextButton(
-                                        child: const Text('CUSTOM PRESET'),
-                                        onPressed: () {
-                                          customPositionerDialog(context,
-                                                  positionerSettings.last)
-                                              .then(
-                                            (Map<String, dynamic>? settings) {
-                                              if (settings != null) {
-                                                setState(() {
-                                                  positionerSettings[
-                                                      positionerSettings
-                                                              .length -
-                                                          1] = settings;
-                                                  positionerIndex =
-                                                      positionerSettings
-                                                              .length -
-                                                          1;
-                                                });
-                                              }
-                                            },
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                _WindowCreatorCard(
+                    selectedWindow: selectedRowIndex < 0 ||
+                            selectedRowIndex >= windows.length
+                        ? null
+                        : windows[selectedRowIndex],
+                    positionerSettingsModifier: positionerSettingsModifier),
+                const SizedBox(height: 12),
+                _PositionerEditorCard(
+                    positionerSettingsModifier: positionerSettingsModifier)
               ],
             ),
           ),
@@ -604,6 +94,7 @@ class _MainWindowState extends State<MainWindow> {
       ),
     );
 
+    final window = WindowContext.of(context)!.window;
     final List<Widget> childViews = window.children.map((childWindow) {
       return View(
         view: childWindow.view,
@@ -616,6 +107,354 @@ class _MainWindowState extends State<MainWindow> {
 
     return ViewAnchor(view: ViewCollection(views: childViews), child: widget);
   }
+}
+
+class _ActiveWindowsTable extends StatelessWidget {
+  const _ActiveWindowsTable(
+      {required this.windows,
+      required this.selectedRowIndex,
+      required this.onSelectedRowIndexChanged});
+
+  final List<Window> windows;
+  final int selectedRowIndex;
+  final void Function(int) onSelectedRowIndexChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DataTable(
+      showBottomBorder: true,
+      onSelectAll: (selected) {
+        onSelectedRowIndexChanged(-1);
+      },
+      columns: const [
+        DataColumn(
+          label: SizedBox(
+            width: 20,
+            child: Text(
+              'ID',
+              style: TextStyle(
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 120,
+            child: Text(
+              'Type',
+              style: TextStyle(
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ),
+        DataColumn(
+            label: SizedBox(
+              width: 20,
+              child: Text(''),
+            ),
+            numeric: true),
+      ],
+      rows: windows.asMap().entries.map<DataRow>((indexedEntry) {
+        final index = indexedEntry.key;
+        final Window entry = indexedEntry.value;
+        final window = entry;
+        final viewId = window.view.viewId;
+        final archetype = window.archetype;
+        final isSelected = selectedRowIndex == index;
+
+        return DataRow(
+          color: WidgetStateColor.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return Theme.of(context).colorScheme.primary.withOpacity(0.08);
+            }
+            return Colors.transparent;
+          }),
+          selected: isSelected,
+          onSelectChanged: (selected) {
+            if (selected != null) {
+              onSelectedRowIndexChanged(selected ? index : -1);
+            }
+          },
+          cells: [
+            DataCell(
+              Text('$viewId'),
+            ),
+            DataCell(
+              Text(archetype.toString().replaceFirst('WindowArchetype.', '')),
+            ),
+            DataCell(
+              IconButton(
+                icon: const Icon(Icons.delete_outlined),
+                onPressed: () {
+                  destroyWindow(context, window);
+                },
+              ),
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _WindowCreatorCard extends StatefulWidget {
+  const _WindowCreatorCard(
+      {required this.selectedWindow, required this.positionerSettingsModifier});
+
+  final Window? selectedWindow;
+  final PositionerSettingsModifier positionerSettingsModifier;
+
+  @override
+  State<StatefulWidget> createState() => _WindowCreatorCardState();
+}
+
+class _WindowCreatorCardState extends State<_WindowCreatorCard> {
+  WindowSettings _settings = WindowSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card.outlined(
+      margin: const EdgeInsets.symmetric(horizontal: 25),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(25, 0, 25, 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 10),
+              child: Text(
+                'New Window',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16.0,
+                ),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton(
+                  onPressed: () async {
+                    await createRegularWindow(
+                        context: context,
+                        size: _settings.regularSize,
+                        builder: (BuildContext context) {
+                          return const MaterialApp(home: RegularWindow());
+                        });
+                  },
+                  child: const Text('Regular'),
+                ),
+                const SizedBox(height: 8),
+                // OutlinedButton(
+                //   onPressed: () async {
+                //     final windowId =
+                //         await createFloatingRegularWindow(
+                //             windowSettings[
+                //                 'floatingRegularSize']);
+                //     await setWindowId(windowId);
+                //     setState(() {
+                //       selectedRowIndex =
+                //           windows.indexWhere((window) =>
+                //               window['id'] == windowId);
+                //     });
+                //   },
+                //   child: const Text('Floating Regular'),
+                // ),
+                // const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    final selectedParent = canBeParentOf(WindowArchetype.dialog)
+                        ? widget.selectedWindow
+                        : null;
+                    await createDialogWindow(
+                        context: context,
+                        parent: selectedParent,
+                        size: _settings.dialogSize,
+                        builder: (BuildContext context) {
+                          return const MaterialApp(home: DialogWindow());
+                        });
+                  },
+                  child: Text(canBeParentOf(WindowArchetype.dialog)
+                      ? 'Dialog of ID ${widget.selectedWindow!.view.viewId}'
+                      : 'Dialog'),
+                ),
+                const SizedBox(height: 8),
+                // OutlinedButton(
+                //   onPressed: selectedRowIndex >= 0 &&
+                //           isMirShellWindow(
+                //               selectedRowIndex)
+                //       ? () async {
+                //           final windowId =
+                //               await createSatelliteWindow(
+                //             windows[selectedRowIndex]
+                //                 ['id'],
+                //             windowSettings[
+                //                 'satelliteSize'],
+                //             clampAnchorRectToSize(
+                //                 await getWindowSize(windows[
+                //                         selectedRowIndex]
+                //                     ['id'])),
+                //             FlutterViewPositioner(
+                //               parentAnchor:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       ['parentAnchor'],
+                //               childAnchor:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       ['childAnchor'],
+                //               offset: positionerSettings[
+                //                       positionerIndex]
+                //                   ['offset'],
+                //               constraintAdjustment:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       [
+                //                       'constraintAdjustments'],
+                //             ),
+                //           );
+                //           await setWindowId(windowId);
+                //           setState(() {
+                //             // Cycle through presets when the last one (Custom preset) is not selected
+                //             if (positionerIndex !=
+                //                 positionerSettings
+                //                         .length -
+                //                     1) {
+                //               positionerIndex =
+                //                   (positionerIndex + 1) %
+                //                       (positionerSettings
+                //                               .length -
+                //                           1);
+                //             }
+                //           });
+                //         }
+                //       : null,
+                //   child: Text(selectedRowIndex >= 0
+                //       ? 'Satellite of ID ${windows[selectedRowIndex]['id']}'
+                //       : 'Satellite'),
+                // ),
+                // const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: canBeParentOf(WindowArchetype.popup)
+                      ? () async {
+                          final selectedPositionerSettings = widget
+                                  .positionerSettingsModifier
+                                  .mapping
+                                  .positionerSettingsList[
+                              widget
+                                  .positionerSettingsModifier.positionerIndex];
+                          if (widget.selectedWindow == null) {
+                            return;
+                          }
+
+                          await createPopupWindow(
+                              context: context,
+                              parent: widget.selectedWindow!,
+                              size: _settings.popupSize,
+                              anchorRect: _clampRectToSize(_settings.anchorRect,
+                                  widget.selectedWindow!.size),
+                              positioner: WindowPositioner(
+                                parentAnchor:
+                                    selectedPositionerSettings.parentAnchor,
+                                childAnchor:
+                                    selectedPositionerSettings.childAnchor,
+                                offset: selectedPositionerSettings.offset,
+                                constraintAdjustment: selectedPositionerSettings
+                                    .constraintAdjustments,
+                              ),
+                              builder: (BuildContext context) {
+                                return const PopupWindow();
+                              });
+                        }
+                      : null,
+                  child: Text(canBeParentOf(WindowArchetype.popup)
+                      ? 'Popup of ID ${widget.selectedWindow!.view.viewId}'
+                      : 'Popup'),
+                ),
+                // const SizedBox(height: 8),
+                // OutlinedButton(
+                //   onPressed: selectedRowIndex >= 0
+                //       ? () async {
+                //           final windowId =
+                //               await createTipWindow(
+                //             windows[selectedRowIndex]
+                //                 ['id'],
+                //             windowSettings['tipSize'],
+                //             clampAnchorRectToSize(
+                //                 await getWindowSize(windows[
+                //                         selectedRowIndex]
+                //                     ['id'])),
+                //             FlutterViewPositioner(
+                //               parentAnchor:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       ['parentAnchor'],
+                //               childAnchor:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       ['childAnchor'],
+                //               offset: positionerSettings[
+                //                       positionerIndex]
+                //                   ['offset'],
+                //               constraintAdjustment:
+                //                   positionerSettings[
+                //                           positionerIndex]
+                //                       [
+                //                       'constraintAdjustments'],
+                //             ),
+                //           );
+                //           await setWindowId(windowId);
+                //           setState(() {
+                //             // Cycle through presets when the last one (Custom preset) is not selected
+                //             if (positionerIndex !=
+                //                 positionerSettings
+                //                         .length -
+                //                     1) {
+                //               positionerIndex =
+                //                   (positionerIndex + 1) %
+                //                       (positionerSettings
+                //                               .length -
+                //                           1);
+                //             }
+                //           });
+                //         }
+                //       : null,
+                //   child: Text(selectedRowIndex >= 0
+                //       ? 'Tip of ID ${windows[selectedRowIndex]['id']}'
+                //       : 'Tip'),
+                // ),
+                const SizedBox(height: 8),
+                Container(
+                  alignment: Alignment.bottomRight,
+                  child: TextButton(
+                    child: const Text('SETTINGS'),
+                    onPressed: () {
+                      windowSettingsDialog(context, _settings).then(
+                        (WindowSettings? settings) {
+                          if (settings != null) {
+                            _settings = settings;
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Check if the currently selected window can be made the parent of a
+  // window with the specified archetype.
+  bool canBeParentOf(WindowArchetype archetype) {
+    return widget.selectedWindow?.canBeParentOf(archetype) ?? false;
+  }
 
   Rect _clampRectToSize(Rect anchorRect, Size? size) {
     double left = anchorRect.left.clamp(0, size?.width as double);
@@ -623,5 +462,97 @@ class _MainWindowState extends State<MainWindow> {
     double right = anchorRect.right.clamp(0, size?.width as double);
     double bottom = anchorRect.bottom.clamp(0, size?.height as double);
     return Rect.fromLTRB(left, top, right, bottom);
+  }
+}
+
+class _PositionerEditorCard extends StatefulWidget {
+  const _PositionerEditorCard({required this.positionerSettingsModifier});
+
+  final PositionerSettingsModifier positionerSettingsModifier;
+
+  @override
+  State<_PositionerEditorCard> createState() => _PositionerEditorCardState();
+}
+
+class _PositionerEditorCardState extends State<_PositionerEditorCard> {
+  @override
+  Widget build(BuildContext context) {
+    return Card.outlined(
+      margin: const EdgeInsets.symmetric(horizontal: 25),
+      child: Padding(
+          padding: const EdgeInsets.fromLTRB(25, 0, 15, 5),
+          child: ListenableBuilder(
+              listenable: widget.positionerSettingsModifier,
+              builder: (BuildContext context, _) {
+                final positionerSettingsList = widget
+                    .positionerSettingsModifier.mapping.positionerSettingsList;
+                final selectedName = positionerSettingsList[
+                        widget.positionerSettingsModifier.positionerIndex]
+                    .name;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: Text(
+                        'Positioner',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16.0,
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Preset'),
+                      subtitle: DropdownButton(
+                        items: positionerSettingsList
+                            .map((PositionerSetting setting) =>
+                                DropdownMenuItem<String>(
+                                  value: setting.name,
+                                  child: Text(setting.name),
+                                ))
+                            .toList(),
+                        value: selectedName,
+                        isExpanded: true,
+                        focusColor: Colors.transparent,
+                        onChanged: (String? value) {
+                          setState(() {
+                            widget.positionerSettingsModifier.setSelectedIndex(
+                              positionerSettingsList.indexWhere(
+                                  (setting) => setting.name == value),
+                            );
+                          });
+                        },
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: TextButton(
+                          child: const Text('CUSTOM PRESET'),
+                          onPressed: () async {
+                            final settings = await customPositionerDialog(
+                              context,
+                              positionerSettingsList.last,
+                            );
+                            if (settings != null) {
+                              setState(() {
+                                final pos = positionerSettingsList.length - 1;
+                                widget.positionerSettingsModifier
+                                    .setAtIndex(settings, pos);
+                                widget.positionerSettingsModifier
+                                    .setSelectedIndex(pos);
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                );
+              })),
+    );
   }
 }
