@@ -1649,6 +1649,7 @@ class DialogRoute<T> extends RawDialogRoute<T> {
     String? barrierLabel,
     bool useSafeArea = true,
     super.settings,
+    super.requestFocus,
     super.anchorPoint,
     super.traversalEdgeBehavior,
   }) : super(
