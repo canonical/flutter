@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:multi_window_ref_app/app/window_settings.dart';
 
 import 'custom_positioner_dialog.dart';
 import 'positioner_settings.dart';
 import 'dialog_window.dart';
 import 'popup_window.dart';
 import 'regular_window.dart';
+import 'window_settings.dart';
 import 'window_settings_dialog.dart';
 
-class PositonerSettingsModifier with ChangeNotifier {
+class PositionerSettingsModifier with ChangeNotifier {
   int _positionerIndex = 0;
   int get positionerIndex => _positionerIndex;
 
@@ -16,34 +16,20 @@ class PositonerSettingsModifier with ChangeNotifier {
   PositionerSettingsContainer get mapping => _mapping;
 
   void setAtIndex(PositionerSetting setting, int index) {
-    if (index < 0 || index >= _mapping.positionerSettingsList.length) {
-      return;
+    if (index >= 0 && index < _mapping.positionerSettingsList.length) {
+      _mapping.positionerSettingsList[index] = setting;
+      notifyListeners();
     }
-
-    _mapping.positionerSettingsList[index] = setting;
-    notifyListeners();
   }
 
   void setSelectedIndex(int index) {
-    if (index < 0) {
-      index = 0;
-    }
-
-    if (index >= _mapping.positionerSettingsList.length) {
-      index = _mapping.positionerSettingsList.length - 1;
-    }
-
-    _positionerIndex = index;
+    _positionerIndex =
+        index.clamp(0, _mapping.positionerSettingsList.length - 1);
     notifyListeners();
   }
 
-  PositionerSetting? getPositionerSetting(int? index) {
-    if (index == null) {
-      return null;
-    }
-
-    return _mapping.positionerSettingsList[index];
-  }
+  PositionerSetting? getPositionerSetting(int? index) =>
+      index == null ? null : _mapping.positionerSettingsList[index];
 }
 
 class MainWindow extends StatefulWidget {
@@ -55,29 +41,18 @@ class MainWindow extends StatefulWidget {
 
 class _MainWindowState extends State<MainWindow> {
   int selectedRowIndex = -1;
-  final positionerSettingsModifier = PositonerSettingsModifier();
+  final positionerSettingsModifier = PositionerSettingsModifier();
 
   @override
   Widget build(BuildContext context) {
-    List<Window> getWindowsInTree(List<Window> topLevelWindows) {
-      List<Window> allWindows = [];
-      void getWindowsInSubtree(Window window) {
-        allWindows.add(window);
-        for (final child in window.children) {
-          getWindowsInSubtree(child);
-        }
-      }
-
-      for (final window in topLevelWindows) {
-        getWindowsInSubtree(window);
-      }
-      return allWindows;
+    List<Window> getWindowsInTree(List<Window> windows) {
+      return windows
+          .expand((window) => [window, ...getWindowsInTree(window.children)])
+          .toList();
     }
 
     final windows =
         getWindowsInTree(MultiWindowAppContext.of(context)!.windows);
-
-    final window = WindowContext.of(context)!.window;
 
     final widget = Scaffold(
       appBar: AppBar(
@@ -89,11 +64,14 @@ class _MainWindowState extends State<MainWindow> {
           Expanded(
             flex: 60,
             child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                child: _ActiveWindowsTable(
-                    selectedRowIndex: selectedRowIndex,
-                    onSelectedRowIndexChanged: (int index) =>
-                        setState(() => selectedRowIndex = index))),
+              scrollDirection: Axis.vertical,
+              child: _ActiveWindowsTable(
+                windows: windows,
+                selectedRowIndex: selectedRowIndex,
+                onSelectedRowIndexChanged: (int index) =>
+                    setState(() => selectedRowIndex = index),
+              ),
+            ),
           ),
           Expanded(
             flex: 40,
@@ -105,10 +83,10 @@ class _MainWindowState extends State<MainWindow> {
                             selectedRowIndex >= windows.length
                         ? null
                         : windows[selectedRowIndex],
-                    positonerSettingsModifier: positionerSettingsModifier),
+                    positionerSettingsModifier: positionerSettingsModifier),
                 const SizedBox(height: 12),
                 _PositionerEditorCard(
-                    positonerSettingsModifier: positionerSettingsModifier)
+                    positionerSettingsModifier: positionerSettingsModifier)
               ],
             ),
           ),
@@ -116,6 +94,7 @@ class _MainWindowState extends State<MainWindow> {
       ),
     );
 
+    final window = WindowContext.of(context)!.window;
     final List<Widget> childViews = window.children.map((childWindow) {
       return View(
         view: childWindow.view,
@@ -131,17 +110,17 @@ class _MainWindowState extends State<MainWindow> {
 }
 
 class _ActiveWindowsTable extends StatelessWidget {
-  _ActiveWindowsTable(
-      {required this.selectedRowIndex,
+  const _ActiveWindowsTable(
+      {required this.windows,
+      required this.selectedRowIndex,
       required this.onSelectedRowIndexChanged});
 
+  final List<Window> windows;
   final int selectedRowIndex;
   final void Function(int) onSelectedRowIndexChanged;
 
   @override
   Widget build(BuildContext context) {
-    final windows = MultiWindowAppContext.of(context)!.windows;
-
     return DataTable(
       showBottomBorder: true,
       onSelectAll: (selected) {
@@ -221,11 +200,11 @@ class _ActiveWindowsTable extends StatelessWidget {
 }
 
 class _WindowCreatorCard extends StatefulWidget {
-  _WindowCreatorCard(
-      {required this.selectedWindow, required this.positonerSettingsModifier});
+  const _WindowCreatorCard(
+      {required this.selectedWindow, required this.positionerSettingsModifier});
 
   final Window? selectedWindow;
-  final PositonerSettingsModifier positonerSettingsModifier;
+  final PositionerSettingsModifier positionerSettingsModifier;
 
   @override
   State<StatefulWidget> createState() => _WindowCreatorCardState();
@@ -361,10 +340,11 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
                   onPressed: canBeParentOf(WindowArchetype.popup)
                       ? () async {
                           final selectedPositionerSettings = widget
-                                  .positonerSettingsModifier
+                                  .positionerSettingsModifier
                                   .mapping
                                   .positionerSettingsList[
-                              widget.positonerSettingsModifier.positionerIndex];
+                              widget
+                                  .positionerSettingsModifier.positionerIndex];
                           if (widget.selectedWindow == null) {
                             return;
                           }
@@ -486,9 +466,9 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
 }
 
 class _PositionerEditorCard extends StatefulWidget {
-  _PositionerEditorCard({required this.positonerSettingsModifier});
+  const _PositionerEditorCard({required this.positionerSettingsModifier});
 
-  final PositonerSettingsModifier positonerSettingsModifier;
+  final PositionerSettingsModifier positionerSettingsModifier;
 
   @override
   State<_PositionerEditorCard> createState() => _PositionerEditorCardState();
@@ -502,8 +482,13 @@ class _PositionerEditorCardState extends State<_PositionerEditorCard> {
       child: Padding(
           padding: const EdgeInsets.fromLTRB(25, 0, 15, 5),
           child: ListenableBuilder(
-              listenable: widget.positonerSettingsModifier,
-              builder: (BuildContext context, Widget? child) {
+              listenable: widget.positionerSettingsModifier,
+              builder: (BuildContext context, _) {
+                final positionerSettingsList = widget
+                    .positionerSettingsModifier.mapping.positionerSettingsList;
+                final selectedName = positionerSettingsList[
+                        widget.positionerSettingsModifier.positionerIndex]
+                    .name;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -520,65 +505,46 @@ class _PositionerEditorCardState extends State<_PositionerEditorCard> {
                     ListTile(
                       title: const Text('Preset'),
                       subtitle: DropdownButton(
-                        items: widget.positonerSettingsModifier.mapping
-                            .positionerSettingsList
-                            .map((map) => map.name)
-                            .toList()
-                            .map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                        value: widget
-                            .positonerSettingsModifier
-                            .mapping
-                            .positionerSettingsList[widget
-                                .positonerSettingsModifier.positionerIndex]
-                            .name,
+                        items: positionerSettingsList
+                            .map((PositionerSetting setting) =>
+                                DropdownMenuItem<String>(
+                                  value: setting.name,
+                                  child: Text(setting.name),
+                                ))
+                            .toList(),
+                        value: selectedName,
                         isExpanded: true,
                         focusColor: Colors.transparent,
                         onChanged: (String? value) {
                           setState(() {
-                            widget.positonerSettingsModifier.setSelectedIndex(
-                                widget.positonerSettingsModifier.mapping
-                                    .positionerSettingsList
-                                    .map((map) => map.name)
-                                    .toList()
-                                    .indexOf(value!));
+                            widget.positionerSettingsModifier.setSelectedIndex(
+                              positionerSettingsList.indexWhere(
+                                  (setting) => setting.name == value),
+                            );
                           });
                         },
                       ),
                     ),
-                    Container(
+                    Align(
                       alignment: Alignment.bottomRight,
                       child: Padding(
                         padding: const EdgeInsets.only(right: 10),
                         child: TextButton(
                           child: const Text('CUSTOM PRESET'),
-                          onPressed: () {
-                            customPositionerDialog(
-                                    context,
-                                    widget.positonerSettingsModifier.mapping
-                                        .positionerSettingsList.last)
-                                .then(
-                              (PositionerSetting? settings) {
-                                if (settings != null) {
-                                  setState(() {
-                                    final pos = widget
-                                            .positonerSettingsModifier
-                                            .mapping
-                                            .positionerSettingsList
-                                            .length -
-                                        1;
-                                    widget.positonerSettingsModifier
-                                        .setAtIndex(settings, pos);
-                                    widget.positonerSettingsModifier
-                                        .setSelectedIndex(pos);
-                                  });
-                                }
-                              },
+                          onPressed: () async {
+                            final settings = await customPositionerDialog(
+                              context,
+                              positionerSettingsList.last,
                             );
+                            if (settings != null) {
+                              setState(() {
+                                final pos = positionerSettingsList.length - 1;
+                                widget.positionerSettingsModifier
+                                    .setAtIndex(settings, pos);
+                                widget.positionerSettingsModifier
+                                    .setSelectedIndex(pos);
+                              });
+                            }
                           },
                         ),
                       ),

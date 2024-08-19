@@ -5,7 +5,7 @@ Future<PositionerSetting?> customPositionerDialog(
   BuildContext context,
   PositionerSetting settings,
 ) async {
-  return await showDialog(
+  return await showDialog<PositionerSetting>(
       barrierDismissible: true,
       context: context,
       builder: (BuildContext ctx) {
@@ -270,14 +270,14 @@ Future<PositionerSetting?> customPositionerDialog(
                                 WindowPositionerAnchor.values.firstWhere(
                               (e) =>
                                   e.toString() ==
-                                  'FlutterViewPositionerAnchor.$parentAnchor',
+                                  'WindowPositionerAnchor.$parentAnchor',
                               orElse: () => WindowPositionerAnchor.left,
                             ),
                             childAnchor:
                                 WindowPositionerAnchor.values.firstWhere(
                               (e) =>
                                   e.toString() ==
-                                  'FlutterViewPositionerAnchor.$childAnchor',
+                                  'WindowPositionerAnchor.$childAnchor',
                               orElse: () => WindowPositionerAnchor.left,
                             ),
                             offset: offset,
