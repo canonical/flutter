@@ -792,7 +792,10 @@ class WindowCreatorController {
 /// for opening and closing a [Window].
 class WindowCreator extends StatefulWidget {
   WindowCreator(
-      {required this.builder, required this.controller, required this.child});
+      {required this.builder,
+      required this.controller,
+      required this.child,
+      this.openImmediately = false});
 
   /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
@@ -802,6 +805,9 @@ class WindowCreator extends StatefulWidget {
 
   /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
+
+  /// If set to true, the [Window] will be created as soon as the [Widget] mounts.
+  final bool openImmediately;
 
   @override
   State<WindowCreator> createState() => _WindowCreatorState();
@@ -814,6 +820,12 @@ class _WindowCreatorState extends State<WindowCreator> {
   void initState() {
     super.initState();
     widget.controller._impl = this;
+
+    if (widget.openImmediately) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _show(context);
+      });
+    }
   }
 
   Future<void> _show(BuildContext context) async {
@@ -876,7 +888,8 @@ class AutoSizedWindowCreator extends StatefulWidget {
       required this.widgetBuilder,
       required this.windowBuilder,
       required this.controller,
-      required this.child});
+      required this.child,
+      this.openImmediately = false});
 
   /// The [Widget] that is wrapped by a [ViewAnchor]
   final Widget child;
@@ -893,6 +906,8 @@ class AutoSizedWindowCreator extends StatefulWidget {
 
   /// Provides access to controls on the [WindowCreator].
   final WindowCreatorController controller;
+
+  final bool openImmediately;
 
   @override
   State<AutoSizedWindowCreator> createState() => _AutoSizedWindowCreator();
@@ -926,6 +941,7 @@ class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
         builder: (BuildContext context, Window parent) =>
             widget.windowBuilder(widget.widgetBuilder, size!, parent),
         controller: widget.controller,
+        openImmediately: widget.openImmediately,
         child: widget.child);
   }
 }
@@ -989,5 +1005,77 @@ class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
         ),
       ),
     );
+  }
+}
+
+/// A route that displays widgets in a modal dialog [Window] with
+/// the help of the [Navigator].
+///
+/// See also:
+///
+///  * [Route], which documents the meaning of the `T` generic type argument.
+class ModalWindowRoute<T> extends Route<T> {
+  /// Creates a [Route] that creates a new modal dialog [Window].
+  ///
+  /// [context] the build conext
+  /// [builder] the content that will end up in the dialog
+  /// [size] the [Size] of the dialog. If not provided, the dialog
+  ///        will be sized to fit the content from [builder].
+  /// [settings] settings for the [Route]
+  ModalWindowRoute({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    Size? size,
+    super.settings,
+  })  : _context = context,
+        _builder = builder,
+        _size = size;
+
+  final BuildContext _context;
+  final WidgetBuilder _builder;
+  final Size? _size;
+  final WindowCreatorController _controller = WindowCreatorController();
+
+  @override
+  List<OverlayEntry> get overlayEntries => _overlayEntries;
+  final List<OverlayEntry> _overlayEntries = <OverlayEntry>[];
+
+  Future<Window> _createWindow(
+      BuildContext context, WidgetBuilder builder, Size size, Window? parent) {
+    return createDialogWindow(
+        context: context, parent: parent, size: size, builder: builder);
+  }
+
+  @override
+  void install() {
+    _overlayEntries.add(OverlayEntry(builder: (BuildContext context) {
+      if (_size == null) {
+        return AutoSizedWindowCreator(
+            widgetBuilder: _builder,
+            windowBuilder: (WidgetBuilder builder, Size size, Window window) {
+              return _createWindow(context, builder, size, window);
+            },
+            controller: _controller,
+            openImmediately: true,
+            child: Container());
+      } else {
+        return WindowCreator(
+            builder: (BuildContext context, Window window) {
+              final WindowContext? windowContext = WindowContext.of(_context);
+              return _createWindow(
+                  context, _builder, _size, windowContext?.window);
+            },
+            controller: _controller,
+            openImmediately: true,
+            child: Container());
+      }
+    }));
+    super.install();
+  }
+
+  @override
+  void didComplete(T? result) {
+    _controller.hide(_context);
+    super.didComplete(result);
   }
 }
