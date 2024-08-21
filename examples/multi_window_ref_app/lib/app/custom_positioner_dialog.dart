@@ -1,47 +1,35 @@
 import 'package:flutter/material.dart';
+import 'positioner_settings.dart';
 
-Future<Map<String, dynamic>?> customPositionerDialog(
+Future<PositionerSetting?> customPositionerDialog(
   BuildContext context,
-  Map<String, dynamic> settings,
+  PositionerSetting settings,
 ) async {
-  return await showDialog(
+  return await showDialog<PositionerSetting>(
       barrierDismissible: true,
       context: context,
       builder: (BuildContext ctx) {
-        String name = settings['name'].toString();
-        Offset offset = settings['offset'] as Offset;
+        String name = settings.name;
+        Offset offset = settings.offset;
         final TextEditingController controllerX = TextEditingController();
         final TextEditingController controllerY = TextEditingController();
         final List<String> anchor = WindowPositionerAnchor.values
             .map((e) => e.toString().split('.').last)
             .toList();
-        bool slideX = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool slideX = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.slideX);
-        bool slideY = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool slideY = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.slideY);
-        bool flipX = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool flipX = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.flipX);
-        bool flipY = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool flipY = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.flipY);
-        bool resizeX = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool resizeX = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.resizeX);
-        bool resizeY = (settings['constraintAdjustments']
-                as Set<WindowPositionerConstraintAdjustment>)
+        bool resizeY = settings.constraintAdjustments
             .contains(WindowPositionerConstraintAdjustment.resizeY);
-        String parentAnchor =
-            (settings['parentAnchor'] as WindowPositionerAnchor)
-                .toString()
-                .split('.')
-                .last;
-        String childAnchor = (settings['childAnchor'] as WindowPositionerAnchor)
-            .toString()
-            .split('.')
-            .last;
+        String parentAnchor = settings.parentAnchor.toString().split('.').last;
+        String childAnchor = settings.childAnchor.toString().split('.').last;
         controllerX.text = offset.dx.toString();
         controllerY.text = offset.dy.toString();
 
@@ -276,25 +264,25 @@ Future<Map<String, dynamic>?> customPositionerDialog(
                                 WindowPositionerConstraintAdjustment.resizeY);
                           }
                           Navigator.of(context, rootNavigator: true)
-                              .pop(<String, dynamic>{
-                            'name': name,
-                            'parentAnchor':
+                              .pop(PositionerSetting(
+                            name: name,
+                            parentAnchor:
                                 WindowPositionerAnchor.values.firstWhere(
                               (e) =>
                                   e.toString() ==
-                                  'FlutterViewPositionerAnchor.$parentAnchor',
+                                  'WindowPositionerAnchor.$parentAnchor',
                               orElse: () => WindowPositionerAnchor.left,
                             ),
-                            'childAnchor':
+                            childAnchor:
                                 WindowPositionerAnchor.values.firstWhere(
                               (e) =>
                                   e.toString() ==
-                                  'FlutterViewPositionerAnchor.$childAnchor',
+                                  'WindowPositionerAnchor.$childAnchor',
                               orElse: () => WindowPositionerAnchor.left,
                             ),
-                            'offset': offset,
-                            'constraintAdjustments': constraintAdjustments,
-                          });
+                            offset: offset,
+                            constraintAdjustments: constraintAdjustments,
+                          ));
                         },
                         child: const Text('Apply'),
                       ),

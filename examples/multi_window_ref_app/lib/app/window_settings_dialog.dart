@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:multi_window_ref_app/app/window_settings.dart';
 
-Future<Map<String, dynamic>?> windowSettingsDialog(
+Future<WindowSettings?> windowSettingsDialog(
   BuildContext context,
-  Map<String, dynamic> settings,
+  WindowSettings settings,
 ) async {
   return await showDialog(
       barrierDismissible: true,
       context: context,
       builder: (BuildContext ctx) {
-        Size regularSize = settings['regularSize'] as Size;
-        Size floatingRegularSize = settings['floatingRegularSize'] as Size;
-        Size dialogSize = settings['dialogSize'] as Size;
-        Size satelliteSize = settings['satelliteSize'] as Size;
-        Size popupSize = settings['popupSize'] as Size;
-        Size tipSize = settings['tipSize'] as Size;
-        Rect anchorRect = settings['anchorRect'] as Rect;
+        Size regularSize = settings.regularSize;
+        Size floatingRegularSize = settings.floatingRegularSize;
+        Size dialogSize = settings.dialogSize;
+        Size satelliteSize = settings.satelliteSize;
+        Size popupSize = settings.popupSize;
+        Size tipSize = settings.tipSize;
+        Rect anchorRect = settings.anchorRect;
 
         return StatefulBuilder(
             builder: (BuildContext ctx, StateSetter setState) {
@@ -395,15 +396,15 @@ Future<Map<String, dynamic>?> windowSettingsDialog(
                 child: TextButton(
                   onPressed: () {
                     Navigator.of(context, rootNavigator: true)
-                        .pop(<String, dynamic>{
-                      'regularSize': regularSize,
-                      'floatingRegularSize': floatingRegularSize,
-                      'dialogSize': dialogSize,
-                      'satelliteSize': satelliteSize,
-                      'popupSize': popupSize,
-                      'tipSize': tipSize,
-                      'anchorRect': anchorRect,
-                    });
+                        .pop(WindowSettings(
+                      regularSize: regularSize,
+                      floatingRegularSize: floatingRegularSize,
+                      dialogSize: dialogSize,
+                      satelliteSize: satelliteSize,
+                      popupSize: popupSize,
+                      tipSize: tipSize,
+                      anchorRect: anchorRect,
+                    ));
                   },
                   child: const Text('Apply'),
                 ),
