@@ -82,9 +82,9 @@ class _PopupMenuExampleState extends State<PopupMenuExample> {
                   },
                   segments: animationStyleSegments
                       .map<ButtonSegment<AnimationStyles>>(
-                          ((AnimationStyles, String) shirt) {
+                          ((AnimationStyles, String) segment) {
                     return ButtonSegment<AnimationStyles>(
-                        value: shirt.$1, label: Text(shirt.$2));
+                        value: segment.$1, label: Text(segment.$2));
                   }).toList(),
                 ),
                 const SizedBox(height: 10),

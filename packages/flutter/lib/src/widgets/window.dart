@@ -1160,8 +1160,8 @@ class PopupWindowRoute<T> extends _WindowRoute<T> {
   final AnimationStyle? _popUpAnimationStyle;
   final NavigatorState _navigator;
 
-  AnimationController? _animationController;
-  Animation<double>? _animation;
+  late final AnimationController _animationController;
+  late final Animation<double> _animation;
 
   /// Handle to the performance mode request.
   ///
@@ -1188,15 +1188,13 @@ class PopupWindowRoute<T> extends _WindowRoute<T> {
 
   @override
   void install() {
+    final Duration duration = _popUpAnimationStyle?.duration ?? _kMenuDuration;
     _animationController = AnimationController(
-        duration: _popUpAnimationStyle?.duration ?? _kMenuDuration,
-        reverseDuration: _popUpAnimationStyle?.duration ?? _kMenuDuration,
+        duration: duration,
+        reverseDuration: duration,
         debugLabel: 'PopupWindowRoute',
         vsync: _navigator);
-    assert(_animationController != null,
-        'AnimationController(...) returned null.');
     _animation = createAnimation()..addStatusListener(_handleStatusChanged);
-    assert(_animation != null, '$runtimeType.createAnimation() returned null.');
     super.install();
   }
 
@@ -1205,21 +1203,21 @@ class PopupWindowRoute<T> extends _WindowRoute<T> {
   /// [createAnimationController()].
   Animation<double> createAnimation() {
     if (_popUpAnimationStyle != AnimationStyle.noAnimation) {
-      return _animation ??= CurvedAnimation(
-        parent: _animationController!.view,
+      return CurvedAnimation(
+        parent: _animationController.view,
         curve: _popUpAnimationStyle?.curve ?? Curves.linear,
         reverseCurve: _popUpAnimationStyle?.reverseCurve ??
             const Interval(0.0, _kMenuCloseIntervalEnd),
       );
     }
 
-    return _animationController!.view;
+    return _animationController.view;
   }
 
   @override
   TickerFuture didPush() {
     super.didPush();
-    return _animationController!.forward();
+    return _animationController.forward();
   }
 
   void _handleStatusChanged(AnimationStatus status) {
@@ -1246,8 +1244,8 @@ class PopupWindowRoute<T> extends _WindowRoute<T> {
 
   @override
   void dispose() {
-    _animation?.removeStatusListener(_handleStatusChanged);
-    _animationController?.dispose();
+    _animation.removeStatusListener(_handleStatusChanged);
+    _animationController.dispose();
     _performanceModeRequestHandle?.dispose();
     _performanceModeRequestHandle = null;
     super.dispose();

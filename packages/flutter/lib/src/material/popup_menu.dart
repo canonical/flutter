@@ -727,11 +727,15 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
       builder: (BuildContext context, Widget? child) {
         final AutoSizedWindowCreatorContext? autoSizedWindowCreatorContext =
           AutoSizedWindowCreatorContext.of(context);
+        final bool isAutoSized = autoSizedWindowCreatorContext != null;
+        final Animation<double> animation = isAutoSized
+          ? const AlwaysStoppedAnimation<double>(1.0)
+          : opacity.animate(widget.route.animation!);
+        final double widthFactor =  width.evaluate(animation);
+        final double heightFactor = height.evaluate(animation);
 
         return FadeTransition(
-          opacity: autoSizedWindowCreatorContext != null
-            ? const AlwaysStoppedAnimation<double>(1.0)
-            : opacity.animate(widget.route.animation!),
+          opacity: animation,
           child: Material(
             shape: widget.route.shape ?? popupMenuTheme.shape ?? defaults.shape,
             color: widget.route.color ?? popupMenuTheme.color ?? defaults.color,
@@ -742,8 +746,8 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
             surfaceTintColor: widget.route.surfaceTintColor ?? popupMenuTheme.surfaceTintColor ?? defaults.surfaceTintColor,
             child: Align(
               alignment: AlignmentDirectional.topEnd,
-              widthFactor: autoSizedWindowCreatorContext != null ? 1.0 : width.evaluate(widget.route.animation!),
-              heightFactor: autoSizedWindowCreatorContext != null ? 1.0 : height.evaluate(widget.route.animation!),
+              widthFactor: widthFactor,
+              heightFactor: heightFactor,
               child: child,
             ),
           ),
