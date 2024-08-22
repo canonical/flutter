@@ -3,11 +3,14 @@
 // found in the LICENSE file.
 
 import 'dart:ui' show FlutterView;
+import 'dart:ui' show DartPerformanceMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
+
+const Duration _kMenuDuration = Duration(milliseconds: 300);
+const double _kMenuCloseIntervalEnd = 2.0 / 3.0;
 
 /// Defines the anchor point for the anchor rectangle or child [Window] when
 /// positioning a [Window]. The specified anchor is used to derive an anchor
@@ -918,8 +921,8 @@ class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
 
   @override
   Widget build(BuildContext context) {
-    final autoSizedWindowCreatorContext =
-        _AutoSizedWindowCreatorContext.of(context);
+    final AutoSizedWindowCreatorContext? autoSizedWindowCreatorContext =
+        AutoSizedWindowCreatorContext.of(context);
 
     if (autoSizedWindowCreatorContext != null) {
       // If we are recursively sizing the contents that will wind up
@@ -932,7 +935,7 @@ class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
       return _WidgetSizeHelper(onSizeReported: (Size reported) {
         setState(() => size = reported);
       }, builder: (BuildContext context) {
-        return _AutoSizedWindowCreatorContext(
+        return AutoSizedWindowCreatorContext._(
             child: widget.widgetBuilder(context));
       });
     }
@@ -946,16 +949,22 @@ class _AutoSizedWindowCreator extends State<AutoSizedWindowCreator> {
   }
 }
 
-class _AutoSizedWindowCreatorContext extends InheritedWidget {
-  const _AutoSizedWindowCreatorContext({super.key, required super.child});
+/// When this is defined on a [BuildContext], it means that the [Widget] is in the
+/// process of having its size calculated offscreen so that a [Window]
+/// may be sized to fit it exactly. In this case, it is advised that the
+/// returned [Widget] to everything in its power to ensure that the rendered
+/// [Size] is accurate. This may mean disabling things like sizing animations
+/// if those are set.
+class AutoSizedWindowCreatorContext extends InheritedWidget {
+  const AutoSizedWindowCreatorContext._({super.key, required super.child});
 
-  static _AutoSizedWindowCreatorContext? of(BuildContext context) {
+  static AutoSizedWindowCreatorContext? of(BuildContext context) {
     return context
-        .dependOnInheritedWidgetOfExactType<_AutoSizedWindowCreatorContext>();
+        .dependOnInheritedWidgetOfExactType<AutoSizedWindowCreatorContext>();
   }
 
   @override
-  bool updateShouldNotify(_AutoSizedWindowCreatorContext oldWidget) => false;
+  bool updateShouldNotify(AutoSizedWindowCreatorContext oldWidget) => false;
 }
 
 class _WidgetSizeHelper extends StatefulWidget {
@@ -1008,31 +1017,15 @@ class _WidgetSizeHelperState extends State<_WidgetSizeHelper>
   }
 }
 
-/// A route that displays widgets in a modal dialog [Window] with
-/// the help of the [Navigator].
-///
-/// See also:
-///
-///  * [Route], which documents the meaning of the `T` generic type argument.
-class ModalWindowRoute<T> extends Route<T> {
-  /// Creates a [Route] that creates a new modal dialog [Window].
-  ///
-  /// [context] the build conext
-  /// [builder] the content that will end up in the dialog
-  /// [size] the [Size] of the dialog. If not provided, the dialog
-  ///        will be sized to fit the content from [builder].
-  /// [settings] settings for the [Route]
-  ModalWindowRoute({
+abstract class _WindowRoute<T> extends Route<T> {
+  _WindowRoute({
     required BuildContext context,
-    required WidgetBuilder builder,
     Size? size,
     super.settings,
   })  : _context = context,
-        _builder = builder,
         _size = size;
 
   final BuildContext _context;
-  final WidgetBuilder _builder;
   final Size? _size;
   final WindowCreatorController _controller = WindowCreatorController();
 
@@ -1040,18 +1033,17 @@ class ModalWindowRoute<T> extends Route<T> {
   List<OverlayEntry> get overlayEntries => _overlayEntries;
   final List<OverlayEntry> _overlayEntries = <OverlayEntry>[];
 
+  WidgetBuilder get builder;
+
   Future<Window> _createWindow(
-      BuildContext context, WidgetBuilder builder, Size size, Window? parent) {
-    return createDialogWindow(
-        context: context, parent: parent, size: size, builder: builder);
-  }
+      BuildContext context, WidgetBuilder builder, Size size, Window? parent);
 
   @override
   void install() {
     _overlayEntries.add(OverlayEntry(builder: (BuildContext context) {
       if (_size == null) {
         return AutoSizedWindowCreator(
-            widgetBuilder: _builder,
+            widgetBuilder: builder,
             windowBuilder: (WidgetBuilder builder, Size size, Window window) {
               return _createWindow(context, builder, size, window);
             },
@@ -1063,7 +1055,7 @@ class ModalWindowRoute<T> extends Route<T> {
             builder: (BuildContext context, Window window) {
               final WindowContext? windowContext = WindowContext.of(_context);
               return _createWindow(
-                  context, _builder, _size, windowContext?.window);
+                  context, builder, _size, windowContext?.window);
             },
             controller: _controller,
             openImmediately: true,
@@ -1077,5 +1069,187 @@ class ModalWindowRoute<T> extends Route<T> {
   void didComplete(T? result) {
     _controller.hide(_context);
     super.didComplete(result);
+  }
+}
+
+/// A route that displays widgets in a modal dialog [Window] with
+/// the help of the [Navigator].
+///
+/// See also:
+///
+///  * [Route], which documents the meaning of the `T` generic type argument.
+class ModalWindowRoute<T> extends _WindowRoute<T> {
+  /// Creates a [Route] that creates a new modal dialog [Window].
+  ///
+  /// [context] the build conext
+  /// [builder] the content that will end up in the dialog
+  /// [size] the [Size] of the dialog. If not provided, the dialog
+  ///        will be sized to fit the content from [builder].
+  /// [settings] settings for the [Route]
+  ModalWindowRoute({
+    required super.context,
+    required WidgetBuilder builder,
+    super.size,
+    super.settings,
+  }) : _builder = builder;
+
+  final WidgetBuilder _builder;
+
+  @override
+  WidgetBuilder get builder => _builder;
+
+  @override
+  Future<Window> _createWindow(
+      BuildContext context, WidgetBuilder builder, Size size, Window? parent) {
+    return createDialogWindow(
+        context: context, parent: parent, size: size, builder: builder);
+  }
+}
+
+/// A route that displays widgets in a popup dialog [Window] with
+/// the help of the [Navigator].
+///
+/// If the size parameter is not provided when the dialog is created then
+/// the popup will attempt to render the contents of the popup once offscreen
+/// before building the [Window] with the correct size. In this case, you
+/// must ensure that the rendered widget has a [Size] that reflects the final
+/// size of the widget. To do this, you may want to check whether or not
+/// you have access to an [AutoSizedWindowCreatorContext] on your [BuildContext].
+/// If you do, you may want to do things like disabling animations.
+///
+/// This route is largely inspired by [TransitionRoute].
+///
+/// See also:
+///
+///  * [Route], which documents the meaning of the `T` generic type argument.
+class PopupWindowRoute<T> extends _WindowRoute<T> {
+  /// Creates a [Route] that creates a new popup [Window].
+  ///
+  /// [context] the build conext
+  /// [builder] the content that will end up in the dialog
+  /// [size] the [Size] of the dialog. If not provided, the dialog
+  ///        will be sized to fit the content from [builder].
+  /// [settings] settings for the [Route]
+  /// [anchorRect] the [Rect] to which this popup is anchored
+  /// [positioner] defines the constraints by which the popup is positioned
+  PopupWindowRoute({
+    required super.context,
+    required Widget Function(BuildContext, Animation<double>?) builder,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+    required NavigatorState navigator,
+    super.size,
+    super.settings,
+    AnimationStyle? popUpAnimationStyle,
+  })  : _builder = builder,
+        _anchorRect = anchorRect,
+        _positioner = positioner,
+        _popUpAnimationStyle = popUpAnimationStyle,
+        _navigator = navigator;
+
+  @override
+  WidgetBuilder get builder {
+    return (BuildContext context) {
+      return _builder(context, _animation);
+    };
+  }
+
+  final Widget Function(BuildContext, Animation<double>?) _builder;
+  final Rect _anchorRect;
+  final WindowPositioner _positioner;
+  final AnimationStyle? _popUpAnimationStyle;
+  final NavigatorState _navigator;
+
+  AnimationController? _animationController;
+  Animation<double>? _animation;
+
+  /// Handle to the performance mode request.
+  ///
+  /// When the route is animating, the performance mode is requested. It is then
+  /// disposed when the animation ends. Requesting [DartPerformanceMode.latency]
+  /// indicates to the engine that the transition is latency sensitive and to delay
+  /// non-essential work while this handle is active.
+  PerformanceModeRequestHandle? _performanceModeRequestHandle;
+
+  @override
+  Future<Window> _createWindow(
+      BuildContext context, WidgetBuilder builder, Size size, Window? parent) {
+    if (parent == null) {
+      throw Exception('Parent expected during PopupWindowRoute._createWindow');
+    }
+    return createPopupWindow(
+        context: context,
+        parent: parent,
+        size: size,
+        anchorRect: _anchorRect,
+        positioner: _positioner,
+        builder: builder);
+  }
+
+  @override
+  void install() {
+    _animationController = AnimationController(
+        duration: _popUpAnimationStyle?.duration ?? _kMenuDuration,
+        reverseDuration: _popUpAnimationStyle?.duration ?? _kMenuDuration,
+        debugLabel: 'PopupWindowRoute',
+        vsync: _navigator);
+    assert(_animationController != null,
+        'AnimationController(...) returned null.');
+    _animation = createAnimation()..addStatusListener(_handleStatusChanged);
+    assert(_animation != null, '$runtimeType.createAnimation() returned null.');
+    super.install();
+  }
+
+  /// Called to create the animation that exposes the current progress of
+  /// the transition controlled by the animation controller created by
+  /// [createAnimationController()].
+  Animation<double> createAnimation() {
+    if (_popUpAnimationStyle != AnimationStyle.noAnimation) {
+      return _animation ??= CurvedAnimation(
+        parent: _animationController!.view,
+        curve: _popUpAnimationStyle?.curve ?? Curves.linear,
+        reverseCurve: _popUpAnimationStyle?.reverseCurve ??
+            const Interval(0.0, _kMenuCloseIntervalEnd),
+      );
+    }
+
+    return _animationController!.view;
+  }
+
+  @override
+  TickerFuture didPush() {
+    super.didPush();
+    return _animationController!.forward();
+  }
+
+  void _handleStatusChanged(AnimationStatus status) {
+    switch (status) {
+      case AnimationStatus.completed:
+        _performanceModeRequestHandle?.dispose();
+        _performanceModeRequestHandle = null;
+      case AnimationStatus.forward:
+      case AnimationStatus.reverse:
+        _performanceModeRequestHandle ??= SchedulerBinding.instance
+            .requestPerformanceMode(DartPerformanceMode.latency);
+      case AnimationStatus.dismissed:
+        // We might still be an active route if a subclass is controlling the
+        // transition and hits the dismissed status. For example, the iOS
+        // back gesture drives this animation to the dismissed status before
+        // removing the route and disposing it.
+        if (!isActive) {
+          navigator!.finalizeRoute(this);
+          _performanceModeRequestHandle?.dispose();
+          _performanceModeRequestHandle = null;
+        }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeStatusListener(_handleStatusChanged);
+    _animationController?.dispose();
+    _performanceModeRequestHandle?.dispose();
+    _performanceModeRequestHandle = null;
+    super.dispose();
   }
 }
