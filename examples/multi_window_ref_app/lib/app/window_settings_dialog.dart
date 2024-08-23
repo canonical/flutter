@@ -16,6 +16,7 @@ Future<WindowSettings?> windowSettingsDialog(
         Size popupSize = settings.popupSize;
         Size tipSize = settings.tipSize;
         Rect anchorRect = settings.anchorRect;
+        bool anchorToWindow = settings.anchorToWindow;
 
         return StatefulBuilder(
             builder: (BuildContext ctx, StateSetter setState) {
@@ -295,30 +296,59 @@ Future<WindowSettings?> windowSettingsDialog(
                       children: [
                         Expanded(
                           child: ListTile(
-                            title: const Text('Anchor Rectangle'),
+                            title: const Text('Anchoring'),
                             subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Align(
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: CheckboxListTile(
+                                    title: const Text('Anchor to Window'),
+                                    subtitle: const Text("Use the parent's window frame as the anchor rectangle"),
+                                    contentPadding: EdgeInsets.zero,
+                                    value: anchorToWindow,
+                                    onChanged: (bool? value) {
+                                      setState(() {
+                                        anchorToWindow = value ?? false;
+                                      });
+                                    },
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                  ),
+                                ),
+                                Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
-                                      "These values will be clamped to the size of the parent window"),
+                                    "View Anchor Rectangle (values will be clamped to the size of the parent view)",
+                                    style: TextStyle(
+                                      color: anchorToWindow
+                                          ? Theme.of(context).disabledColor
+                                          : Theme.of(context).textTheme.bodyMedium?.color,
+                                    ),
+                                  ),
                                 ),
                                 Row(
                                   children: [
                                     Expanded(
                                       child: TextFormField(
+                                        enabled: !anchorToWindow,
                                         initialValue:
                                             anchorRect.left.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Left',
                                         ),
-                                        onChanged: (String value) => setState(
-                                          () => anchorRect = Rect.fromLTWH(
-                                              double.tryParse(value) ?? 0,
-                                              anchorRect.top,
-                                              anchorRect.width,
-                                              anchorRect.height),
-                                        ),
+                                        onChanged: anchorToWindow
+                                            ? null
+                                            : (String value) => setState(
+                                                  () => anchorRect =
+                                                      Rect.fromLTWH(
+                                                          double.tryParse(
+                                                                  value) ??
+                                                              0,
+                                                          anchorRect.top,
+                                                          anchorRect.width,
+                                                          anchorRect.height),
+                                                ),
                                       ),
                                     ),
                                     const SizedBox(
@@ -326,17 +356,23 @@ Future<WindowSettings?> windowSettingsDialog(
                                     ),
                                     Expanded(
                                       child: TextFormField(
+                                        enabled: !anchorToWindow,
                                         initialValue: anchorRect.top.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Top',
                                         ),
-                                        onChanged: (String value) => setState(
-                                          () => anchorRect = Rect.fromLTWH(
-                                              anchorRect.left,
-                                              double.tryParse(value) ?? 0,
-                                              anchorRect.width,
-                                              anchorRect.height),
-                                        ),
+                                        onChanged: anchorToWindow
+                                            ? null
+                                            : (String value) => setState(
+                                                  () => anchorRect =
+                                                      Rect.fromLTWH(
+                                                          anchorRect.left,
+                                                          double.tryParse(
+                                                                  value) ??
+                                                              0,
+                                                          anchorRect.width,
+                                                          anchorRect.height),
+                                                ),
                                       ),
                                     ),
                                     const SizedBox(
@@ -344,18 +380,24 @@ Future<WindowSettings?> windowSettingsDialog(
                                     ),
                                     Expanded(
                                       child: TextFormField(
+                                        enabled: !anchorToWindow,
                                         initialValue:
                                             anchorRect.width.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Width',
                                         ),
-                                        onChanged: (String value) => setState(
-                                          () => anchorRect = Rect.fromLTWH(
-                                              anchorRect.left,
-                                              anchorRect.top,
-                                              double.tryParse(value) ?? 0,
-                                              anchorRect.height),
-                                        ),
+                                        onChanged: anchorToWindow
+                                            ? null
+                                            : (String value) => setState(
+                                                  () => anchorRect =
+                                                      Rect.fromLTWH(
+                                                          anchorRect.left,
+                                                          anchorRect.top,
+                                                          double.tryParse(
+                                                                  value) ??
+                                                              0,
+                                                          anchorRect.height),
+                                                ),
                                       ),
                                     ),
                                     const SizedBox(
@@ -363,18 +405,24 @@ Future<WindowSettings?> windowSettingsDialog(
                                     ),
                                     Expanded(
                                       child: TextFormField(
+                                        enabled: !anchorToWindow,
                                         initialValue:
                                             anchorRect.height.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Height',
                                         ),
-                                        onChanged: (String value) => setState(
-                                          () => anchorRect = Rect.fromLTWH(
-                                              anchorRect.left,
-                                              anchorRect.top,
-                                              anchorRect.width,
-                                              double.tryParse(value) ?? 0),
-                                        ),
+                                        onChanged: anchorToWindow
+                                            ? null
+                                            : (String value) => setState(
+                                                  () => anchorRect =
+                                                      Rect.fromLTWH(
+                                                          anchorRect.left,
+                                                          anchorRect.top,
+                                                          anchorRect.width,
+                                                          double.tryParse(
+                                                                  value) ??
+                                                              0),
+                                                ),
                                       ),
                                     ),
                                   ],
@@ -404,6 +452,7 @@ Future<WindowSettings?> windowSettingsDialog(
                       popupSize: popupSize,
                       tipSize: tipSize,
                       anchorRect: anchorRect,
+                      anchorToWindow: anchorToWindow,
                     ));
                   },
                   child: const Text('Apply'),

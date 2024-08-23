@@ -8,6 +8,7 @@ class WindowSettings {
       this.satelliteSize = const Size(150, 300),
       this.popupSize = const Size(200, 200),
       this.tipSize = const Size(140, 140),
+      this.anchorToWindow = false,
       this.anchorRect = const Rect.fromLTWH(0, 0, 1000, 1000)});
   final Size regularSize;
   final Size floatingRegularSize;
@@ -16,4 +17,5 @@ class WindowSettings {
   final Size popupSize;
   final Size tipSize;
   final Rect anchorRect;
+  final bool anchorToWindow;
 }
