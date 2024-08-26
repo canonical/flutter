@@ -299,8 +299,10 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
                               context: context,
                               parent: widget.selectedWindow!,
                               size: _settings.satelliteSize,
-                              anchorRect: _clampRectToSize(_settings.anchorRect,
-                                  widget.selectedWindow!.size),
+                              anchorRect: _settings.anchorToWindow
+                                  ? null
+                                  : _clampRectToSize(_settings.anchorRect,
+                                      widget.selectedWindow!.size),
                               positioner: WindowPositioner(
                                 parentAnchor:
                                     selectedPositionerSettings.parentAnchor,

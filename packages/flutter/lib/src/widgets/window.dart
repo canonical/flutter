@@ -396,14 +396,16 @@ Future<Window> createDialogWindow(
 /// [context] the current [BuildContext], which must include a [MultiWindowAppContext]
 /// [parent] the [Window] to which this satellite is associated
 /// [size] the [Size] of the satellite
-/// [anchorRect] the [Rect] to which this satellite is anchored
+/// [anchorRect] the [Rect] to which this satellite is anchored, relative to the
+///              client area of the parent [Window]. If null, the satellite is
+///              anchored to the window frame of the parent [Window].
 /// [positioner] defines the constraints by which the satellite is positioned
 /// [builder] a builder function that returns the contents of the new [Window]
 Future<Window> createSatelliteWindow(
     {required BuildContext context,
     required Window parent,
     required Size size,
-    required Rect anchorRect,
+    required Rect? anchorRect,
     required WindowPositioner positioner,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -634,13 +636,15 @@ class WindowController extends State<MultiWindowApp> {
   ///
   /// [parent] the [Window] to which this satellite is associated
   /// [size] the [Size] of the satellite
-  /// [anchorRect] the [Rect] to which this satellite is anchored
+  /// [anchorRect] the [Rect] to which this satellite is anchored, relative to
+  ///              the client area of the parent [Window]. If null, the popup is
+  ///              anchored to the window frame of the parent [Window].
   /// [positioner] defines the constraints by which the satellite is positioned
   /// [builder] a builder function that returns the contents of the new [Window]
   Future<Window> createSatelliteWindow(
       {required Window parent,
       required Size size,
-      required Rect anchorRect,
+      required Rect? anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
     if (!parent.canBeParentOf(WindowArchetype.satellite)) {
@@ -667,12 +671,14 @@ class WindowController extends State<MultiWindowApp> {
               size.width.clamp(0, size.width).toInt(),
               size.height.clamp(0, size.height).toInt()
             ],
-            'anchorRect': <int>[
-              anchorRect.left.toInt(),
-              anchorRect.top.toInt(),
-              anchorRect.width.toInt(),
-              anchorRect.height.toInt()
-            ],
+            'anchorRect': anchorRect != null
+                ? [
+                    anchorRect.left.toInt(),
+                    anchorRect.top.toInt(),
+                    anchorRect.width.toInt(),
+                    anchorRect.height.toInt()
+                  ]
+                : null,
             'positionerParentAnchor': positioner.parentAnchor.index,
             'positionerChildAnchor': positioner.childAnchor.index,
             'positionerOffset': <int>[
