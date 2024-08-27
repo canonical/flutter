@@ -531,9 +531,11 @@ class WindowController extends State<MultiWindowApp> {
     return _createWindow(
         viewBuilder: (MethodChannel channel) async {
           return await channel
-              .invokeMethod('createRegularWindow', <String, int>{
-            'width': size.width.clamp(0, size.width).toInt(),
-            'height': size.height.clamp(0, size.height).toInt()
+              .invokeMethod('createRegularWindow', <String, dynamic>{
+            'size': <int>[
+              size.width.clamp(0, size.width).toInt(),
+              size.height.clamp(0, size.height).toInt()
+            ],
           }) as Map<Object?, Object?>;
         },
         builder: builder);
