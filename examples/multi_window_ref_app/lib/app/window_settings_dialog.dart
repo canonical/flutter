@@ -4,10 +4,15 @@ import 'package:multi_window_ref_app/app/window_settings.dart';
 Future<WindowSettings?> windowSettingsDialog(
   BuildContext context,
   WindowSettings settings,
+  void Function(Window) onWindowOpened,
+  void Function(Window) onWindowClosed
 ) async {
   return await showDialog(
       barrierDismissible: true,
       context: context,
+      onWindowOpened: onWindowOpened,
+      onWindowClosed: onWindowClosed,
+      forceNoMultiWindow: true,
       builder: (BuildContext ctx) {
         Size regularSize = settings.regularSize;
         Size floatingRegularSize = settings.floatingRegularSize;

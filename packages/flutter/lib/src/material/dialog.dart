@@ -1428,6 +1428,16 @@ Widget _buildMaterialDialogTransitions(
 /// to allow users to cycle through dialog widgets without leaving the dialog.
 /// This argument has no effect when a [MultiWindowAppContext] is available.
 ///
+/// If not null, the `onWindowOpened` argument will be called when the window
+/// is shown on screen. This only applies to a multi-window application.
+///
+/// If not null, the `onWindowClosed` argument will be called when the window
+/// is removed from the screen. This only applies to a multi-window application.
+///
+/// If set to true, `forceNoMultiWindow` will always make sure that the dialog
+/// will not be shown in a new window, regarldess of whether or not the feature
+/// is available in the application.
+///
 /// {@macro flutter.widgets.RawDialogRoute}
 ///
 /// If the application has multiple [Navigator] objects, it may be necessary to
@@ -1492,6 +1502,9 @@ Future<T?> showDialog<T>({
   RouteSettings? routeSettings,
   Offset? anchorPoint,
   TraversalEdgeBehavior? traversalEdgeBehavior,
+  void Function(Window)? onWindowOpened,
+  void Function(Window)? onWindowClosed,
+  bool forceNoMultiWindow = false
 }) {
   assert(_debugIsActive(context));
   assert(debugCheckHasMaterialLocalizations(context));
@@ -1507,7 +1520,7 @@ Future<T?> showDialog<T>({
   final MultiWindowAppContext? multiWindowAppContext =
       MultiWindowAppContext.of(context);
 
-  if (multiWindowAppContext == null) {
+  if (multiWindowAppContext == null || forceNoMultiWindow) {
     return Navigator.of(context, rootNavigator: useRootNavigator)
         .push<T>(DialogRoute<T>(
       context: context,
@@ -1526,7 +1539,11 @@ Future<T?> showDialog<T>({
     ));
   } else {
     return Navigator.of(context, rootNavigator: useRootNavigator)
-        .push<T>(ModalWindowRoute<T>(context: context, builder: builder));
+        .push<T>(ModalWindowRoute<T>(
+          context: context,
+          onWindowOpened: onWindowOpened,
+          onWindowClosed: onWindowClosed,
+          builder: builder));
   }
 }
 
