@@ -85,7 +85,7 @@ class _MainWindowState extends State<MainWindow> {
                         ? null
                         : windows[selectedRowIndex],
                     positionerSettingsModifier: positionerSettingsModifier,
-                    onDialogOpened: (window) =>_managedWindows.add(window),
+                    onDialogOpened: (window) => _managedWindows.add(window),
                     onDialogClosed: (window) => _managedWindows.remove(window)),
                 const SizedBox(height: 12),
                 _PositionerEditorCard(

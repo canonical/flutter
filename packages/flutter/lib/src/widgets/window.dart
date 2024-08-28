@@ -823,7 +823,7 @@ class WindowCreator extends StatefulWidget {
   /// An optional callback that is triggered when the [Window] is shown.
   final void Function(Window)? onWindowOpened;
 
-  /// An optional callabck that is triggered when the [Window] is hidden.
+  /// An optional callback that is triggered when the [Window] is hidden.
   final void Function(Window)? onWindowClosed;
 
   @override
@@ -849,9 +849,7 @@ class _WindowCreatorState extends State<WindowCreator> {
     final WindowContext windowContext = WindowContext.of(context)!;
     final Window newWindow =
         await widget.builder(context, windowContext.window);
-    if (widget.onWindowOpened != null) {
-      widget.onWindowOpened!(newWindow);
-    }
+    widget.onWindowOpened?.call(newWindow);
     setState(() {
       _window = newWindow;
     });
@@ -859,9 +857,7 @@ class _WindowCreatorState extends State<WindowCreator> {
 
   Future<void> _hide(BuildContext context) async {
     if (_window != null) {
-      if (widget.onWindowClosed != null) {
-        widget.onWindowClosed!(_window!);
-      }
+      widget.onWindowClosed?.call(_window!);
       await destroyWindow(context, _window!);
       setState(() {
         _window = null;
@@ -937,7 +933,7 @@ class AutoSizedWindowCreator extends StatefulWidget {
   /// An optional callback that is triggered when the [Window] is shown.
   final void Function(Window)? onWindowOpened;
 
-  /// An optional callabck that is triggered when the [Window] is hidden.
+  /// An optional callback that is triggered when the [Window] is hidden.
   final void Function(Window)? onWindowClosed;
 
   @override
