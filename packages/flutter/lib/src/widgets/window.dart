@@ -312,8 +312,29 @@ class Window {
       return false;
     }
 
+    bool hasDialogDescendant(Window window) {
+      if (window.children
+          .any((child) => child.archetype == WindowArchetype.dialog)) {
+        return true;
+      }
+      for (Window child in window.children) {
+        if (hasDialogDescendant(child)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final Window window;
+    if (this.archetype == WindowArchetype.satellite) {
+      assert(parent != null, 'Parent must not be null for satellite windows.');
+      window = parent!;
+    } else {
+      window = this;
+    }
+
     return compatibleParentArchetypes.contains(this.archetype) &&
-        !children.any((child) => child.archetype == WindowArchetype.dialog);
+        !hasDialogDescendant(window);
   }
 }
 
@@ -562,7 +583,9 @@ class WindowController extends State<MultiWindowApp> {
           'the following archetypes: WindowArchetype.regular, '
           'WindowArchetype.floatingRegular, WindowArchetype.dialog, '
           'WindowArchetype.satellite, or WindowArchetype.popup. Additionally, '
-          'it cannot have a child with a WindowArchetype.dialog.');
+          'if the parent is a satellite window, its closest non-satellite '
+          'ancestor must not have any dialog descendants. If the parent is not '
+          'a satellite, it must not have any dialog descendants itself.');
     }
 
     int constraintAdjustmentBitmask = 0;
@@ -615,8 +638,10 @@ class WindowController extends State<MultiWindowApp> {
             'Incompatible parent window. The parent window must have one of '
             'the following archetypes: WindowArchetype.regular, '
             'WindowArchetype.floatingRegular, WindowArchetype.dialog, or '
-            'WindowArchetype.satellite. Additionally, it cannot have a child '
-            'with a WindowArchetype.dialog.');
+            'WindowArchetype.satellite. Additionally, if the parent is a '
+            'satellite window, its closest non-satellite ancestor must not '
+            'have any dialog descendants. If the parent is not a satellite, '
+            'it must not have any dialog descendants itself.');
       }
     }
 
@@ -639,8 +664,9 @@ class WindowController extends State<MultiWindowApp> {
   /// [parent] the [Window] to which this satellite is associated
   /// [size] the [Size] of the satellite
   /// [anchorRect] the [Rect] to which this satellite is anchored, relative to
-  ///              the client area of the parent [Window]. If null, the popup is
-  ///              anchored to the window frame of the parent [Window].
+  ///              the client area of the parent [Window]. If null, the
+  ///              satellite is anchored to the window frame of the parent
+  ///              [Window].
   /// [positioner] defines the constraints by which the satellite is positioned
   /// [builder] a builder function that returns the contents of the new [Window]
   Future<Window> createSatelliteWindow(
@@ -653,9 +679,11 @@ class WindowController extends State<MultiWindowApp> {
       throw ArgumentError(
           'Incompatible parent window. The parent window must have one of '
           'the following archetypes: WindowArchetype.regular, '
-          'WindowArchetype.floatingRegular, WindowArchetype.dialog, or '
-          'WindowArchetype.popup. Additionally, it cannot have a child with a '
-          'WindowArchetype.dialog.');
+          'WindowArchetype.floatingRegular, or WindowArchetype.dialog. '
+          'Additionally, if the parent is a satellite window, its closest '
+          'non-satellite ancestor must not have any dialog descendants. If the '
+          'parent is not a satellite, it must not have any dialog descendants '
+          'itself.');
     }
 
     int constraintAdjustmentBitmask = 0;
