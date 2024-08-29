@@ -680,10 +680,7 @@ class WindowController extends State<MultiWindowApp> {
           'Incompatible parent window. The parent window must have one of '
           'the following archetypes: WindowArchetype.regular, '
           'WindowArchetype.floatingRegular, or WindowArchetype.dialog. '
-          'Additionally, if the parent is a satellite window, its closest '
-          'non-satellite ancestor must not have any dialog descendants. If the '
-          'parent is not a satellite, it must not have any dialog descendants '
-          'itself.');
+          'Additionally, it must not have any dialog descendants.');
     }
 
     int constraintAdjustmentBitmask = 0;
