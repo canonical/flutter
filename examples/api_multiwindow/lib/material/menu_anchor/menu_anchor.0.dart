@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 
 void main() {
   runWidget(MultiWindowApp(initialWindows: [
-    (context) => createRegularWindow(
+    (BuildContext context) => createRegularWindow(
         context: context,
         size: const Size(640, 480),
-        builder: (context) {
+        builder: (BuildContext context) {
           return const MenuBarApp();
         })
   ]));
