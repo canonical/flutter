@@ -418,49 +418,43 @@ class Tooltip extends StatefulWidget {
 }
 
 class _TooltipStateController {
-  _TooltipStateController({required bool useMultiWindow}) {
+  _TooltipStateController({required bool useMultiWindow})
+    : _isMultiWindow = useMultiWindow {
     if (useMultiWindow) {
       _windowCreatorController = WindowCreatorController();
-      _overlayController = null;
     } else {
       _overlayController = OverlayPortalController();
-      _windowCreatorController = null;
     }
-
-    assert(!(_windowCreatorController != null && _overlayController != null));
   }
 
-  bool get isMultiWindow => _windowCreatorController != null;
-  late OverlayPortalController? _overlayController;
-  late WindowCreatorController? _windowCreatorController;
+  final bool _isMultiWindow;
+  late final OverlayPortalController _overlayController;
+  late final WindowCreatorController _windowCreatorController;
+  bool get isMultiWindow => _isMultiWindow;
 
   OverlayPortalController get overlayController {
-    assert(_overlayController != null);
-    return _overlayController!;
+    assert(!_isMultiWindow);
+    return _overlayController;
   }
 
   WindowCreatorController get windowCreatorController {
-    assert(_windowCreatorController != null);
-    return _windowCreatorController!;
+    assert(_isMultiWindow);
+    return _windowCreatorController;
   }
 
   Future<void> show(BuildContext context) async {
-    if (_overlayController != null) {
-      assert(_windowCreatorController == null);
-      _overlayController!.show();
+    if (!_isMultiWindow) {
+      _overlayController.show();
     } else {
-      assert(_windowCreatorController != null);
-      await _windowCreatorController!.show(context);
+      await _windowCreatorController.show(context);
     }
   }
 
   Future<void> hide(BuildContext context) async {
-    if (_overlayController != null) {
-      assert(_windowCreatorController == null);
-      _overlayController!.hide();
+    if (!_isMultiWindow) {
+      _overlayController.hide();
     } else {
-      assert(_windowCreatorController != null);
-      await _windowCreatorController!.hide(context);
+      await _windowCreatorController.hide(context);
     }
   }
 }
@@ -901,8 +895,7 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
 
     if (_tooltipStateController!.isMultiWindow) {
       final BuildContext parentContext = context;
-      final WindowContext? windowContext = WindowContext.of(context);
-      assert(windowContext != null);
+      final WindowContext windowContext = WindowContext.of(context)!;
       return AutoSizedWindowCreator(
           widgetBuilder: (BuildContext context) =>
             _buildTooltipOverlay(context, true),
@@ -919,7 +912,7 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
 
             return createPopupWindow(
                 context: context,
-                parent: windowContext!.window,
+                parent: windowContext.window,
                 size: Size(windowSize.width + 1, windowSize.height),
                 anchorRect: Rect.fromPoints(
                     position,
