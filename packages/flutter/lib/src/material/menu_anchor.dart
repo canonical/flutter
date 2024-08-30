@@ -17,6 +17,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import 'button_style.dart';
 import 'button_style_button.dart';
@@ -303,6 +304,39 @@ class MenuAnchor extends StatefulWidget {
   }
 }
 
+class _MenuAnchorStateController {
+  bool _supportsMultiWindow = false;
+  final OverlayPortalController _overlayController = OverlayPortalController(
+      debugLabel: kReleaseMode ? null : 'MenuAnchor controller');
+  final WindowCreatorController _windowCreatorController =
+      WindowCreatorController();
+
+  set supportsMultiWindow(bool value) {
+    _supportsMultiWindow = value;
+  }
+
+  bool get isOpen =>
+      _overlayController.isShowing && _windowCreatorController.isShowing();
+
+  void hide(BuildContext context) {
+    if (_overlayController.isShowing) {
+      _overlayController.hide();
+    }
+
+    if (_windowCreatorController.isShowing()) {
+      _windowCreatorController.hide(context);
+    }
+  }
+
+  void show(BuildContext context) {
+    if (_supportsMultiWindow) {
+      _windowCreatorController.show(context);
+    } else {
+      _overlayController.show();
+    }
+  }
+}
+
 class _MenuAnchorState extends State<MenuAnchor> {
   // This is the global key that is used later to determine the bounding rect
   // for the anchor's region that the CustomSingleChildLayout's delegate
@@ -315,10 +349,11 @@ class _MenuAnchorState extends State<MenuAnchor> {
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  final OverlayPortalController _overlayController = OverlayPortalController(debugLabel: kReleaseMode ? null : 'MenuAnchor controller');
+  final _MenuAnchorStateController _anchorStateController =
+      _MenuAnchorStateController();
+  bool get _isOpen => _anchorStateController.isOpen;
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
-  bool get _isOpen => _overlayController.isShowing;
   bool get _isRoot => _parent == null;
   MenuController get _menuController => widget.controller ?? _internalMenuController!;
 
@@ -387,21 +422,64 @@ class _MenuAnchorState extends State<MenuAnchor> {
 
   @override
   Widget build(BuildContext context) {
-    Widget child = OverlayPortal(
-      controller: _overlayController,
-      overlayChildBuilder: (BuildContext context) {
-        return _Submenu(
-          anchor: this,
-          menuStyle: widget.style,
-          alignmentOffset: widget.alignmentOffset ?? Offset.zero,
-          menuPosition: _menuPosition,
-          clipBehavior: widget.clipBehavior,
-          menuChildren: widget.menuChildren,
-          crossAxisUnconstrained: widget.crossAxisUnconstrained,
-        );
-      },
-      child: _buildContents(context),
-    );
+    final MultiWindowAppContext? multiWindowAppContext =
+        MultiWindowAppContext.of(context);
+    final WindowContext? windowContext = WindowContext.of(context);
+
+    late Widget child;
+    final MenuAnchor anchorWidget = widget;
+    final _MenuAnchorState anchor = this;
+
+    if (multiWindowAppContext != null && windowContext != null) {
+      _anchorStateController.supportsMultiWindow = true;
+      child = AutoSizedWindowCreator(
+          widgetBuilder: (BuildContext context) {
+            return _MenuPanel(
+              orientation: anchor._orientation,
+              menuStyle: anchorWidget.style,
+              children: anchorWidget.menuChildren,
+            );
+          },
+          windowBuilder:
+              (WidgetBuilder builder, Size windowSize, Window parent) {
+            final BuildContext anchorContext = _anchorKey.currentContext!;
+            final RenderBox box =
+                anchorContext.findRenderObject()! as RenderBox;
+            final Offset position = box.localToGlobal(Offset.zero);
+            return createPopupWindow(
+                context: context,
+                parent: windowContext.window,
+                size: windowSize,
+                anchorRect: Rect.fromPoints(
+                    position,
+                    Offset(position.dx + box.size.width,
+                        position.dy + box.size.height)),
+                positioner: WindowPositioner(
+                    parentAnchor: WindowPositionerAnchor.bottomRight,
+                    childAnchor: WindowPositionerAnchor.topLeft),
+                builder: (BuildContext context) {
+                  return MaterialApp(home: builder(context));
+                });
+          },
+          controller: _anchorStateController._windowCreatorController,
+          child: _buildContents(context));
+    } else {
+      child = OverlayPortal(
+        controller: _anchorStateController._overlayController,
+        overlayChildBuilder: (BuildContext context) {
+          return _Submenu(
+            anchor: this,
+            menuStyle: widget.style,
+            alignmentOffset: widget.alignmentOffset ?? Offset.zero,
+            menuPosition: _menuPosition,
+            clipBehavior: widget.clipBehavior,
+            menuChildren: widget.menuChildren,
+            crossAxisUnconstrained: widget.crossAxisUnconstrained,
+          );
+        },
+        child: _buildContents(context),
+      );
+    }
 
     if (!widget.anchorTapClosesMenu) {
       child = TapRegion(
@@ -537,11 +615,11 @@ class _MenuAnchorState extends State<MenuAnchor> {
     assert(_debugMenuInfo(
         'Opening $this at ${position ?? Offset.zero} with alignment offset ${widget.alignmentOffset ?? Offset.zero}'));
     _parent?._closeChildren(); // Close all siblings.
-    assert(!_overlayController.isShowing);
+    assert(!_anchorStateController.isOpen);
 
     _parent?._childChangedOpenState();
     _menuPosition = position;
-    _overlayController.show();
+    _anchorStateController.show(context);
 
     if (_isRoot) {
       _focusButton();
@@ -562,10 +640,10 @@ class _MenuAnchorState extends State<MenuAnchor> {
     _closeChildren(inDispose: inDispose);
     // Don't hide if we're in the middle of a build.
     if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.persistentCallbacks) {
-      _overlayController.hide();
+      _anchorStateController.hide(context);
     } else if (!inDispose) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        _overlayController.hide();
+        _anchorStateController.hide(context);
       }, debugLabel: 'MenuAnchor.hide');
     }
     if (!inDispose) {
