@@ -649,7 +649,7 @@ class WindowController extends State<MultiWindowApp> {
         viewBuilder: (MethodChannel channel) async {
           return await channel
               .invokeMethod('createDialogWindow', <String, dynamic>{
-            'parent': parent != null ? parent!.view.viewId : -1,
+            'parent': parent?.view.viewId,
             'size': <int>[
               size.width.clamp(0, size.width).toInt(),
               size.height.clamp(0, size.height).toInt()
@@ -723,7 +723,8 @@ class WindowController extends State<MultiWindowApp> {
   /// [window] the [Window] to be destroyed
   Future<void> destroyWindow(Window window) async {
     try {
-      await _channel.invokeMethod('destroyWindow', <int>[window.view.viewId]);
+      await _channel.invokeMethod(
+          'destroyWindow', <String, dynamic>{'viewId': window.view.viewId});
       _remove(window.view.viewId);
     } on PlatformException catch (e) {
       throw ArgumentError(
