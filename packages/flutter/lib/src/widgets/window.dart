@@ -553,10 +553,7 @@ class WindowController extends State<MultiWindowApp> {
         viewBuilder: (MethodChannel channel) async {
           return await channel
               .invokeMethod('createRegularWindow', <String, dynamic>{
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
-            ],
+            'size': <int>[size.width.toInt(), size.height.toInt()],
           }) as Map<Object?, Object?>;
         },
         builder: builder);
@@ -599,10 +596,7 @@ class WindowController extends State<MultiWindowApp> {
           return await channel
               .invokeMethod('createPopupWindow', <String, dynamic>{
             'parent': parent.view.viewId,
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
-            ],
+            'size': <int>[size.width.toInt(), size.height.toInt()],
             'anchorRect': anchorRect != null
                 ? [
                     anchorRect.left.toInt(),
@@ -650,10 +644,7 @@ class WindowController extends State<MultiWindowApp> {
           return await channel
               .invokeMethod('createDialogWindow', <String, dynamic>{
             'parent': parent?.view.viewId,
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
-            ],
+            'size': <int>[size.width.toInt(), size.height.toInt()],
           }) as Map<Object?, Object?>;
         },
         builder: builder);
@@ -694,10 +685,7 @@ class WindowController extends State<MultiWindowApp> {
           return await channel
               .invokeMethod('createSatelliteWindow', <String, dynamic>{
             'parent': parent.view.viewId,
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
-            ],
+            'size': <int>[size.width.toInt(), size.height.toInt()],
             'anchorRect': anchorRect != null
                 ? [
                     anchorRect.left.toInt(),
