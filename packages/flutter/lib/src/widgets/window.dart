@@ -372,7 +372,7 @@ Future<Window> createPopupWindow(
     {required BuildContext context,
     required Window parent,
     required Size size,
-    required Rect? anchorRect,
+    Rect? anchorRect,
     required WindowPositioner positioner,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -398,7 +398,7 @@ Future<Window> createPopupWindow(
 /// [builder] a builder function that returns the contents of the new [Window]
 Future<Window> createDialogWindow(
     {required BuildContext context,
-    required Window? parent,
+    Window? parent,
     required Size size,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -426,7 +426,7 @@ Future<Window> createSatelliteWindow(
     {required BuildContext context,
     required Window parent,
     required Size size,
-    required Rect? anchorRect,
+    Rect? anchorRect,
     required WindowPositioner positioner,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -574,7 +574,7 @@ class WindowController extends State<MultiWindowApp> {
   Future<Window> createPopupWindow(
       {required Window parent,
       required Size size,
-      required Rect? anchorRect,
+      Rect? anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
     if (!parent.canBeParentOf(WindowArchetype.popup)) {
@@ -629,7 +629,7 @@ class WindowController extends State<MultiWindowApp> {
   /// [size] the [Size] of the dialog
   /// [builder] a builder function that returns the contents of the new [Window]
   Future<Window> createDialogWindow(
-      {required Window? parent,
+      {Window? parent,
       required Size size,
       required WidgetBuilder builder}) async {
     if (parent != null) {
@@ -672,7 +672,7 @@ class WindowController extends State<MultiWindowApp> {
   Future<Window> createSatelliteWindow(
       {required Window parent,
       required Size size,
-      required Rect? anchorRect,
+      Rect? anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
     if (!parent.canBeParentOf(WindowArchetype.satellite)) {
