@@ -418,13 +418,12 @@ class MultiWindowApp extends StatefulWidget {
 /// you use the global functions like [createRegularWindow] and [destroyWindow] over
 /// accessing the [WindowController] directly.
 class WindowController extends State<MultiWindowApp> {
-  List<Window> _windows = [];
-  final MethodChannel _channel = const MethodChannel('flutter/windowing');
+  List<Window> _windows = <Window>[];
 
   @override
   void initState() {
     super.initState();
-    _channel.setMethodCallHandler(_methodCallHandler);
+    SystemChannels.windowing.setMethodCallHandler(_methodCallHandler);
   }
 
   Future<void> _methodCallHandler(MethodCall call) async {
@@ -449,7 +448,7 @@ class WindowController extends State<MultiWindowApp> {
       {required Future<Map<Object?, Object?>> Function(MethodChannel channel)
           viewBuilder,
       required WidgetBuilder builder}) async {
-    final Map<Object?, Object?> creationData = await viewBuilder(_channel);
+    final Map<Object?, Object?> creationData = await viewBuilder(SystemChannels.windowing);
     final int viewId = creationData['viewId'] as int;
     final WindowArchetype archetype =
         WindowArchetype.values[creationData['archetype'] as int];
@@ -600,7 +599,7 @@ class WindowController extends State<MultiWindowApp> {
   /// [window] the [Window] to be destroyed
   Future<void> destroyWindow(Window window) async {
     try {
-      await _channel.invokeMethod('destroyWindow', <int>[window.view.viewId]);
+      await SystemChannels.windowing.invokeMethod('destroyWindow', <int>[window.view.viewId]);
       _remove(window.view.viewId);
     } on PlatformException catch (e) {
       throw ArgumentError(
