@@ -8,6 +8,7 @@ Future<PositionerSetting?> customPositionerDialog(
   return await showDialog<PositionerSetting>(
       barrierDismissible: true,
       context: context,
+      forceNoMultiWindow: true,
       builder: (BuildContext ctx) {
         String name = settings.name;
         Offset offset = settings.offset;

@@ -43,6 +43,7 @@ class MainWindow extends StatefulWidget {
 class _MainWindowState extends State<MainWindow> {
   int selectedRowIndex = -1;
   final positionerSettingsModifier = PositionerSettingsModifier();
+  List<Window> _managedWindows = <Window>[];
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +85,9 @@ class _MainWindowState extends State<MainWindow> {
                             selectedRowIndex >= windows.length
                         ? null
                         : windows[selectedRowIndex],
-                    positionerSettingsModifier: positionerSettingsModifier),
+                    positionerSettingsModifier: positionerSettingsModifier,
+                    onDialogOpened: (window) => _managedWindows.add(window),
+                    onDialogClosed: (window) => _managedWindows.remove(window)),
                 const SizedBox(height: 12),
                 _PositionerEditorCard(
                     positionerSettingsModifier: positionerSettingsModifier)
@@ -96,17 +99,26 @@ class _MainWindowState extends State<MainWindow> {
     );
 
     final window = WindowContext.of(context)!.window;
-    final List<Widget> childViews = window.children.map((childWindow) {
-      return View(
+    final List<Widget> childViews = <Widget>[];
+    for (final Window childWindow in window.children) {
+      if (!_shouldRenderWindow(childWindow)) {
+        continue;
+      }
+
+      childViews.add(View(
         view: childWindow.view,
         child: WindowContext(
           window: childWindow,
           child: childWindow.builder(context),
         ),
-      );
-    }).toList();
+      ));
+    }
 
     return ViewAnchor(view: ViewCollection(views: childViews), child: widget);
+  }
+
+  bool _shouldRenderWindow(Window window) {
+    return !_managedWindows.contains(window);
   }
 }
 
@@ -202,10 +214,15 @@ class _ActiveWindowsTable extends StatelessWidget {
 
 class _WindowCreatorCard extends StatefulWidget {
   const _WindowCreatorCard(
-      {required this.selectedWindow, required this.positionerSettingsModifier});
+      {required this.selectedWindow,
+      required this.positionerSettingsModifier,
+      required this.onDialogOpened,
+      required this.onDialogClosed});
 
   final Window? selectedWindow;
   final PositionerSettingsModifier positionerSettingsModifier;
+  final void Function(Window) onDialogOpened;
+  final void Function(Window) onDialogClosed;
 
   @override
   State<StatefulWidget> createState() => _WindowCreatorCardState();
@@ -419,7 +436,9 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
                   child: TextButton(
                     child: const Text('SETTINGS'),
                     onPressed: () {
-                      windowSettingsDialog(context, _settings).then(
+                      windowSettingsDialog(context, _settings,
+                              widget.onDialogOpened, widget.onDialogClosed)
+                          .then(
                         (WindowSettings? settings) {
                           if (settings != null) {
                             _settings = settings;
