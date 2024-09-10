@@ -297,6 +297,11 @@ class Window {
         WindowArchetype.dialog,
         WindowArchetype.satellite,
       ],
+      WindowArchetype.satellite: [
+        WindowArchetype.regular,
+        WindowArchetype.floatingRegular,
+        WindowArchetype.dialog,
+      ],
       // TODO: Handle remaining archetypes
     };
 
@@ -307,8 +312,29 @@ class Window {
       return false;
     }
 
+    bool hasDialogDescendant(Window window) {
+      if (window.children
+          .any((child) => child.archetype == WindowArchetype.dialog)) {
+        return true;
+      }
+      for (Window child in window.children) {
+        if (hasDialogDescendant(child)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final Window window;
+    if (this.archetype == WindowArchetype.satellite) {
+      assert(parent != null, 'Parent must not be null for satellite windows.');
+      window = parent!;
+    } else {
+      window = this;
+    }
+
     return compatibleParentArchetypes.contains(this.archetype) &&
-        !children.any((child) => child.archetype == WindowArchetype.dialog);
+        !hasDialogDescendant(window);
   }
 }
 
@@ -346,7 +372,7 @@ Future<Window> createPopupWindow(
     {required BuildContext context,
     required Window parent,
     required Size size,
-    required Rect? anchorRect,
+    Rect? anchorRect,
     required WindowPositioner positioner,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -372,7 +398,7 @@ Future<Window> createPopupWindow(
 /// [builder] a builder function that returns the contents of the new [Window]
 Future<Window> createDialogWindow(
     {required BuildContext context,
-    required Window? parent,
+    Window? parent,
     required Size size,
     required WidgetBuilder builder}) async {
   final MultiWindowAppContext? multiViewAppContext =
@@ -384,6 +410,38 @@ Future<Window> createDialogWindow(
 
   return multiViewAppContext.windowController
       .createDialogWindow(parent: parent, size: size, builder: builder);
+}
+
+/// Creates a new satellite [Window]
+///
+/// [context] the current [BuildContext], which must include a [MultiWindowAppContext]
+/// [parent] the [Window] to which this satellite is associated
+/// [size] the [Size] of the satellite
+/// [anchorRect] the [Rect] to which this satellite is anchored, relative to the
+///              client area of the parent [Window]. If null, the satellite is
+///              anchored to the window frame of the parent [Window].
+/// [positioner] defines the constraints by which the satellite is positioned
+/// [builder] a builder function that returns the contents of the new [Window]
+Future<Window> createSatelliteWindow(
+    {required BuildContext context,
+    required Window parent,
+    required Size size,
+    Rect? anchorRect,
+    required WindowPositioner positioner,
+    required WidgetBuilder builder}) async {
+  final MultiWindowAppContext? multiViewAppContext =
+      MultiWindowAppContext.of(context);
+  if (multiViewAppContext == null) {
+    throw Exception(
+        'Cannot create a window: your application does not use MultiViewApp. Try wrapping your toplevel application in a MultiViewApp widget');
+  }
+
+  return multiViewAppContext.windowController.createSatelliteWindow(
+      parent: parent,
+      size: size,
+      anchorRect: anchorRect,
+      positioner: positioner,
+      builder: builder);
 }
 
 /// Destroys the provided [Window]
@@ -448,7 +506,8 @@ class WindowController extends State<MultiWindowApp> {
       {required Future<Map<Object?, Object?>> Function(MethodChannel channel)
           viewBuilder,
       required WidgetBuilder builder}) async {
-    final Map<Object?, Object?> creationData = await viewBuilder(SystemChannels.windowing);
+    final Map<Object?, Object?> creationData =
+        await viewBuilder(SystemChannels.windowing);
     final int viewId = creationData['viewId'] as int;
     final WindowArchetype archetype =
         WindowArchetype.values[creationData['archetype'] as int];
@@ -493,9 +552,8 @@ class WindowController extends State<MultiWindowApp> {
     return _createWindow(
         viewBuilder: (MethodChannel channel) async {
           return await channel
-              .invokeMethod('createRegularWindow', <String, int>{
-            'width': size.width.clamp(0, size.width).toInt(),
-            'height': size.height.clamp(0, size.height).toInt()
+              .invokeMethod('createRegularWindow', <String, dynamic>{
+            'size': <int>[size.width.toInt(), size.height.toInt()],
           }) as Map<Object?, Object?>;
         },
         builder: builder);
@@ -513,7 +571,7 @@ class WindowController extends State<MultiWindowApp> {
   Future<Window> createPopupWindow(
       {required Window parent,
       required Size size,
-      required Rect? anchorRect,
+      Rect? anchorRect,
       required WindowPositioner positioner,
       required WidgetBuilder builder}) async {
     if (!parent.canBeParentOf(WindowArchetype.popup)) {
@@ -522,7 +580,9 @@ class WindowController extends State<MultiWindowApp> {
           'the following archetypes: WindowArchetype.regular, '
           'WindowArchetype.floatingRegular, WindowArchetype.dialog, '
           'WindowArchetype.satellite, or WindowArchetype.popup. Additionally, '
-          'it cannot have a child with a WindowArchetype.dialog.');
+          'if the parent is a satellite window, its closest non-satellite '
+          'ancestor must not have any dialog descendants. If the parent is not '
+          'a satellite, it must not have any dialog descendants itself.');
     }
 
     int constraintAdjustmentBitmask = 0;
@@ -536,10 +596,7 @@ class WindowController extends State<MultiWindowApp> {
           return await channel
               .invokeMethod('createPopupWindow', <String, dynamic>{
             'parent': parent.view.viewId,
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
-            ],
+            'size': <int>[size.width.toInt(), size.height.toInt()],
             'anchorRect': anchorRect != null
                 ? [
                     anchorRect.left.toInt(),
@@ -566,7 +623,7 @@ class WindowController extends State<MultiWindowApp> {
   /// [size] the [Size] of the dialog
   /// [builder] a builder function that returns the contents of the new [Window]
   Future<Window> createDialogWindow(
-      {required Window? parent,
+      {Window? parent,
       required Size size,
       required WidgetBuilder builder}) async {
     if (parent != null) {
@@ -575,8 +632,10 @@ class WindowController extends State<MultiWindowApp> {
             'Incompatible parent window. The parent window must have one of '
             'the following archetypes: WindowArchetype.regular, '
             'WindowArchetype.floatingRegular, WindowArchetype.dialog, or '
-            'WindowArchetype.satellite. Additionally, it cannot have a child '
-            'with a WindowArchetype.dialog.');
+            'WindowArchetype.satellite. Additionally, if the parent is a '
+            'satellite window, its closest non-satellite ancestor must not '
+            'have any dialog descendants. If the parent is not a satellite, '
+            'it must not have any dialog descendants itself.');
       }
     }
 
@@ -584,11 +643,64 @@ class WindowController extends State<MultiWindowApp> {
         viewBuilder: (MethodChannel channel) async {
           return await channel
               .invokeMethod('createDialogWindow', <String, dynamic>{
-            'parent': parent != null ? parent!.view.viewId : -1,
-            'size': <int>[
-              size.width.clamp(0, size.width).toInt(),
-              size.height.clamp(0, size.height).toInt()
+            'parent': parent?.view.viewId,
+            'size': <int>[size.width.toInt(), size.height.toInt()],
+          }) as Map<Object?, Object?>;
+        },
+        builder: builder);
+  }
+
+  /// Creates a new satellite [Window]
+  ///
+  /// [parent] the [Window] to which this satellite is associated
+  /// [size] the [Size] of the satellite
+  /// [anchorRect] the [Rect] to which this satellite is anchored, relative to
+  ///              the client area of the parent [Window]. If null, the
+  ///              satellite is anchored to the window frame of the parent
+  ///              [Window].
+  /// [positioner] defines the constraints by which the satellite is positioned
+  /// [builder] a builder function that returns the contents of the new [Window]
+  Future<Window> createSatelliteWindow(
+      {required Window parent,
+      required Size size,
+      Rect? anchorRect,
+      required WindowPositioner positioner,
+      required WidgetBuilder builder}) async {
+    if (!parent.canBeParentOf(WindowArchetype.satellite)) {
+      throw ArgumentError(
+          'Incompatible parent window. The parent window must have one of '
+          'the following archetypes: WindowArchetype.regular, '
+          'WindowArchetype.floatingRegular, or WindowArchetype.dialog. '
+          'Additionally, it must not have any dialog descendants.');
+    }
+
+    int constraintAdjustmentBitmask = 0;
+    for (final WindowPositionerConstraintAdjustment adjustment
+        in positioner.constraintAdjustment) {
+      constraintAdjustmentBitmask |= 1 << adjustment.index;
+    }
+
+    return _createWindow(
+        viewBuilder: (MethodChannel channel) async {
+          return await channel
+              .invokeMethod('createSatelliteWindow', <String, dynamic>{
+            'parent': parent.view.viewId,
+            'size': <int>[size.width.toInt(), size.height.toInt()],
+            'anchorRect': anchorRect != null
+                ? [
+                    anchorRect.left.toInt(),
+                    anchorRect.top.toInt(),
+                    anchorRect.width.toInt(),
+                    anchorRect.height.toInt()
+                  ]
+                : null,
+            'positionerParentAnchor': positioner.parentAnchor.index,
+            'positionerChildAnchor': positioner.childAnchor.index,
+            'positionerOffset': <int>[
+              positioner.offset.dx.toInt(),
+              positioner.offset.dy.toInt()
             ],
+            'positionerConstraintAdjustment': constraintAdjustmentBitmask
           }) as Map<Object?, Object?>;
         },
         builder: builder);
@@ -599,7 +711,8 @@ class WindowController extends State<MultiWindowApp> {
   /// [window] the [Window] to be destroyed
   Future<void> destroyWindow(Window window) async {
     try {
-      await SystemChannels.windowing.invokeMethod('destroyWindow', <int>[window.view.viewId]);
+      await SystemChannels.windowing.invokeMethod(
+          'destroyWindow', <String, dynamic>{'viewId': window.view.viewId});
       _remove(window.view.viewId);
     } on PlatformException catch (e) {
       throw ArgumentError(
@@ -1070,8 +1183,7 @@ abstract class _WindowRoute<T> extends Route<T> {
   @override
   void install() {
     assert(_overlayEntries.isEmpty);
-    _overlayEntries.add(OverlayEntry(
-      builder: (BuildContext context) {
+    _overlayEntries.add(OverlayEntry(builder: (BuildContext context) {
       if (_size == null) {
         return AutoSizedWindowCreator(
             widgetBuilder: builder,
