@@ -19,14 +19,13 @@ void main() {
       switch (call.method) {
         case 'createRegularWindow':
           {
-            final int width = args['width']! as int;
-            final int height = args['height']! as int;
+            final List<Object?> size = args['size']! as List<Object?>;
 
-            return {
+            return <String, Object?>{
               'viewId': tester.view.viewId,
               'archetype': WindowArchetype.regular.index,
-              'width': width,
-              'height': height,
+              'width': size[0],
+              'height': size[1],
               'parentViewId': null
             };
           }
@@ -55,5 +54,124 @@ void main() {
 
     await tester.pump();
     expect(windowContext, isNotNull);
+  });
+
+  testWidgets('createRegularWindow creates a regular window',
+      (WidgetTester tester) async {
+    const Size windowSize = Size(800, 600);
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.windowing, (MethodCall call) async {
+      final Map<Object?, Object?> args =
+          call.arguments as Map<Object?, Object?>;
+      if (call.method == 'createRegularWindow') {
+        final List<Object?> size = args['size']! as List<Object?>;
+
+        return <String, Object?>{
+          'viewId': tester.view.viewId,
+          'archetype': WindowArchetype.regular.index,
+          'width': size[0],
+          'height': size[1],
+          'parentViewId': null
+        };
+      }
+      throw Exception('Unsupported method call: ${call.method}');
+    });
+
+    Window? testWindow;
+    BuildContext? testContext;
+    await tester.pumpWidget(wrapWithView: false, Builder(
+      builder: (BuildContext context) {
+        return MultiWindowApp(
+          initialWindows: <Future<Window> Function(BuildContext)>[
+            (BuildContext context) async {
+              testContext = context;
+              testWindow = await createRegularWindow(
+                  context: context,
+                  size: windowSize,
+                  builder: (BuildContext context) {
+                    return Container();
+                  });
+              return testWindow!;
+            }
+          ],
+        );
+      },
+    ));
+
+    await tester.pump();
+
+    final MultiWindowAppContext multiViewAppContext =
+        MultiWindowAppContext.of(testContext!)!;
+    expect(multiViewAppContext.windows.length, 1);
+
+    final Window window = multiViewAppContext.windows.first;
+    expect(window.archetype, WindowArchetype.regular);
+    expect(window.size.width, windowSize.width);
+    expect(window.size.height, windowSize.height);
+    expect(window.parent, isNull);
+    expect(window.children, isEmpty);
+    expect(window.view.viewId, tester.view.viewId);
+  });
+
+  testWidgets('destroyWindow destroys a window', (WidgetTester tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.windowing, (MethodCall call) async {
+      final Map<Object?, Object?> args =
+          call.arguments as Map<Object?, Object?>;
+      switch (call.method) {
+        case 'createRegularWindow':
+          {
+            final List<Object?> size = args['size']! as List<Object?>;
+
+            return <String, Object?>{
+              'viewId': tester.view.viewId,
+              'archetype': WindowArchetype.regular.index,
+              'width': size[0],
+              'height': size[1],
+              'parentViewId': null
+            };
+          }
+        case 'destroyWindow':
+          expect(args['viewId'], tester.view.viewId);
+          return null;
+        default:
+          throw Exception('Unsupported method call: ${call.method}');
+      }
+    });
+
+    Window? testWindow;
+    BuildContext? testContext;
+    await tester.pumpWidget(wrapWithView: false, Builder(
+      builder: (BuildContext context) {
+        return MultiWindowApp(
+          initialWindows: <Future<Window> Function(BuildContext)>[
+            (BuildContext context) async {
+              testContext = context;
+              testWindow = await createRegularWindow(
+                  context: context,
+                  size: const Size(800, 600),
+                  builder: (BuildContext context) {
+                    return Container();
+                  });
+              return testWindow!;
+            }
+          ],
+        );
+      },
+    ));
+
+    await tester.pump();
+
+    MultiWindowAppContext? multiViewAppContext =
+        MultiWindowAppContext.of(testContext!);
+    expect(multiViewAppContext!.windows.length, 1);
+
+    destroyWindow(testContext!, multiViewAppContext.windows.first);
+
+    await tester.pumpAndSettle();
+
+    multiViewAppContext = MultiWindowAppContext.of(testContext!);
+    expect(multiViewAppContext!.windows.length, 0);
   });
 }
