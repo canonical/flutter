@@ -90,7 +90,9 @@ void main() {
                   context: context,
                   size: windowSize,
                   builder: (BuildContext context) {
-                    return Container();
+                    return Builder(builder: (BuildContext context) {
+                      return Container();
+                    });
                   });
               return testWindow!;
             }
@@ -152,7 +154,9 @@ void main() {
                   context: context,
                   size: const Size(800, 600),
                   builder: (BuildContext context) {
-                    return Container();
+                    return Builder(builder: (BuildContext context) {
+                      return Container();
+                    });
                   });
               return testWindow!;
             }
