@@ -31,7 +31,7 @@ class MyApp extends StatelessWidget {
 
 /// [IntegrationTestWidgetsFlutterBinding] extends [TestWidgetsFlutterBinding]
 /// under the hood. By default, [TestWidgetsFlutterBinding] displays two
-/// messages: one before the test and one after the test. While this fine
+/// messages: one before the test and one after the test. While this is fine
 /// in the case that the user is testing with [runApp], it causes obscure
 /// failures when used alongside [runWidget] in a multi-window context.
 /// Specifically, the test code assumes that an implicit view exists, even
