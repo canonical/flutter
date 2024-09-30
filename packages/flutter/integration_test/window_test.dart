@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -28,13 +29,40 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// [IntegrationTestWidgetsFlutterBinding] extends [TestWidgetsFlutterBinding]
+/// under the hood. By default, [TestWidgetsFlutterBinding] displays two
+/// messages: one before the test and one after the test. While this fine
+/// in the case that the user is testing with [runApp], it causes obscure
+/// failures when used alongside [runWidget] in a multi-window context.
+/// Specifically, the test code assumes that an implicit view exists, even
+/// though are application does not initialize one. This causes strange
+/// failures, such as the default matrix of the tests to have values which
+/// include infinity. For these reasons, we disable pre- and post- test messages
+/// when running tests with [runWidget].
+class _RunWidgetIntegrationTestWidgetsFlutterBinding
+    extends IntegrationTestWidgetsFlutterBinding {
+  static _RunWidgetIntegrationTestWidgetsFlutterBinding? _instance;
+
+  static _RunWidgetIntegrationTestWidgetsFlutterBinding ensureInitialized() {
+    _instance ??= _RunWidgetIntegrationTestWidgetsFlutterBinding();
+    return _instance!;
+  }
+
+  @override
+  bool get showPreTestMessage => false;
+
+  @override
+  bool get showPostTestMessage => false;
+}
+
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  _RunWidgetIntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
       'Test whether or not createRegularWindow will throw on this platform',
       (WidgetTester tester) async {
     startApp();
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
   });
 }
