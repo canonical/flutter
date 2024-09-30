@@ -35,7 +35,7 @@ class MyApp extends StatelessWidget {
 /// in the case that the user is testing with [runApp], it causes obscure
 /// failures when used alongside [runWidget] in a multi-window context.
 /// Specifically, the test code assumes that an implicit view exists, even
-/// though are application does not initialize one. This causes strange
+/// though the application does not initialize one. This causes strange
 /// failures, such as the default matrix of the tests to have values which
 /// include infinity. For these reasons, we disable pre- and post- test messages
 /// when running tests with [runWidget].
