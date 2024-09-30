@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-void startApp() => runWidget(MultiWindowApp(initialWindows: [
+void startApp() => runWidget(
+        MultiWindowApp(initialWindows: <Future<Window> Function(BuildContext)>[
       (BuildContext context) => createRegularWindow(
           context: context,
           size: const Size(800, 600),
