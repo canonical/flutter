@@ -145,6 +145,7 @@ class MenuAnchor extends StatefulWidget {
     this.childFocusNode,
     this.style,
     this.alignmentOffset = Offset.zero,
+    this.layerLink,
     this.clipBehavior = Clip.hardEdge,
     @Deprecated(
       'Use consumeOutsideTap instead. '
@@ -205,6 +206,13 @@ class MenuAnchor extends StatefulWidget {
   /// Defaults to [Offset.zero].
   /// {@endtemplate}
   final Offset? alignmentOffset;
+
+  /// An optional [LayerLink] to attach the menu to the widget that this
+  /// [MenuAnchor] surrounds.
+  ///
+  /// When provided, the menu will follow the widget that this [MenuAnchor]
+  /// surrounds if it moves because of view insets changes.
+  final LayerLink? layerLink;
 
   /// {@macro flutter.material.Material.clipBehavior}
   ///
@@ -430,6 +438,14 @@ class _MenuAnchorState extends State<MenuAnchor> {
     final MenuAnchor anchorWidget = widget;
     final _MenuAnchorState anchor = this;
 
+    Widget contents = _buildContents(context);
+    if (widget.layerLink != null) {
+      contents = CompositedTransformTarget(
+        link: widget.layerLink!,
+        child: contents,
+      );
+    }
+
     if (multiWindowAppContext != null && windowContext != null) {
       _anchorStateController.supportsMultiWindow = true;
       child = AutoSizedWindowCreator(
@@ -462,13 +478,14 @@ class _MenuAnchorState extends State<MenuAnchor> {
                 });
           },
           controller: _anchorStateController._windowCreatorController,
-          child: _buildContents(context));
+          child: contents);
     } else {
       child = OverlayPortal(
         controller: _anchorStateController._overlayController,
         overlayChildBuilder: (BuildContext context) {
           return _Submenu(
             anchor: this,
+            layerLink: widget.layerLink,
             menuStyle: widget.style,
             alignmentOffset: widget.alignmentOffset ?? Offset.zero,
             menuPosition: _menuPosition,
@@ -477,7 +494,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
             crossAxisUnconstrained: widget.crossAxisUnconstrained,
           );
         },
-        child: _buildContents(context),
+        child: contents,
       );
     }
 
@@ -1057,6 +1074,13 @@ class MenuItemButton extends StatefulWidget {
   /// [disabledBackgroundColor] to specify the button's disabled icon and fill
   /// color.
   ///
+  /// Similarly, the [enabledMouseCursor] and [disabledMouseCursor]
+  /// parameters are used to construct [ButtonStyle.mouseCursor].
+  ///
+  /// The [iconColor], [disabledIconColor] are used to construct
+  /// [ButtonStyle.iconColor] and [iconSize] is used to construct
+  /// [ButtonStyle.iconSize].
+  ///
   /// All of the other parameters are either used directly or used to create a
   /// [WidgetStateProperty] with a single value for all states.
   ///
@@ -1086,6 +1110,8 @@ class MenuItemButton extends StatefulWidget {
     Color? shadowColor,
     Color? surfaceTintColor,
     Color? iconColor,
+    double? iconSize,
+    Color? disabledIconColor,
     TextStyle? textStyle,
     Color? overlayColor,
     double? elevation,
@@ -1112,6 +1138,8 @@ class MenuItemButton extends StatefulWidget {
       shadowColor: shadowColor,
       surfaceTintColor: surfaceTintColor,
       iconColor: iconColor,
+      iconSize: iconSize,
+      disabledIconColor: disabledIconColor,
       textStyle: textStyle,
       overlayColor: overlayColor,
       elevation: elevation,
@@ -1838,6 +1866,13 @@ class SubmenuButton extends StatefulWidget {
   /// [disabledBackgroundColor] to specify the button's disabled icon and fill
   /// color.
   ///
+  /// Similarly, the [enabledMouseCursor] and [disabledMouseCursor]
+  /// parameters are used to construct [ButtonStyle.mouseCursor].
+  ///
+  /// The [iconColor], [disabledIconColor] are used to construct
+  /// [ButtonStyle.iconColor] and [iconSize] is used to construct
+  /// [ButtonStyle.iconSize].
+  ///
   /// All of the other parameters are either used directly or used to create a
   /// [WidgetStateProperty] with a single value for all states.
   ///
@@ -1865,6 +1900,8 @@ class SubmenuButton extends StatefulWidget {
     Color? shadowColor,
     Color? surfaceTintColor,
     Color? iconColor,
+    double? iconSize,
+    Color? disabledIconColor,
     TextStyle? textStyle,
     Color? overlayColor,
     double? elevation,
@@ -1891,6 +1928,8 @@ class SubmenuButton extends StatefulWidget {
       shadowColor: shadowColor,
       surfaceTintColor: surfaceTintColor,
       iconColor: iconColor,
+      disabledIconColor: disabledIconColor,
+      iconSize: iconSize,
       textStyle: textStyle,
       overlayColor: overlayColor,
       elevation: elevation,
@@ -3575,6 +3614,7 @@ class _MenuPanelState extends State<_MenuPanel> {
 class _Submenu extends StatelessWidget {
   const _Submenu({
     required this.anchor,
+    required this.layerLink,
     required this.menuStyle,
     required this.menuPosition,
     required this.alignmentOffset,
@@ -3584,6 +3624,7 @@ class _Submenu extends StatelessWidget {
   });
 
   final _MenuAnchorState anchor;
+  final LayerLink? layerLink;
   final MenuStyle? menuStyle;
   final Offset? menuPosition;
   final Offset alignmentOffset;
@@ -3631,12 +3672,17 @@ class _Submenu extends StatelessWidget {
         .clamp(EdgeInsets.zero, EdgeInsetsGeometry.infinity);
     final BuildContext anchorContext = anchor._anchorKey.currentContext!;
     final RenderBox overlay = Overlay.of(anchorContext).context.findRenderObject()! as RenderBox;
-    final RenderBox anchorBox = anchorContext.findRenderObject()! as RenderBox;
-    final Offset upperLeft = anchorBox.localToGlobal(Offset(dx, -dy), ancestor: overlay);
-    final Offset bottomRight = anchorBox.localToGlobal(anchorBox.paintBounds.bottomRight, ancestor: overlay);
+
+    Offset upperLeft = Offset.zero;
+    Offset bottomRight = Offset.zero;
+    if (layerLink == null) {
+      final RenderBox anchorBox = anchorContext.findRenderObject()! as RenderBox;
+      upperLeft = anchorBox.localToGlobal(Offset(dx, -dy), ancestor: overlay);
+      bottomRight = anchorBox.localToGlobal(anchorBox.paintBounds.bottomRight, ancestor: overlay);
+    }
     final Rect anchorRect = Rect.fromPoints(upperLeft, bottomRight);
 
-    return Theme(
+    Widget child = Theme(
       data: Theme.of(context).copyWith(
         visualDensity: visualDensity,
       ),
@@ -3687,6 +3733,16 @@ class _Submenu extends StatelessWidget {
         ),
       ),
     );
+
+    if (layerLink != null) {
+      child = CompositedTransformFollower(
+        link: layerLink!,
+        targetAnchor: Alignment.bottomLeft,
+        child: child,
+      );
+    }
+
+    return child;
   }
 }
 
