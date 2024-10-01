@@ -503,11 +503,15 @@ class WindowController extends State<MultiWindowApp> {
   }
 
   Future<Window> _createWindow(
-      {required Future<Map<Object?, Object?>> Function(MethodChannel channel)
+      {required Future<Map<Object?, Object?>?> Function(MethodChannel channel)
           viewBuilder,
       required WidgetBuilder builder}) async {
-    final Map<Object?, Object?> creationData =
+    final Map<Object?, Object?>? creationData =
         await viewBuilder(SystemChannels.windowing);
+    if (creationData == null) {
+      throw Exception('Unable to create the window on this platform');
+    }
+
     final int viewId = creationData['viewId'] as int;
     final WindowArchetype archetype =
         WindowArchetype.values[creationData['archetype'] as int];
@@ -554,7 +558,7 @@ class WindowController extends State<MultiWindowApp> {
           return await channel
               .invokeMethod('createRegularWindow', <String, dynamic>{
             'size': <int>[size.width.toInt(), size.height.toInt()],
-          }) as Map<Object?, Object?>;
+          }) as Map<Object?, Object?>?;
         },
         builder: builder);
   }
@@ -612,7 +616,7 @@ class WindowController extends State<MultiWindowApp> {
               positioner.offset.dy.toInt()
             ],
             'positionerConstraintAdjustment': constraintAdjustmentBitmask
-          }) as Map<Object?, Object?>;
+          }) as Map<Object?, Object?>?;
         },
         builder: builder);
   }
@@ -645,7 +649,7 @@ class WindowController extends State<MultiWindowApp> {
               .invokeMethod('createDialogWindow', <String, dynamic>{
             'parent': parent?.view.viewId,
             'size': <int>[size.width.toInt(), size.height.toInt()],
-          }) as Map<Object?, Object?>;
+          }) as Map<Object?, Object?>?;
         },
         builder: builder);
   }
@@ -701,7 +705,7 @@ class WindowController extends State<MultiWindowApp> {
               positioner.offset.dy.toInt()
             ],
             'positionerConstraintAdjustment': constraintAdjustmentBitmask
-          }) as Map<Object?, Object?>;
+          }) as Map<Object?, Object?>?;
         },
         builder: builder);
   }
