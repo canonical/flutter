@@ -494,6 +494,7 @@ class WindowController extends State<MultiWindowApp> {
         final int width = arguments['width'] as int;
         final int height = arguments['height'] as int;
         final Size size = Size(width.toDouble(), height.toDouble());
+        _resize(viewId, size);
         break;
       case 'onWindowDestroyed':
         final int viewId = arguments['viewId'] as int;
@@ -780,6 +781,16 @@ class WindowController extends State<MultiWindowApp> {
     setState(() {
       _windows = copy;
     });
+  }
+
+  void _resize(int viewId, Size size) {
+    final Window? toResize = _windows
+        .map((window) => _findWindow(viewId, window))
+        .firstWhere((window) => window != null, orElse: () => null);
+
+    if (toResize != null) {
+      toResize.size = size;
+    }
   }
 
   @override

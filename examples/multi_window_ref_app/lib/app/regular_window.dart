@@ -8,6 +8,7 @@ class RegularWindow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final window = WindowContext.of(context)!.window;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
 
     final widget = Scaffold(
       appBar: AppBar(title: Text('${window.archetype}')),
@@ -34,7 +35,10 @@ class RegularWindow extends StatelessWidget {
                     parent: window,
                     size: const Size(200, 200),
                     anchorRect: Rect.fromLTWH(
-                        0, 0, window.size.width, window.size.height),
+                        0,
+                        0,
+                        window.view.physicalSize.width / dpr,
+                        window.view.physicalSize.height / dpr),
                     positioner: const WindowPositioner(
                       parentAnchor: WindowPositionerAnchor.center,
                       childAnchor: WindowPositionerAnchor.center,
