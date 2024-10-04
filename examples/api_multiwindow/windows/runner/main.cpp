@@ -26,7 +26,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   auto const engine{std::make_shared<flutter::FlutterEngine>(project)};
   RegisterPlugins(engine.get());
-  flutter::FlutterWindowController::instance().setEngine(engine);
+  flutter::FlutterWindowController::GetInstance().SetEngine(engine);
   engine->Run();
 
   ::MSG msg;
