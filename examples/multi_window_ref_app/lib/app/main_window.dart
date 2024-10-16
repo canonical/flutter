@@ -43,7 +43,7 @@ class MainWindow extends StatefulWidget {
 class _MainWindowState extends State<MainWindow> {
   int selectedRowIndex = -1;
   final positionerSettingsModifier = PositionerSettingsModifier();
-  List<Window> _managedWindows = <Window>[];
+  final List<Window> _managedWindows = <Window>[];
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +180,7 @@ class _ActiveWindowsTable extends StatelessWidget {
         return DataRow(
           color: WidgetStateColor.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return Theme.of(context).colorScheme.primary.withOpacity(0.08);
+              return Theme.of(context).colorScheme.primary.withAlpha(20);
             }
             return Colors.transparent;
           }),
@@ -233,6 +233,8 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
 
   @override
   Widget build(BuildContext context) {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+
     return Card.outlined(
       margin: const EdgeInsets.symmetric(horizontal: 25),
       child: Padding(
@@ -318,8 +320,10 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
                               size: _settings.satelliteSize,
                               anchorRect: _settings.anchorToWindow
                                   ? null
-                                  : _clampRectToSize(_settings.anchorRect,
-                                      widget.selectedWindow!.size),
+                                  : _clampRectToSize(
+                                      _settings.anchorRect,
+                                      widget.selectedWindow!.view.physicalSize /
+                                          dpr),
                               positioner: WindowPositioner(
                                 parentAnchor:
                                     selectedPositionerSettings.parentAnchor,
@@ -358,8 +362,10 @@ class _WindowCreatorCardState extends State<_WindowCreatorCard> {
                               size: _settings.popupSize,
                               anchorRect: _settings.anchorToWindow
                                   ? null
-                                  : _clampRectToSize(_settings.anchorRect,
-                                      widget.selectedWindow!.size),
+                                  : _clampRectToSize(
+                                      _settings.anchorRect,
+                                      widget.selectedWindow!.view.physicalSize /
+                                          dpr),
                               positioner: WindowPositioner(
                                 parentAnchor:
                                     selectedPositionerSettings.parentAnchor,
