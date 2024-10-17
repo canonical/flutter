@@ -41,7 +41,7 @@ class MainWindow extends StatefulWidget {
 }
 
 class _MainWindowState extends State<MainWindow> {
-  int selectedRowIndex = -1;
+  int selectedRowIndex = 0;
   final positionerSettingsModifier = PositionerSettingsModifier();
   final List<Window> _managedWindows = <Window>[];
 
