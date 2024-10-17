@@ -1,4 +1,4 @@
-name: multi_window_demo
+name: multi_window_internal
 description: Samples for experimenting with multiple views.
 publish_to: 'none'
 version: 0.1.0
