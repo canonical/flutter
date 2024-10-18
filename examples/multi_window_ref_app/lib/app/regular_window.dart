@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math_64.dart';
 
 import 'popup_window.dart';
 import 'window_settings.dart';
@@ -139,15 +140,15 @@ class _RegularWindowState extends State<RegularWindow>
 }
 
 class RotatedWireCube extends CustomPainter {
-  static const List<List<double>> vertices = [
-    [-.5, -.5, -.5],
-    [.5, -.5, -.5],
-    [.5, .5, -.5],
-    [-.5, .5, -.5],
-    [-.5, -.5, .5],
-    [.5, -.5, .5],
-    [.5, .5, .5],
-    [-.5, .5, .5],
+  static List<Vector3> vertices = [
+    Vector3(-0.5, -0.5, -0.5),
+    Vector3(0.5, -0.5, -0.5),
+    Vector3(0.5, 0.5, -0.5),
+    Vector3(-0.5, 0.5, -0.5),
+    Vector3(-0.5, -0.5, 0.5),
+    Vector3(0.5, -0.5, 0.5),
+    Vector3(0.5, 0.5, 0.5),
+    Vector3(-0.5, 0.5, 0.5),
   ];
 
   static const List<List<int>> edges = [
@@ -161,41 +162,17 @@ class RotatedWireCube extends CustomPainter {
 
   RotatedWireCube({required this.angle, required this.color});
 
-  List<double> rotateX(double angle, List<double> point) {
-    final cosAngle = cos(angle);
-    final sinAngle = sin(angle);
-    final y = point[1] * cosAngle - point[2] * sinAngle;
-    final z = point[1] * sinAngle + point[2] * cosAngle;
-    return [point[0], y, z];
-  }
-
-  List<double> rotateY(double angle, List<double> point) {
-    final cosAngle = cos(angle);
-    final sinAngle = sin(angle);
-    final x = point[0] * cosAngle + point[2] * sinAngle;
-    final z = -point[0] * sinAngle + point[2] * cosAngle;
-    return [x, point[1], z];
-  }
-
-  List<double> rotateZ(double angle, List<double> point) {
-    final cosAngle = cos(angle);
-    final sinAngle = sin(angle);
-    final x = point[0] * cosAngle - point[1] * sinAngle;
-    final y = point[0] * sinAngle + point[1] * cosAngle;
-    return [x, y, point[2]];
-  }
-
-  Offset scaleAndCenter(List<double> point, double size, Offset center) {
+  Offset scaleAndCenter(Vector3 point, double size, Offset center) {
     final scale = size / 2;
-    return Offset(center.dx + point[0] * scale, center.dy - point[1] * scale);
+    return Offset(center.dx + point.x * scale, center.dy - point.y * scale);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
     final rotatedVertices = vertices
-        .map((vertex) => rotateX(angle, vertex))
-        .map((vertex) => rotateY(angle, vertex))
-        .map((vertex) => rotateZ(angle, vertex))
+        .map((vertex) => Matrix4.rotationX(angle).transformed3(vertex))
+        .map((vertex) => Matrix4.rotationY(angle).transformed3(vertex))
+        .map((vertex) => Matrix4.rotationZ(angle).transformed3(vertex))
         .toList();
 
     final center = Offset(size.width / 2, size.height / 2);
