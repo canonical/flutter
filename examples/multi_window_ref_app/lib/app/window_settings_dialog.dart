@@ -48,7 +48,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: regularSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => regularSize = Size(
@@ -64,7 +64,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: regularSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => regularSize = Size(
@@ -90,7 +90,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                     initialValue:
                                         floatingRegularSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => floatingRegularSize = Size(
@@ -107,7 +107,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                     initialValue:
                                         floatingRegularSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => floatingRegularSize = Size(
@@ -136,7 +136,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: dialogSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => dialogSize = Size(
@@ -152,7 +152,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: dialogSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => dialogSize = Size(dialogSize.width,
@@ -177,7 +177,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                     initialValue:
                                         satelliteSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => satelliteSize = Size(
@@ -194,7 +194,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                     initialValue:
                                         satelliteSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => satelliteSize = Size(
@@ -223,7 +223,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: popupSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => popupSize = Size(
@@ -239,7 +239,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: popupSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => popupSize = Size(popupSize.width,
@@ -263,7 +263,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: tipSize.width.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial width',
+                                      labelText: 'Initial view width',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => tipSize = Size(
@@ -279,7 +279,7 @@ Future<WindowSettings?> windowSettingsDialog(
                                   child: TextFormField(
                                     initialValue: tipSize.height.toString(),
                                     decoration: const InputDecoration(
-                                      labelText: 'Initial height',
+                                      labelText: 'Initial view height',
                                     ),
                                     onChanged: (String value) => setState(
                                       () => tipSize = Size(tipSize.width,
