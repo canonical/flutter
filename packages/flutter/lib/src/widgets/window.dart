@@ -159,6 +159,7 @@ class _RegularWindowState extends State<RegularWindow> {
 
   @override
   Future<void> dispose() async {
+    super.dispose();
     if (_listener != null) {
       assert(_app != null);
       _app!._unregisterListener(_listener!);
@@ -173,8 +174,6 @@ class _RegularWindowState extends State<RegularWindow> {
         await destroyWindow(_viewId!);
       } on ArgumentError {}
     }
-
-    super.dispose();
   }
 
   @override

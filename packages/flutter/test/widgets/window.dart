@@ -6,172 +6,200 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler(WidgetTester tester) {
+  return (MethodCall call) async {
+    final Map<Object?, Object?> args = call.arguments as Map<Object?, Object?>;
+    if (call.method == 'createWindow') {
+      final List<Object?> size = args['size']! as List<Object?>;
+
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        SystemChannels.windowing.name,
+        SystemChannels.windowing.codec.encodeMethodCall(
+          MethodCall('onWindowCreated', {'viewId': tester.view.viewId, 'parentViewId': null}),
+        ),
+        (ByteData? data) {},
+      );
+
+      return <String, Object?>{
+        'viewId': tester.view.viewId,
+        'archetype': WindowArchetype.regular.index,
+        'size': size,
+        'parentViewId': null,
+      };
+    } else if (call.method == 'destroyWindow') {
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        SystemChannels.windowing.name,
+        SystemChannels.windowing.codec.encodeMethodCall(
+          MethodCall('onWindowDestroyed', {'viewId': tester.view.viewId}),
+        ),
+        (ByteData? data) {},
+      );
+
+      return null;
+    }
+
+    throw Exception('Unsupported method call: ${call.method}');
+  };
+}
+
 void main() {
-  testWidgets(
-      'Widgets running in an initialWindow that was created by MultiWindowApp in runWidget can find their WindowContext',
-      (WidgetTester tester) async {
-    WindowContext? windowContext;
-
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.windowing, (MethodCall call) async {
-      final Map<Object?, Object?> args =
-          call.arguments as Map<Object?, Object?>;
-      if (call.method == 'create') {
-        final List<Object?> size = args['size']! as List<Object?>;
-
-        return <String, Object?>{
-          'viewId': tester.view.viewId,
-          'archetype': WindowArchetype.regular.index,
-          'width': size[0],
-          'height': size[1],
-          'parentViewId': null
-        };
-      }
-      throw Exception('Unsupported method call: ${call.method}');
-    });
-
-    await tester.pumpWidget(wrapWithView: false, Builder(
-      builder: (BuildContext context) {
-        return MultiWindowApp(
-          initialWindows: <Future<Window> Function(BuildContext)>[
-            (BuildContext context) => createRegular(
-                context: context,
-                size: const Size(800, 600),
-                builder: (BuildContext context) {
-                  return Builder(builder: (BuildContext context) {
-                    windowContext = WindowContext.of(context);
-                    return Container();
-                  });
-                })
-          ],
-        );
-      },
-    ));
-
-    await tester.pump();
-    expect(windowContext, isNotNull);
-  });
-
-  testWidgets('createRegular creates a regular window',
-      (WidgetTester tester) async {
+  testWidgets('RegularWindow widget populates the controller with proper values', (
+    WidgetTester tester,
+  ) async {
     const Size windowSize = Size(800, 600);
 
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.windowing, (MethodCall call) async {
-      final Map<Object?, Object?> args =
-          call.arguments as Map<Object?, Object?>;
-      if (call.method == 'createWindow') {
-        final List<Object?> size = args['size']! as List<Object?>;
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(tester),
+    );
 
-        return <String, Object?>{
-          'viewId': tester.view.viewId,
-          'archetype': WindowArchetype.regular.index,
-          'width': size[0],
-          'height': size[1],
-          'parentViewId': null
-        };
-      }
-      throw Exception('Unsupported method call: ${call.method}');
-    });
-
-    Window? testWindow;
-    BuildContext? testContext;
-    await tester.pumpWidget(wrapWithView: false, Builder(
-      builder: (BuildContext context) {
-        return MultiWindowApp(
-          initialWindows: <Future<Window> Function(BuildContext)>[
-            (BuildContext context) async {
-              testContext = context;
-              testWindow = await createRegular(
-                  context: context,
-                  size: windowSize,
-                  builder: (BuildContext context) {
-                    return Builder(builder: (BuildContext context) {
-                      return Container();
-                    });
-                  });
-              return testWindow!;
-            }
-          ],
-        );
-      },
-    ));
+    final RegularWindowController controller = RegularWindowController();
+    await tester.pumpWidget(
+      wrapWithView: false,
+      Builder(
+        builder: (BuildContext context) {
+          return WindowingApp(
+            children: <Widget>[
+              RegularWindow(controller: controller, preferredSize: windowSize, child: Container()),
+            ],
+          );
+        },
+      ),
+    );
 
     await tester.pump();
 
-    final MultiWindowAppContext multiViewAppContext =
-        MultiWindowAppContext.of(testContext!)!;
-    expect(multiViewAppContext.windows.length, 1);
-
-    final Window window = multiViewAppContext.windows.first;
-    expect(window.archetype, WindowArchetype.regular);
-    expect(window.size.width, windowSize.width);
-    expect(window.size.height, windowSize.height);
-    expect(window.parent, isNull);
-    expect(window.children, isEmpty);
-    expect(window.view.viewId, tester.view.viewId);
+    expect(controller.type, WindowArchetype.regular);
+    expect(controller.size, windowSize);
+    expect(controller.view!.viewId, tester.view.viewId);
   });
 
-  testWidgets('destroyWindow destroys a window', (WidgetTester tester) async {
+  testWidgets('RegularWindow.onError is called when creation throws an error', (
+    WidgetTester tester,
+  ) async {
+    const Size windowSize = Size(800, 600);
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.windowing, (
+      MethodCall call,
+    ) async {
+      throw Exception('Failed to create the window');
+    });
+
+    final RegularWindowController controller = RegularWindowController();
+    bool receivedError = false;
+    await tester.pumpWidget(
+      wrapWithView: false,
+      Builder(
+        builder: (BuildContext context) {
+          return WindowingApp(
+            children: <Widget>[
+              RegularWindow(
+                controller: controller,
+                onError: (String? error) {
+                  expect(
+                    error,
+                    'PlatformException(error, Exception: Failed to create the window, null, null)',
+                  );
+                  receivedError = true;
+                },
+                preferredSize: windowSize,
+                child: Container(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    await tester.pump();
+
+    expect(receivedError, true);
+  });
+
+  testWidgets('RegularWindowController.destroy results in the RegularWindow.onDestroyed callback', (
+    WidgetTester tester,
+  ) async {
+    const Size windowSize = Size(800, 600);
+
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.windowing, (MethodCall call) async {
-      final Map<Object?, Object?> args =
-          call.arguments as Map<Object?, Object?>;
-      switch (call.method) {
-        case 'createWindow':
-          {
-            final List<Object?> size = args['size']! as List<Object?>;
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(tester),
+    );
 
-            return <String, Object?>{
-              'viewId': tester.view.viewId,
-              'archetype': WindowArchetype.regular.index,
-              'width': size[0],
-              'height': size[1],
-              'parentViewId': null
-            };
-          }
-        case 'destroyWindow':
-          expect(args['viewId'], tester.view.viewId);
-          return null;
-        default:
-          throw Exception('Unsupported method call: ${call.method}');
-      }
-    });
-
-    Window? testWindow;
-    BuildContext? testContext;
-    await tester.pumpWidget(wrapWithView: false, Builder(
-      builder: (BuildContext context) {
-        return MultiWindowApp(
-          initialWindows: <Future<Window> Function(BuildContext)>[
-            (BuildContext context) async {
-              testContext = context;
-              testWindow = await createRegular(
-                  context: context,
-                  size: const Size(800, 600),
-                  builder: (BuildContext context) {
-                    return Builder(builder: (BuildContext context) {
-                      return Container();
-                    });
-                  });
-              return testWindow!;
-            }
-          ],
-        );
-      },
-    ));
+    bool destroyed = false;
+    final RegularWindowController controller = RegularWindowController();
+    await tester.pumpWidget(
+      wrapWithView: false,
+      Builder(
+        builder: (BuildContext context) {
+          return WindowingApp(
+            children: <Widget>[
+              RegularWindow(
+                controller: controller,
+                preferredSize: windowSize,
+                onDestroyed: () {
+                  destroyed = true;
+                },
+                child: Container(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
 
     await tester.pump();
+    await controller.destroy();
 
-    MultiWindowAppContext? multiViewAppContext =
-        MultiWindowAppContext.of(testContext!);
-    expect(multiViewAppContext!.windows.length, 1);
-
-    destroyWindow(testContext!, multiViewAppContext.windows.first);
-
-    await tester.pumpAndSettle();
-
-    multiViewAppContext = MultiWindowAppContext.of(testContext!);
-    expect(multiViewAppContext!.windows.length, 0);
+    await tester.pump();
+    expect(destroyed, true);
   });
+
+  testWidgets(
+    'RegularWindowController.size is updated when an onWindowChanged event is triggered on the channel',
+    (WidgetTester tester) async {
+      const Size initialSize = Size(800, 600);
+      const Size newSize = Size(400, 300);
+
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.windowing,
+        _createWindowMethodCallHandler(tester),
+      );
+
+      final RegularWindowController controller = RegularWindowController();
+      await tester.pumpWidget(
+        wrapWithView: false,
+        Builder(
+          builder: (BuildContext context) {
+            return WindowingApp(
+              children: <Widget>[
+                RegularWindow(
+                  controller: controller,
+                  preferredSize: initialSize,
+                  child: Container(),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        SystemChannels.windowing.name,
+        SystemChannels.windowing.codec.encodeMethodCall(
+          MethodCall('onWindowChanged', {
+            'viewId': tester.view.viewId,
+            'size': <int>[newSize.width.toInt(), newSize.height.toInt()],
+          }),
+        ),
+        (ByteData? data) {},
+      );
+      await tester.pump();
+
+      expect(controller.size, newSize);
+    },
+  );
 }
