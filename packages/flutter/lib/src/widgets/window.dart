@@ -160,6 +160,7 @@ class _RegularWindowState extends State<RegularWindow> {
   @override
   Future<void> dispose() async {
     super.dispose();
+
     if (_listener != null) {
       assert(_app != null);
       _app!._unregisterListener(_listener!);
@@ -169,7 +170,7 @@ class _RegularWindowState extends State<RegularWindow> {
     // we need to destroy the window on our way out.
     if (!_hasBeenDestroyed && _viewId != null) {
       // In the event of an argument error, we do nothing. We assume that
-      // the window has been successfully destroyed somehow else. 
+      // the window has been successfully destroyed somehow else.
       try {
         await destroyWindow(_viewId!);
       } on ArgumentError {}
