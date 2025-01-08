@@ -28,9 +28,10 @@ class FlutterHostWindow {
   // logical coordinates. The window style is defined by |archetype|. For
   // |WindowArchetype::popup|, both |owner| and |positioner| must be provided,
   // with |positioner| used only for this archetype. For
-  // |WindowArchetype::regular|, |positioner| and |owner| must be std::nullopt.
-  // On success, a valid window handle can be retrieved via
-  // |FlutterHostWindow::GetWindowHandle|.
+  // |WindowArchetype::dialog|, a modal dialog is created if |owner| is
+  // provided; otherwise, it is modeless. For |WindowArchetype::regular|,
+  // |positioner| and |owner| must be std::nullopt. On success, a valid window
+  // handle can be retrieved via |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
                     std::wstring const& title,
                     WindowSize const& preferred_client_size,
@@ -79,6 +80,9 @@ class FlutterHostWindow {
   // Closes this window's popups and returns the count of closed popups.
   std::size_t CloseOwnedPopups();
 
+  // Enables/disables this window and all its descendants.
+  void EnableWindowAndDescendants(bool enable);
+
   // Finds the first enabled descendant window. If the current window itself is
   // enabled, returns the current window.
   FlutterHostWindow* FindFirstEnabledDescendant() const;
@@ -90,6 +94,13 @@ class FlutterHostWindow {
 
   // Inserts |content| into the window tree.
   void SetChildContent(HWND content);
+
+  // Enforces modal behavior by enabling the deepest dialog in the subtree
+  // rooted at the top-level window, along with its descendants, while
+  // disabling all other windows in the subtree. This ensures that the dialog
+  // and its owned windows remain active and interactive. If no dialog is found,
+  // enables all windows in the subtree.
+  void UpdateModalState();
 
   // Controller for this window.
   FlutterHostWindowController* const window_controller_;

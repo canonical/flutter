@@ -116,6 +116,8 @@ struct WindowPositioner {
 enum class WindowArchetype {
   // Regular top-level window.
   regular,
+  // Dialog window.
+  dialog,
   // Popup.
   popup,
 };

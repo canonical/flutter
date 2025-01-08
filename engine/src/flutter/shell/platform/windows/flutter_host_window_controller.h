@@ -34,11 +34,13 @@ class FlutterHostWindowController {
   // logical coordinates. The actual size may differ. The window style is
   // determined by |archetype|. For |WindowArchetype::popup|, both
   // |parent_view_id| and |positioner| must be provided; |positioner| is used
-  // only for this archetype. For |WindowArchetype::regular|, |positioner| and
-  // |parent_view_id| should be std::nullopt. When |parent_view_id| is
-  // specified, the |FlutterHostWindow| that hosts the view with ID
-  // |parent_view_id| will become the owner window of the |FlutterHostWindow|
-  // created by this function.
+  // only for this archetype. For |WindowArchetype::dialog|, a modal dialog is
+  // created if |parent_view_id| is specified; otherwise, the dialog is
+  // modeless. For |WindowArchetype::regular|, |positioner| and |parent_view_id|
+  // should be std::nullopt. When |parent_view_id| is specified, the
+  // |FlutterHostWindow| that hosts the view with ID |parent_view_id| will
+  // become the owner window of the |FlutterHostWindow| created by this
+  // function.
   //
   // Returns a |WindowMetadata| with the metadata of the window just created, or
   // std::nullopt if the window could not be created.

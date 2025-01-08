@@ -14,6 +14,7 @@ constexpr char kChannelName[] = "flutter/windowing";
 
 // Methods for creating different types of windows.
 constexpr char kCreateWindowMethod[] = "createWindow";
+constexpr char kCreateDialogMethod[] = "createDialog";
 constexpr char kCreatePopupMethod[] = "createPopup";
 
 // The method to destroy a window.
@@ -108,6 +109,8 @@ std::wstring ArchetypeToWideString(flutter::WindowArchetype archetype) {
   switch (archetype) {
     case flutter::WindowArchetype::regular:
       return L"regular";
+    case flutter::WindowArchetype::dialog:
+      return L"dialog";
     case flutter::WindowArchetype::popup:
       return L"popup";
   }
@@ -140,6 +143,8 @@ void WindowingHandler::HandleMethodCall(
 
   if (method == kCreateWindowMethod) {
     HandleCreateWindow(WindowArchetype::regular, method_call, *result);
+  } else if (method == kCreateDialogMethod) {
+    HandleCreateWindow(WindowArchetype::dialog, method_call, *result);
   } else if (method == kCreatePopupMethod) {
     HandleCreateWindow(WindowArchetype::popup, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
@@ -235,14 +240,17 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
   }
 
   std::optional<FlutterViewId> parent_view_id;
-  if (archetype == WindowArchetype::popup) {
+  if (archetype == WindowArchetype::dialog ||
+      archetype == WindowArchetype::popup) {
     if (auto const parent_it = map->find(EncodableValue(kParentKey));
         parent_it != map->end()) {
       if (parent_it->second.IsNull()) {
-        result.Error(
-            kInvalidValueError,
-            "Value for '" + std::string(kParentKey) + "' must not be null.");
-        return;
+        if (archetype != WindowArchetype::dialog) {
+          result.Error(
+              kInvalidValueError,
+              "Value for '" + std::string(kParentKey) + "' must not be null.");
+          return;
+        }
       } else {
         if (auto const* const parent = std::get_if<int>(&parent_it->second)) {
           parent_view_id = *parent >= 0 ? std::optional<FlutterViewId>(*parent)

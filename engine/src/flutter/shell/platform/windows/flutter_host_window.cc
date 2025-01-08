@@ -332,6 +332,24 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       }
       window_style |= WS_OVERLAPPEDWINDOW;
       break;
+    case WindowArchetype::dialog:
+      if (positioner.has_value()) {
+        FML_LOG(ERROR) << "A dialog cannot have a positioner.";
+        return;
+      }
+      window_style |= WS_OVERLAPPED | WS_CAPTION;
+      extended_window_style |= WS_EX_DLGMODALFRAME;
+      if (!owner) {
+        // If the dialog has no owner, add a minimize box and a system menu.
+        window_style |= WS_MINIMIZEBOX | WS_SYSMENU;
+      } else {
+        // If the owner window has WS_EX_TOOLWINDOW style, apply the same
+        // style to the dialog.
+        if (GetWindowLongPtr(owner.value(), GWL_EXSTYLE) & WS_EX_TOOLWINDOW) {
+          extended_window_style |= WS_EX_TOOLWINDOW;
+        }
+      }
+      break;
     case WindowArchetype::popup:
       if (!positioner.has_value()) {
         FML_LOG(ERROR) << "A popup window requires a positioner.";
@@ -349,7 +367,8 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
 
   // Calculate the screen space window rectangle for the new window.
   // Default positioning values (CW_USEDEFAULT) are used
-  // if the window has no owner or positioner.
+  // if the window has no owner or positioner. Owned dialogs will be
+  // centered in the owner's frame.
   WindowRectangle const window_rect = [&]() -> WindowRectangle {
     WindowSize const window_size = GetWindowSizeForClientSize(
         preferred_client_size, window_style, extended_window_style,
@@ -382,6 +401,19 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
         return {rect.top_left,
                 {rect.size.width + window_size.width - frame_size.width,
                  rect.size.height + window_size.height - frame_size.height}};
+      } else if (archetype == WindowArchetype::dialog) {
+        // Center owned dialog in the owner's frame.
+        RECT owner_frame;
+        DwmGetWindowAttribute(owner.value(), DWMWA_EXTENDED_FRAME_BOUNDS,
+                              &owner_frame, sizeof(owner_frame));
+        WindowPoint const top_left = {
+            static_cast<int>(
+                (owner_frame.left + owner_frame.right - window_size.width) *
+                0.5),
+            static_cast<int>(
+                (owner_frame.top + owner_frame.bottom - window_size.height) *
+                0.5)};
+        return {top_left, window_size};
       }
     }
     return {{CW_USEDEFAULT, CW_USEDEFAULT}, window_size};
@@ -419,6 +451,13 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   if (!hwnd) {
     FML_LOG(ERROR) << "Cannot create window: " << GetLastErrorAsString();
     return;
+  }
+
+  // If this is a modeless dialog, remove the close button from the system menu.
+  if (archetype == WindowArchetype::dialog && !owner) {
+    if (HMENU hMenu = GetSystemMenu(hwnd, FALSE)) {
+      DeleteMenu(hMenu, SC_CLOSE, MF_BYCOMMAND);
+    }
   }
 
   // Adjust the window position so its origin aligns with the top-left corner
@@ -485,6 +524,10 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   }
 
   UpdateTheme(hwnd);
+
+  if (archetype == WindowArchetype::dialog && owner) {
+    UpdateModalState();
+  }
 
   SetChildContent(view_controller_->view()->GetWindowHandle());
 
@@ -626,6 +669,14 @@ std::size_t FlutterHostWindow::CloseOwnedPopups() {
   return previous_num_owned_popups - num_owned_popups_;
 }
 
+void FlutterHostWindow::EnableWindowAndDescendants(bool enable) {
+  EnableWindow(window_handle_, enable);
+
+  for (FlutterHostWindow* const owned : owned_windows_) {
+    owned->EnableWindowAndDescendants(enable);
+  }
+}
+
 FlutterHostWindow* FlutterHostWindow::FindFirstEnabledDescendant() const {
   if (IsWindowEnabled(GetWindowHandle())) {
     return const_cast<FlutterHostWindow*>(this);
@@ -649,6 +700,13 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       if (window_handle_) {
         switch (archetype_) {
           case WindowArchetype::regular:
+            break;
+          case WindowArchetype::dialog:
+            if (FlutterHostWindow* const owner_window = GetOwnerWindow()) {
+              owner_window->owned_windows_.erase(this);
+              UpdateModalState();
+              FocusViewOf(owner_window);
+            }
             break;
           case WindowArchetype::popup:
             if (FlutterHostWindow* const owner_window = GetOwnerWindow()) {
@@ -738,6 +796,37 @@ void FlutterHostWindow::SetChildContent(HWND content) {
   MoveWindow(content, client_rect.left, client_rect.top,
              client_rect.right - client_rect.left,
              client_rect.bottom - client_rect.top, true);
+}
+
+void FlutterHostWindow::UpdateModalState() {
+  auto const find_deepest_dialog = [](FlutterHostWindow* window,
+                                      auto&& self) -> FlutterHostWindow* {
+    FlutterHostWindow* deepest_dialog = nullptr;
+    if (window->archetype_ == WindowArchetype::dialog) {
+      deepest_dialog = window;
+    }
+    for (FlutterHostWindow* const owned : window->owned_windows_) {
+      if (FlutterHostWindow* const owned_deepest_dialog = self(owned, self)) {
+        deepest_dialog = owned_deepest_dialog;
+      }
+    }
+    return deepest_dialog;
+  };
+
+  HWND root_ancestor_handle = window_handle_;
+  while (HWND next = GetWindow(root_ancestor_handle, GW_OWNER)) {
+    root_ancestor_handle = next;
+  }
+  if (FlutterHostWindow* const root_ancestor =
+          GetThisFromHandle(root_ancestor_handle)) {
+    if (FlutterHostWindow* const deepest_dialog =
+            find_deepest_dialog(root_ancestor, find_deepest_dialog)) {
+      root_ancestor->EnableWindowAndDescendants(false);
+      deepest_dialog->EnableWindowAndDescendants(true);
+    } else {
+      root_ancestor->EnableWindowAndDescendants(true);
+    }
+  }
 }
 
 }  // namespace flutter
