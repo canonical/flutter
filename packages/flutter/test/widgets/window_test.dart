@@ -15,7 +15,7 @@ Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler(WidgetTest
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         SystemChannels.windowing.name,
         SystemChannels.windowing.codec.encodeMethodCall(
-          MethodCall('onWindowCreated', {'viewId': tester.view.viewId, 'parentViewId': null}),
+          MethodCall('onWindowCreated',  <String, Object?>{'viewId': tester.view.viewId, 'parentViewId': null}),
         ),
         (ByteData? data) {},
       );
@@ -30,7 +30,7 @@ Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler(WidgetTest
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         SystemChannels.windowing.name,
         SystemChannels.windowing.codec.encodeMethodCall(
-          MethodCall('onWindowDestroyed', {'viewId': tester.view.viewId}),
+          MethodCall('onWindowDestroyed',  <String, Object?>{'viewId': tester.view.viewId}),
         ),
         (ByteData? data) {},
       );
@@ -185,12 +185,11 @@ void main() {
       );
 
       await tester.pump();
-      await tester.pump();
 
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         SystemChannels.windowing.name,
         SystemChannels.windowing.codec.encodeMethodCall(
-          MethodCall('onWindowChanged', {
+          MethodCall('onWindowChanged',  <String, Object?>{
             'viewId': tester.view.viewId,
             'size': <int>[newSize.width.toInt(), newSize.height.toInt()],
           }),
