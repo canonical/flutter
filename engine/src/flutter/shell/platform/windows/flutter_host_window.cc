@@ -198,6 +198,22 @@ std::string GetLastErrorAsString() {
   return oss.str();
 }
 
+// Calculates the offset from the top-left corner of |from| to the top-left
+// corner of |to|. If either window handle is null or if the window positions
+// cannot be retrieved, the offset will be (0, 0).
+POINT GetOffsetBetweenWindows(HWND from, HWND to) {
+  POINT offset = {0, 0};
+  if (to && from) {
+    RECT to_rect;
+    RECT from_rect;
+    if (GetWindowRect(to, &to_rect) && GetWindowRect(from, &from_rect)) {
+      offset.x = to_rect.left - from_rect.left;
+      offset.y = to_rect.top - from_rect.top;
+    }
+  }
+  return offset;
+}
+
 // Calculates the rectangle of the monitor that has the largest area of
 // intersection with |rect|, in physical coordinates.
 flutter::WindowRectangle GetOutputRect(RECT rect) {
@@ -350,6 +366,18 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
         }
       }
       break;
+    case WindowArchetype::satellite:
+      if (!positioner.has_value()) {
+        FML_LOG(ERROR) << "A satellite window requires a positioner.";
+        return;
+      }
+      if (!owner.has_value()) {
+        FML_LOG(ERROR) << "A satellite window must have an owner.";
+        return;
+      }
+      window_style |= WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX;
+      extended_window_style |= WS_EX_TOOLWINDOW;
+      break;
     case WindowArchetype::popup:
       if (!positioner.has_value()) {
         FML_LOG(ERROR) << "A popup window requires a positioner.";
@@ -474,6 +502,12 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   SetWindowPos(hwnd, nullptr, window_rc.left - left_dropshadow_width,
                window_rc.top - top_dropshadow_height, 0, 0,
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+  if (owner) {
+    if (HWND const owner_window = GetWindow(hwnd, GW_OWNER)) {
+      offset_from_owner_ = GetOffsetBetweenWindows(owner_window, hwnd);
+    }
+  }
 
   // Set up the view.
   RECT client_rect;
@@ -708,6 +742,12 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
               FocusViewOf(owner_window);
             }
             break;
+          case WindowArchetype::satellite:
+            if (FlutterHostWindow* const owner_window = GetOwnerWindow()) {
+              owner_window->owned_windows_.erase(this);
+              FocusViewOf(owner_window);
+            }
+            break;
           case WindowArchetype::popup:
             if (FlutterHostWindow* const owner_window = GetOwnerWindow()) {
               owner_window->owned_windows_.erase(this);
@@ -738,6 +778,21 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
     }
 
     case WM_SIZE: {
+      if (wparam == SIZE_MAXIMIZED) {
+        // Hide the satellites of the maximized window
+        for (FlutterHostWindow* const owned : owned_windows_) {
+          if (owned->archetype_ == WindowArchetype::satellite) {
+            ShowWindow(owned->GetWindowHandle(), SW_HIDE);
+          }
+        }
+      } else if (wparam == SIZE_RESTORED) {
+        // Show the satellites of the restored window
+        for (FlutterHostWindow* const owned : owned_windows_) {
+          if (owned->archetype_ == WindowArchetype::satellite) {
+            ShowWindow(owned->GetWindowHandle(), SW_SHOWNOACTIVATE);
+          }
+        }
+      }
       if (child_content_ != nullptr) {
         // Resize and reposition the child content window
         RECT client_rect;
@@ -772,6 +827,27 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
         }
       }
       break;
+
+    case WM_MOVE: {
+      if (HWND const owner_window = GetWindow(hwnd, GW_OWNER)) {
+        offset_from_owner_ = GetOffsetBetweenWindows(owner_window, hwnd);
+      }
+
+      // Move the satellites attached to this window.
+      RECT window_rect;
+      GetWindowRect(hwnd, &window_rect);
+      for (FlutterHostWindow* const owned : owned_windows_) {
+        if (owned->archetype_ == WindowArchetype::satellite) {
+          RECT rect_satellite;
+          GetWindowRect(owned->GetWindowHandle(), &rect_satellite);
+          MoveWindow(owned->GetWindowHandle(),
+                     window_rect.left + owned->offset_from_owner_.x,
+                     window_rect.top + owned->offset_from_owner_.y,
+                     rect_satellite.right - rect_satellite.left,
+                     rect_satellite.bottom - rect_satellite.top, FALSE);
+        }
+      }
+    } break;
 
     case WM_MOUSEACTIVATE:
       FocusViewOf(this);

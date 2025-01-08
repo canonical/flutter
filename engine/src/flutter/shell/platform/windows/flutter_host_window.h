@@ -26,12 +26,13 @@ class FlutterHostWindow {
   // area. |controller| manages the window. |title| is the window title.
   // |preferred_client_size| is the preferred size of the client rectangle in
   // logical coordinates. The window style is defined by |archetype|. For
-  // |WindowArchetype::popup|, both |owner| and |positioner| must be provided,
-  // with |positioner| used only for this archetype. For
-  // |WindowArchetype::dialog|, a modal dialog is created if |owner| is
-  // provided; otherwise, it is modeless. For |WindowArchetype::regular|,
-  // |positioner| and |owner| must be std::nullopt. On success, a valid window
-  // handle can be retrieved via |FlutterHostWindow::GetWindowHandle|.
+  // |WindowArchetype::satellite| and |WindowArchetype::popup|, both |owner|
+  // and |positioner| must be provided, with |positioner| used only for these
+  // archetypes. For |WindowArchetype::dialog|, a modal dialog is created if
+  // |owner| is provided; otherwise, it is modeless. For
+  // |WindowArchetype::regular|, |positioner| and |owner| must be std::nullopt.
+  // On success, a valid window handle can be retrieved via
+  // |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
                     std::wstring const& title,
                     WindowSize const& preferred_client_size,
@@ -126,6 +127,9 @@ class FlutterHostWindow {
 
   // Backing handle for the hosted view window.
   HWND child_content_ = nullptr;
+
+  // Offset between this window's position and its owner's.
+  POINT offset_from_owner_ = {0, 0};
 
   // Whether the non-client area can be redrawn as inactive. Temporarily
   // disabled during owned popup destruction to prevent flickering.

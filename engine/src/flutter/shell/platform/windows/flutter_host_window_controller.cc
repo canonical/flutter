@@ -76,6 +76,15 @@ bool FlutterHostWindowController::DestroyHostWindow(FlutterViewId view_id) {
     FlutterHostWindow* const window = it->second.get();
     HWND const window_handle = window->GetWindowHandle();
 
+    if (window->GetArchetype() == WindowArchetype::dialog &&
+        GetWindow(window_handle, GW_OWNER)) {
+      // Temporarily disable satellite hiding. This prevents satellites from
+      // flickering because of briefly hiding and showing between the
+      // destruction of a modal dialog and the transfer of focus to the owner
+      // window.
+      disable_satellite_hiding_ = window_handle;
+    }
+
     // |window| will be removed from |windows_| when WM_NCDESTROY is handled.
     PostMessage(window->GetWindowHandle(), WM_CLOSE, 0, 0);
 
@@ -110,6 +119,12 @@ LRESULT FlutterHostWindowController::HandleMessage(HWND hwnd,
 
         SendOnWindowDestroyed(view_id);
 
+        if (disable_satellite_hiding_ == hwnd) {
+          // Re-enable satellite hiding by clearing the window handle now that
+          // the window is fully destroyed.
+          disable_satellite_hiding_ = nullptr;
+        }
+
         if (quit_on_close) {
           DestroyAllWindows();
         }
@@ -137,15 +152,17 @@ LRESULT FlutterHostWindowController::HandleMessage(HWND hwnd,
             window->CloseOwnedPopups();
           }
         }
+        ShowWindowAndAncestorsSatellites(hwnd);
       }
       break;
     case WM_ACTIVATEAPP:
       if (wparam == FALSE) {
         if (FlutterHostWindow* const window =
                 FlutterHostWindow::GetThisFromHandle(hwnd)) {
-          // Close owned popups if a window belonging to a different application
-          // is being activated.
+          // Close owned popups and hide satellites from all windows if a window
+          // belonging to a different application is being activated.
           window->CloseOwnedPopups();
+          HideWindowsSatellites(nullptr);
         }
       }
       break;
@@ -213,6 +230,50 @@ WindowSize FlutterHostWindowController::GetWindowSize(
   return {static_cast<int>(width), static_cast<int>(height)};
 }
 
+void FlutterHostWindowController::HideWindowsSatellites(HWND opt_out_hwnd) {
+  if (disable_satellite_hiding_) {
+    return;
+  }
+
+  // Helper function to check whether |hwnd| is a descendant of |ancestor|.
+  auto const is_descendant_of = [](HWND hwnd, HWND ancestor) -> bool {
+    HWND current = ancestor;
+    while (current) {
+      current = GetWindow(current, GW_OWNER);
+      if (current == hwnd) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper function to check whether |window| owns a dialog.
+  auto const has_dialog = [](FlutterHostWindow* window) -> bool {
+    for (auto* const owned : window->GetOwnedWindows()) {
+      if (owned->GetArchetype() == WindowArchetype::dialog) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (auto const& [_, window] : windows_) {
+    if (window->GetWindowHandle() == opt_out_hwnd ||
+        is_descendant_of(window->GetWindowHandle(), opt_out_hwnd)) {
+      continue;
+    }
+
+    for (FlutterHostWindow* const owned : window->GetOwnedWindows()) {
+      if (owned->GetArchetype() != WindowArchetype::satellite) {
+        continue;
+      }
+      if (!has_dialog(owned)) {
+        ShowWindow(owned->GetWindowHandle(), SW_HIDE);
+      }
+    }
+  }
+}
+
 void FlutterHostWindowController::SendOnWindowChanged(
     FlutterViewId view_id) const {
   if (channel_) {
@@ -251,6 +312,29 @@ void FlutterHostWindowController::SendOnWindowDestroyed(
         std::make_unique<EncodableValue>(EncodableMap{
             {EncodableValue(kViewIdKey), EncodableValue(view_id)},
         }));
+  }
+}
+
+void FlutterHostWindowController::ShowWindowAndAncestorsSatellites(HWND hwnd) {
+  HWND current = hwnd;
+  while (current) {
+    for (FlutterHostWindow* const owned :
+         FlutterHostWindow::GetThisFromHandle(current)->GetOwnedWindows()) {
+      if (owned->GetArchetype() == WindowArchetype::satellite) {
+        ShowWindow(owned->GetWindowHandle(), SW_SHOWNOACTIVATE);
+      }
+    }
+    current = GetWindow(current, GW_OWNER);
+  }
+
+  // Hide satellites of all other top-level windows.
+  if (!disable_satellite_hiding_) {
+    if (FlutterHostWindow* const window =
+            FlutterHostWindow::GetThisFromHandle(hwnd)) {
+      if (window->GetArchetype() != WindowArchetype::satellite) {
+        HideWindowsSatellites(hwnd);
+      }
+    }
   }
 }
 

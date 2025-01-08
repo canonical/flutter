@@ -118,6 +118,8 @@ enum class WindowArchetype {
   regular,
   // Dialog window.
   dialog,
+  // Satellite window attached to a regular or dialog window.
+  satellite,
   // Popup.
   popup,
 };

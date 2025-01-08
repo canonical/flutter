@@ -15,6 +15,7 @@ constexpr char kChannelName[] = "flutter/windowing";
 // Methods for creating different types of windows.
 constexpr char kCreateWindowMethod[] = "createWindow";
 constexpr char kCreateDialogMethod[] = "createDialog";
+constexpr char kCreateSatelliteMethod[] = "createSatellite";
 constexpr char kCreatePopupMethod[] = "createPopup";
 
 // The method to destroy a window.
@@ -111,6 +112,8 @@ std::wstring ArchetypeToWideString(flutter::WindowArchetype archetype) {
       return L"regular";
     case flutter::WindowArchetype::dialog:
       return L"dialog";
+    case flutter::WindowArchetype::satellite:
+      return L"satellite";
     case flutter::WindowArchetype::popup:
       return L"popup";
   }
@@ -145,6 +148,8 @@ void WindowingHandler::HandleMethodCall(
     HandleCreateWindow(WindowArchetype::regular, method_call, *result);
   } else if (method == kCreateDialogMethod) {
     HandleCreateWindow(WindowArchetype::dialog, method_call, *result);
+  } else if (method == kCreateSatelliteMethod) {
+    HandleCreateWindow(WindowArchetype::satellite, method_call, *result);
   } else if (method == kCreatePopupMethod) {
     HandleCreateWindow(WindowArchetype::popup, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
@@ -183,7 +188,8 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
   std::optional<WindowPositioner> positioner;
   std::optional<WindowRectangle> anchor_rect;
 
-  if (archetype == WindowArchetype::popup) {
+  if (archetype == WindowArchetype::satellite ||
+      archetype == WindowArchetype::popup) {
     if (auto const anchor_rect_it = map->find(EncodableValue(kAnchorRectKey));
         anchor_rect_it != map->end()) {
       if (!anchor_rect_it->second.IsNull()) {
@@ -208,6 +214,9 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
     if (!positioner_parent_anchor) {
       return;
     }
+    auto const parent_anchor =
+        static_cast<WindowPositioner::Anchor>(positioner_parent_anchor.value());
+
     auto const positioner_child_anchor = GetSingleValueForKeyOrSendError<int>(
         kPositionerChildAnchorKey, map, result);
     if (!positioner_child_anchor) {
@@ -229,8 +238,7 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
     }
     positioner = WindowPositioner{
         .anchor_rect = anchor_rect,
-        .parent_anchor = static_cast<WindowPositioner::Anchor>(
-            positioner_parent_anchor.value()),
+        .parent_anchor = parent_anchor,
         .child_anchor = child_anchor,
         .offset = {positioner_offset_list->at(0),
                    positioner_offset_list->at(1)},
@@ -241,6 +249,7 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
 
   std::optional<FlutterViewId> parent_view_id;
   if (archetype == WindowArchetype::dialog ||
+      archetype == WindowArchetype::satellite ||
       archetype == WindowArchetype::popup) {
     if (auto const parent_it = map->find(EncodableValue(kParentKey));
         parent_it != map->end()) {
@@ -256,7 +265,8 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
           parent_view_id = *parent >= 0 ? std::optional<FlutterViewId>(*parent)
                                         : std::nullopt;
           if (!parent_view_id.has_value() &&
-              (archetype == WindowArchetype::popup)) {
+              (archetype == WindowArchetype::satellite ||
+               archetype == WindowArchetype::popup)) {
             result.Error(kInvalidValueError,
                          "Value for '" + std::string(kParentKey) + "' (" +
                              std::to_string(parent_view_id.value()) +
