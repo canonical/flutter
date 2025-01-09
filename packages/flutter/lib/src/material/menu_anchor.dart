@@ -317,7 +317,15 @@ class _MenuAnchorStateController {
   OverlayPortalController? _overlayPortalController;
   PopupWindowController? _popupWindowController;
 
-  bool get isShowing => false;
+  bool get isShowing {
+    assert(_isInitialized);
+    if (_overlayPortalController != null) {
+      return _overlayPortalController!.isShowing;
+    } else {
+      return _popupWindowController!.isShowing;
+    }
+  }
+
   bool get _isInitialized => _overlayPortalController != null || _popupWindowController != null;
 
   void initialize(bool isWindowingApp) {
@@ -330,7 +338,7 @@ class _MenuAnchorStateController {
         debugLabel: kReleaseMode ? null : 'MenuAnchor controller',
       );
       assert(_overlayPortalController != null);
-      assert(_popupWindowController != null);
+      assert(_popupWindowController == null);
     }
   }
 
@@ -471,12 +479,18 @@ class _MenuAnchorState extends State<MenuAnchor> {
         child: contents,
       );
     } else {
-      child = PopupWindow(
-        controller: _overlayController._popupWindowController,
-        automaticallyCreate: false,
-        preferredSize: const Size(200, 400), // TODO: Get a real size
-        child: contents,
-      );
+      child = ViewAnchor(
+        view: PopupWindow(
+          controller: _overlayController._popupWindowController,
+          automaticallyCreate: false,
+          preferredSize: const Size(200, 400), // TODO: Get a real size
+          child: _MenuPanel(
+            orientation: _orientation,
+            menuStyle: widget.style,
+            children: widget.menuChildren,
+          )
+        ),
+        child: contents);
     }
 
     if (!widget.anchorTapClosesMenu) {

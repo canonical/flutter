@@ -246,6 +246,9 @@ class WindowPositioner {
 abstract class WindowController with ChangeNotifier {
   FlutterView? _view;
 
+  /// Returns true when the window associated with the controller has been created.
+  bool get isShowing => _view != null;
+
   /// The ID of the view used for this window, which is unique to each window.
   FlutterView? get view => _view;
   set view(FlutterView? value) {
@@ -390,6 +393,7 @@ class _GenericWindowState extends State<_GenericWindow> {
               }
             },
             onDestroyed: () {
+              widget.controller?.view = null;
               widget.onDestroyed?.call();
               _hasBeenDestroyed = true;
             },
