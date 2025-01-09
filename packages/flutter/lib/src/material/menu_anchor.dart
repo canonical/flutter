@@ -313,6 +313,46 @@ class MenuAnchor extends StatefulWidget {
   }
 }
 
+class _MenuAnchorStateController {
+  OverlayPortalController? _overlayPortalController;
+  PopupWindowController? _popupWindowController;
+
+  bool get isShowing => false;
+  bool get _isInitialized => _overlayPortalController != null || _popupWindowController != null;
+
+  void initialize(bool isWindowingApp) {
+    if (isWindowingApp) {
+      _popupWindowController ??= PopupWindowController();
+      assert(_popupWindowController != null);
+      assert(_overlayPortalController == null);
+    } else {
+      _overlayPortalController ??= OverlayPortalController(
+        debugLabel: kReleaseMode ? null : 'MenuAnchor controller',
+      );
+      assert(_overlayPortalController != null);
+      assert(_popupWindowController != null);
+    }
+  }
+
+  void show() {
+    assert(_isInitialized);
+    if (_overlayPortalController != null) {
+      _overlayPortalController!.show();
+    } else {
+      _popupWindowController!.create();
+    }
+  }
+
+  Future<void> hide() async {
+    assert(_isInitialized);
+    if (_overlayPortalController != null) {
+      _overlayPortalController!.hide();
+    } else {
+      await _popupWindowController!.destroy();
+    }
+  }
+}
+
 class _MenuAnchorState extends State<MenuAnchor> {
   // This is the global key that is used later to determine the bounding rect
   // for the anchor's region that the CustomSingleChildLayout's delegate
@@ -327,9 +367,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  final OverlayPortalController _overlayController = OverlayPortalController(
-    debugLabel: kReleaseMode ? null : 'MenuAnchor controller',
-  );
+  final _MenuAnchorStateController _overlayController = _MenuAnchorStateController();
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
   bool get _isOpen => _overlayController.isShowing;
@@ -408,22 +446,38 @@ class _MenuAnchorState extends State<MenuAnchor> {
       contents = CompositedTransformTarget(link: widget.layerLink!, child: contents);
     }
 
-    Widget child = OverlayPortal(
-      controller: _overlayController,
-      overlayChildBuilder: (BuildContext context) {
-        return _Submenu(
-          anchor: this,
-          layerLink: widget.layerLink,
-          menuStyle: widget.style,
-          alignmentOffset: widget.alignmentOffset ?? Offset.zero,
-          menuPosition: _menuPosition,
-          clipBehavior: widget.clipBehavior,
-          menuChildren: widget.menuChildren,
-          crossAxisUnconstrained: widget.crossAxisUnconstrained,
-        );
-      },
-      child: contents,
-    );
+    if (WindowingAppContext.of(context) != null) {
+      _overlayController.initialize(true);
+    } else {
+      _overlayController.initialize(false);
+    }
+
+    Widget child;
+    if (_overlayController._overlayPortalController != null) {
+      child = OverlayPortal(
+        controller: _overlayController._overlayPortalController!,
+        overlayChildBuilder: (BuildContext context) {
+          return _Submenu(
+            anchor: this,
+            layerLink: widget.layerLink,
+            menuStyle: widget.style,
+            alignmentOffset: widget.alignmentOffset ?? Offset.zero,
+            menuPosition: _menuPosition,
+            clipBehavior: widget.clipBehavior,
+            menuChildren: widget.menuChildren,
+            crossAxisUnconstrained: widget.crossAxisUnconstrained,
+          );
+        },
+        child: contents,
+      );
+    } else {
+      child = PopupWindow(
+        controller: _overlayController._popupWindowController,
+        automaticallyCreate: false,
+        preferredSize: const Size(200, 400), // TODO: Get a real size
+        child: contents,
+      );
+    }
 
     if (!widget.anchorTapClosesMenu) {
       child = TapRegion(

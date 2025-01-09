@@ -25,7 +25,7 @@ enum WindowArchetype {
   popup,
 
   /// Tooltip.
-  tip
+  tip,
 }
 
 /// Defines the anchor point for the anchor rectangle or child [Window] when
@@ -274,6 +274,23 @@ abstract class WindowController with ChangeNotifier {
   /// The archetype of the window.
   WindowArchetype get type;
 
+  VoidCallback? _create;
+  Future<WindowCreationResult>? _future;
+
+  /// Creates the window.
+  void create() {
+    if (_future != null) {
+      return;
+    }
+
+    assert(
+      _create != null,
+      'Controller must be associated with a Window widget before show() can be called',
+    );
+
+    _create!.call();
+  }
+
   /// Destroys this window.
   Future<void> destroy() async {
     if (view == null) {
@@ -302,18 +319,21 @@ class PopupWindowController extends WindowController {
 }
 
 class _GenericWindow extends StatefulWidget {
-  _GenericWindow(
-      {this.onDestroyed,
-      this.onError,
-      super.key,
-      required this.createFuture,
-      required this.controller,
-      required this.child});
+  _GenericWindow({
+    this.onDestroyed,
+    this.onError,
+    super.key,
+    required this.automaticallyCreate,
+    required this.createFuture,
+    required this.controller,
+    required this.child,
+  });
 
   final Future<WindowCreationResult> Function() createFuture;
   final WindowController? controller;
   final void Function()? onDestroyed;
   final void Function(String?)? onError;
+  final bool automaticallyCreate;
   final Widget child;
 
   @override
@@ -330,45 +350,56 @@ class _GenericWindowState extends State<_GenericWindow> {
   @override
   void initState() {
     super.initState();
+    if (widget.automaticallyCreate) {
+      create();
+    }
+
+    widget.controller?._create = create;
+  }
+
+  void create() {
     setState(() {
       _future = widget.createFuture();
     });
 
-    _future!.then((WindowCreationResult metadata) async {
-      _viewId = metadata.view.viewId;
-      if (widget.controller != null) {
-        widget.controller!.view = metadata.view;
-        widget.controller!.parentViewId = metadata.parent;
-        widget.controller!.size = metadata.size;
-      }
+    widget.controller?._future = _future;
+    _future!
+        .then((WindowCreationResult metadata) async {
+          _viewId = metadata.view.viewId;
+          if (widget.controller != null) {
+            widget.controller!.view = metadata.view;
+            widget.controller!.parentViewId = metadata.parent;
+            widget.controller!.size = metadata.size;
+          }
 
-      final _WindowingAppContext? windowingAppContext = _WindowingAppContext.of(context);
-      assert(windowingAppContext != null);
-      _listener = _WindowListener(
-          viewId: metadata.view.viewId,
-          onChanged: (_WindowChangeProperties properties) {
-            if (widget.controller == null) {
-              return;
-            }
+          final WindowingAppContext? windowingAppContext = WindowingAppContext.of(context);
+          assert(windowingAppContext != null);
+          _listener = _WindowListener(
+            viewId: metadata.view.viewId,
+            onChanged: (_WindowChangeProperties properties) {
+              if (widget.controller == null) {
+                return;
+              }
 
-            if (properties.size != null) {
-              widget.controller!.size = properties.size;
-            }
+              if (properties.size != null) {
+                widget.controller!.size = properties.size;
+              }
 
-            if (properties.parentViewId != null) {
-              widget.controller!.parentViewId = properties.parentViewId;
-            }
-          },
-          onDestroyed: () {
-            widget.onDestroyed?.call();
-            _hasBeenDestroyed = true;
-          });
-      _app = windowingAppContext!.windowingApp;
-      _app!._registerListener(_listener!);
-    }).catchError((Object? error) {
-      print(error.toString());
-      widget.onError?.call(error.toString());
-    });
+              if (properties.parentViewId != null) {
+                widget.controller!.parentViewId = properties.parentViewId;
+              }
+            },
+            onDestroyed: () {
+              widget.onDestroyed?.call();
+              _hasBeenDestroyed = true;
+            },
+          );
+          _app = windowingAppContext!._windowingApp;
+          _app!._registerListener(_listener!);
+        })
+        .catchError((Object? error) {
+          widget.onError?.call(error.toString());
+        });
   }
 
   @override
@@ -394,17 +425,19 @@ class _GenericWindowState extends State<_GenericWindow> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<WindowCreationResult>(
-        key: widget.key,
-        future: _future,
-        builder: (BuildContext context, AsyncSnapshot<WindowCreationResult> metadata) {
-          if (!metadata.hasData) {
-            return const ViewCollection(views: <Widget>[]);
-          }
+      key: widget.key,
+      future: _future,
+      builder: (BuildContext context, AsyncSnapshot<WindowCreationResult> metadata) {
+        if (!metadata.hasData) {
+          return const ViewCollection(views: <Widget>[]);
+        }
 
-          return View(
-              view: metadata.data!.view,
-              child: WindowContext(view: metadata.data!.view, child: widget.child));
-        });
+        return View(
+          view: metadata.data!.view,
+          child: WindowContext(view: metadata.data!.view, child: widget.child),
+        );
+      },
+    );
   }
 }
 
@@ -413,13 +446,14 @@ class _GenericWindowState extends State<_GenericWindow> {
 /// either a [ViewAnchor] or a [ViewCollection].
 class RegularWindow extends StatelessWidget {
   /// Creates a regular window widget
-  const RegularWindow(
-      {this.controller,
-      this.onDestroyed,
-      this.onError,
-      super.key,
-      required this.preferredSize,
-      required this.child});
+  const RegularWindow({
+    this.controller,
+    this.onDestroyed,
+    this.onError,
+    super.key,
+    required this.preferredSize,
+    required this.child,
+  });
 
   final RegularWindowController? controller;
 
@@ -438,12 +472,14 @@ class RegularWindow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _GenericWindow(
-        onDestroyed: onDestroyed,
-        onError: onError,
-        key: key,
-        createFuture: () => createRegular(size: preferredSize),
-        controller: controller,
-        child: child);
+      onDestroyed: onDestroyed,
+      onError: onError,
+      key: key,
+      createFuture: () => createRegular(size: preferredSize),
+      automaticallyCreate: true,
+      controller: controller,
+      child: child,
+    );
   }
 }
 
@@ -452,18 +488,19 @@ class RegularWindow extends StatelessWidget {
 /// either a [ViewAnchor] or a [ViewCollection].
 class PopupWindow extends StatelessWidget {
   /// Creates a popup window widget
-  const PopupWindow(
-      {this.controller,
-      this.onDestroyed,
-      this.onError,
-      super.key,
-      required Size preferredSize,
-      Rect? anchorRect,
-      WindowPositioner positioner = const WindowPositioner(),
-      required this.child})
-      : _preferredSize = preferredSize,
-        _anchorRect = anchorRect,
-        _positioner = positioner;
+  const PopupWindow({
+    this.controller,
+    this.onDestroyed,
+    this.onError,
+    this.automaticallyCreate = true,
+    super.key,
+    required Size preferredSize,
+    Rect? anchorRect,
+    WindowPositioner positioner = const WindowPositioner(),
+    required this.child,
+  }) : _preferredSize = preferredSize,
+       _anchorRect = anchorRect,
+       _positioner = positioner;
 
   /// Controller for this widget.
   final PopupWindowController? controller;
@@ -473,6 +510,11 @@ class PopupWindow extends StatelessWidget {
 
   /// Called when an error is encountered during the creation of this widget.
   final void Function(String?)? onError;
+
+  /// If set to false, it will be up to the caller to use the [PopupWindowController]
+  /// to create the window. Defaults to true, which means that the window is
+  /// automatically created when the widget is built.
+  final bool automaticallyCreate;
 
   final Size _preferredSize;
 
@@ -501,16 +543,20 @@ class PopupWindow extends StatelessWidget {
     assert(windowContext != null, 'A PopupWindow must have a parent');
 
     return _GenericWindow(
-        onDestroyed: onDestroyed,
-        onError: onError,
-        key: key,
-        createFuture: () => createPopup(
+      onDestroyed: onDestroyed,
+      onError: onError,
+      automaticallyCreate: automaticallyCreate,
+      key: key,
+      createFuture:
+          () => createPopup(
             parentViewId: windowContext!.viewId,
             size: _preferredSize,
             anchorRect: _anchorRect == null ? null : _clampRectToSize(context, _anchorRect),
-            positioner: _positioner),
-        controller: controller,
-        child: child);
+            positioner: _positioner,
+          ),
+      controller: controller,
+      child: child,
+    );
   }
 }
 
@@ -539,8 +585,12 @@ class WindowContext extends InheritedWidget {
 /// The raw data returned as a result of creating a window.
 class WindowCreationResult {
   /// Creates a new window.
-  WindowCreationResult(
-      {required this.view, required this.archetype, required this.size, this.parent});
+  WindowCreationResult({
+    required this.view,
+    required this.archetype,
+    required this.size,
+    this.parent,
+  });
 
   /// The view associated with the window.
   final FlutterView view;
@@ -561,45 +611,54 @@ class WindowCreationResult {
 ///
 /// [size] the size of the new [Window] in pixels
 Future<WindowCreationResult> createRegular({required Size size}) {
-  return _createWindow(viewBuilder: (MethodChannel channel) async {
-    return await channel.invokeMethod('createWindow', <String, dynamic>{
-      'size': <int>[size.width.toInt(), size.height.toInt()],
-    }) as Map<Object?, Object?>;
-  });
+  return _createWindow(
+    viewBuilder: (MethodChannel channel) async {
+      return await channel.invokeMethod('createWindow', <String, dynamic>{
+            'size': <int>[size.width.toInt(), size.height.toInt()],
+          })
+          as Map<Object?, Object?>;
+    },
+  );
 }
 
-Future<WindowCreationResult> createPopup(
-    {required int parentViewId,
-    required Size size,
-    Rect? anchorRect,
-    required WindowPositioner positioner}) {
+Future<WindowCreationResult> createPopup({
+  required int parentViewId,
+  required Size size,
+  Rect? anchorRect,
+  required WindowPositioner positioner,
+}) {
   int constraintAdjustmentBitmask = 0;
   for (final WindowPositionerConstraintAdjustment adjustment in positioner.constraintAdjustment) {
     constraintAdjustmentBitmask |= 1 << adjustment.index;
   }
 
-  return _createWindow(viewBuilder: (MethodChannel channel) async {
-    return await channel.invokeMethod('createPopup', <String, dynamic>{
-      'parent': parentViewId,
-      'size': <int>[size.width.toInt(), size.height.toInt()],
-      'anchorRect': anchorRect != null
-          ? <int>[
-              anchorRect.left.toInt(),
-              anchorRect.top.toInt(),
-              anchorRect.width.toInt(),
-              anchorRect.height.toInt()
-            ]
-          : null,
-      'positionerParentAnchor': positioner.parentAnchor.index,
-      'positionerChildAnchor': positioner.childAnchor.index,
-      'positionerOffset': <int>[positioner.offset.dx.toInt(), positioner.offset.dy.toInt()],
-      'positionerConstraintAdjustment': constraintAdjustmentBitmask
-    }) as Map<Object?, Object?>;
-  });
+  return _createWindow(
+    viewBuilder: (MethodChannel channel) async {
+      return await channel.invokeMethod('createPopup', <String, dynamic>{
+            'parent': parentViewId,
+            'size': <int>[size.width.toInt(), size.height.toInt()],
+            'anchorRect':
+                anchorRect != null
+                    ? <int>[
+                      anchorRect.left.toInt(),
+                      anchorRect.top.toInt(),
+                      anchorRect.width.toInt(),
+                      anchorRect.height.toInt(),
+                    ]
+                    : null,
+            'positionerParentAnchor': positioner.parentAnchor.index,
+            'positionerChildAnchor': positioner.childAnchor.index,
+            'positionerOffset': <int>[positioner.offset.dx.toInt(), positioner.offset.dy.toInt()],
+            'positionerConstraintAdjustment': constraintAdjustmentBitmask,
+          })
+          as Map<Object?, Object?>;
+    },
+  );
 }
 
-Future<WindowCreationResult> _createWindow(
-    {required Future<Map<Object?, Object?>> Function(MethodChannel channel) viewBuilder}) async {
+Future<WindowCreationResult> _createWindow({
+  required Future<Map<Object?, Object?>> Function(MethodChannel channel) viewBuilder,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
   final Map<Object?, Object?> creationData = await viewBuilder(SystemChannels.windowing);
   final int viewId = creationData['viewId']! as int;
@@ -615,10 +674,11 @@ Future<WindowCreationResult> _createWindow(
   );
 
   return WindowCreationResult(
-      view: flView,
-      archetype: archetype,
-      size: Size((size[0]! as int).toDouble(), (size[1]! as int).toDouble()),
-      parent: parentViewId);
+    view: flView,
+    archetype: archetype,
+    size: Size((size[0]! as int).toDouble(), (size[1]! as int).toDouble()),
+    parent: parentViewId,
+  );
 }
 
 /// Destroys the window associated with the provided view ID.
@@ -626,11 +686,13 @@ Future<WindowCreationResult> _createWindow(
 /// [viewId] the view id of the window that should be destroyed
 Future<void> destroyWindow(int viewId) async {
   try {
-    await SystemChannels.windowing
-        .invokeMethod('destroyWindow', <String, dynamic>{'viewId': viewId});
+    await SystemChannels.windowing.invokeMethod('destroyWindow', <String, dynamic>{
+      'viewId': viewId,
+    });
   } on PlatformException catch (e) {
     throw ArgumentError(
-        'Unable to delete window with view_id=$viewId. Does the window exist? Error: $e');
+      'Unable to delete window with view_id=$viewId. Does the window exist? Error: $e',
+    );
   }
 }
 
@@ -683,8 +745,9 @@ class _WindowingAppState extends State<WindowingApp> {
           parentViewId = arguments['parentViewId']! as int;
         }
 
-        final _WindowChangeProperties properties =
-            _WindowChangeProperties(parentViewId: parentViewId);
+        final _WindowChangeProperties properties = _WindowChangeProperties(
+          parentViewId: parentViewId,
+        );
         for (final _WindowListener listener in _listeners) {
           if (listener.viewId == viewId) {
             listener.onChanged(properties);
@@ -724,22 +787,28 @@ class _WindowingAppState extends State<WindowingApp> {
 
   @override
   Widget build(BuildContext context) {
-    return _WindowingAppContext(windowingApp: this, child: ViewCollection(views: widget.children));
+    return WindowingAppContext._(windowingApp: this, child: ViewCollection(views: widget.children));
   }
 }
 
-class _WindowingAppContext extends InheritedWidget {
-  const _WindowingAppContext({super.key, required super.child, required this.windowingApp});
+/// This context is only available when a widget tree includes the [WindowingApp]
+/// widget. Other widgets may use the presence of this context to check whether
+/// or not the user has specified this application has a window application. In
+/// that case, they may opt to perform a different behavior, such as opening
+/// a window where they were previously using an overlay.
+class WindowingAppContext extends InheritedWidget {
+  const WindowingAppContext._({required super.child, required _WindowingAppState windowingApp})
+    : _windowingApp = windowingApp;
 
-  final _WindowingAppState windowingApp;
+  final _WindowingAppState _windowingApp;
 
   /// Returns the [MultiWindowAppContext] if any
-  static _WindowingAppContext? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<_WindowingAppContext>();
+  static WindowingAppContext? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<WindowingAppContext>();
   }
 
   @override
-  bool updateShouldNotify(_WindowingAppContext oldWidget) {
-    return windowingApp != oldWidget.windowingApp;
+  bool updateShouldNotify(WindowingAppContext oldWidget) {
+    return _windowingApp != oldWidget._windowingApp;
   }
 }
