@@ -277,23 +277,6 @@ abstract class WindowController with ChangeNotifier {
   /// The archetype of the window.
   WindowArchetype get type;
 
-  VoidCallback? _create;
-  Future<WindowCreationResult>? _future;
-
-  /// Creates the window.
-  void create() {
-    if (_future != null) {
-      return;
-    }
-
-    assert(
-      _create != null,
-      'Controller must be associated with a Window widget before show() can be called',
-    );
-
-    _create!.call();
-  }
-
   /// Destroys this window.
   Future<void> destroy() async {
     if (view == null) {
@@ -326,7 +309,6 @@ class _GenericWindow extends StatefulWidget {
     this.onDestroyed,
     this.onError,
     super.key,
-    required this.automaticallyCreate,
     required this.createFuture,
     required this.controller,
     required this.child,
@@ -336,7 +318,6 @@ class _GenericWindow extends StatefulWidget {
   final WindowController? controller;
   final void Function()? onDestroyed;
   final void Function(String?)? onError;
-  final bool automaticallyCreate;
   final Widget child;
 
   @override
@@ -353,11 +334,7 @@ class _GenericWindowState extends State<_GenericWindow> {
   @override
   void initState() {
     super.initState();
-    if (widget.automaticallyCreate) {
-      create();
-    }
-
-    widget.controller?._create = create;
+    create();
   }
 
   void create() {
@@ -365,7 +342,6 @@ class _GenericWindowState extends State<_GenericWindow> {
       _future = widget.createFuture();
     });
 
-    widget.controller?._future = _future;
     _future!
         .then((WindowCreationResult metadata) async {
           _viewId = metadata.view.viewId;
@@ -480,7 +456,6 @@ class RegularWindow extends StatelessWidget {
       onError: onError,
       key: key,
       createFuture: () => createRegular(size: preferredSize),
-      automaticallyCreate: true,
       controller: controller,
       child: child,
     );
@@ -496,7 +471,6 @@ class PopupWindow extends StatelessWidget {
     this.controller,
     this.onDestroyed,
     this.onError,
-    this.automaticallyCreate = true,
     super.key,
     required Size preferredSize,
     Rect? anchorRect,
@@ -514,11 +488,6 @@ class PopupWindow extends StatelessWidget {
 
   /// Called when an error is encountered during the creation of this widget.
   final void Function(String?)? onError;
-
-  /// If set to false, it will be up to the caller to use the [PopupWindowController]
-  /// to create the window. Defaults to true, which means that the window is
-  /// automatically created when the widget is built.
-  final bool automaticallyCreate;
 
   final Size _preferredSize;
 
@@ -549,7 +518,6 @@ class PopupWindow extends StatelessWidget {
     return _GenericWindow(
       onDestroyed: onDestroyed,
       onError: onError,
-      automaticallyCreate: automaticallyCreate,
       key: key,
       createFuture:
           () => createPopup(

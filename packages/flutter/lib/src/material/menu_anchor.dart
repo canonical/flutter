@@ -314,6 +314,9 @@ class MenuAnchor extends StatefulWidget {
 }
 
 class _MenuAnchorStateController {
+  _MenuAnchorStateController({required this.anchor});
+
+  final _MenuAnchorState anchor;
   OverlayPortalController? _overlayPortalController;
   PopupWindowController? _popupWindowController;
 
@@ -347,7 +350,7 @@ class _MenuAnchorStateController {
     if (_overlayPortalController != null) {
       _overlayPortalController!.show();
     } else {
-      _popupWindowController!.create();
+      anchor.showPopup();
     }
   }
 
@@ -370,12 +373,13 @@ class _MenuAnchorState extends State<MenuAnchor> {
     debugLabel: kReleaseMode ? null : 'MenuAnchor',
   );
   _MenuAnchorState? _parent;
+  bool _popupShown = false;
   late final FocusScopeNode _menuScopeNode;
   MenuController? _internalMenuController;
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  final _MenuAnchorStateController _overlayController = _MenuAnchorStateController();
+  late final _MenuAnchorStateController _overlayController = _MenuAnchorStateController(anchor: this);
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
   bool get _isOpen => _overlayController.isShowing;
@@ -479,18 +483,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
         child: contents,
       );
     } else {
-      child = ViewAnchor(
-        view: PopupWindow(
-          controller: _overlayController._popupWindowController,
-          automaticallyCreate: false,
-          preferredSize: const Size(200, 400), // TODO: Get a real size
-          child: _MenuPanel(
-            orientation: _orientation,
-            menuStyle: widget.style,
-            children: widget.menuChildren,
-          )
-        ),
-        child: contents);
+      child = ViewAnchor(view: _buildPopupView(), child: contents);
     }
 
     if (!widget.anchorTapClosesMenu) {
@@ -531,6 +524,44 @@ class _MenuAnchorState extends State<MenuAnchor> {
         },
       ),
     );
+  }
+
+  Widget? _buildPopupView() {
+    if (!_popupShown) {
+      return null;
+    }
+    
+    final BuildContext anchorContext = _anchorKey.currentContext!;
+    final RenderBox box = anchorContext.findRenderObject()! as RenderBox;
+    final Offset position = box.localToGlobal(Offset.zero);
+
+    return PopupWindow(
+      controller: _overlayController._popupWindowController,
+      preferredSize: const Size(200, 400), // TODO: Get a real size
+      onDestroyed: hidePopup,
+      onError: (String? error) => hidePopup(),
+      anchorRect: Rect.fromPoints(
+        position,
+        Offset(position.dx + box.size.width, position.dy + box.size.height),
+      ),
+      positioner: const WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.bottomRight,
+        childAnchor: WindowPositionerAnchor.topLeft,
+      ),
+      child: _MenuPanel(
+        orientation: _orientation,
+        menuStyle: widget.style,
+        children: widget.menuChildren,
+      ),
+    );
+  }
+
+  void showPopup() {
+    setState(() => _popupShown = true);
+  }
+  
+  void hidePopup() {
+    setState(() => _popupShown = false);
   }
 
   // Returns the first focusable item in the submenu, where "first" is
