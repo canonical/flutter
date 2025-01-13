@@ -379,7 +379,9 @@ class _MenuAnchorState extends State<MenuAnchor> {
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  late final _MenuAnchorStateController _overlayController = _MenuAnchorStateController(anchor: this);
+  late final _MenuAnchorStateController _overlayController = _MenuAnchorStateController(
+    anchor: this,
+  );
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
   bool get _isOpen => _overlayController.isShowing;
@@ -530,10 +532,22 @@ class _MenuAnchorState extends State<MenuAnchor> {
     if (!_popupShown) {
       return null;
     }
-    
+
     final BuildContext anchorContext = _anchorKey.currentContext!;
     final RenderBox box = anchorContext.findRenderObject()! as RenderBox;
     final Offset position = box.localToGlobal(Offset.zero);
+    final WindowPositioner positioner;
+    if (_parent != null) {
+      positioner = const WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.topRight,
+        childAnchor: WindowPositionerAnchor.topLeft,
+      );
+    } else {
+      positioner = const WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.bottomLeft,
+        childAnchor: WindowPositionerAnchor.topLeft,
+      );
+    }
 
     return PopupWindow(
       controller: _overlayController._popupWindowController,
@@ -544,14 +558,15 @@ class _MenuAnchorState extends State<MenuAnchor> {
         position,
         Offset(position.dx + box.size.width, position.dy + box.size.height),
       ),
-      positioner: const WindowPositioner(
-        parentAnchor: WindowPositionerAnchor.bottomRight,
-        childAnchor: WindowPositionerAnchor.topLeft,
-      ),
-      child: _MenuPanel(
-        orientation: _orientation,
-        menuStyle: widget.style,
-        children: widget.menuChildren,
+      positioner: positioner,
+      child: FocusScope(
+        node: _menuScopeNode,
+        skipTraversal: true,
+        child:_MenuPanel(
+          orientation: _orientation,
+          menuStyle: widget.style,
+          children: widget.menuChildren,
+        )
       ),
     );
   }
