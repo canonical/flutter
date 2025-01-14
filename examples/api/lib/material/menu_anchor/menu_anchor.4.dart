@@ -7,9 +7,7 @@ import 'package:flutter/services.dart';
 
 /// Flutter code sample for [MenuAnchor].
 
-void main() => runWidget(const WindowingApp(children: <Widget>[
-      RegularWindow(preferredSize: Size(640, 480), child: MenuApp())
-    ]));
+void main() => runApp(const MenuApp());
 
 /// An enhanced enum to define the available menus and their shortcuts.
 ///
@@ -102,6 +100,7 @@ class _MyCascadingMenuState extends State<MyCascadingMenu> {
       children: <Widget>[
         MenuAnchor(
           childFocusNode: _buttonFocusNode,
+          alwaysUseWindowing: true,
           menuChildren: <Widget>[
             MenuItemButton(
               child: Text(MenuEntry.about.label),
