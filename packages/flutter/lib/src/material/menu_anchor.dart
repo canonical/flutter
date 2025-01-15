@@ -152,7 +152,6 @@ class MenuAnchor extends StatefulWidget {
     this.onOpen,
     this.onClose,
     this.crossAxisUnconstrained = true,
-    this.alwaysUseWindowing = false,
     required this.menuChildren,
     this.builder,
     this.child,
@@ -266,15 +265,6 @@ class MenuAnchor extends StatefulWidget {
   /// size it should be. When it is set to false, it can be useful when the menu should
   /// be constrained in both main axis and cross axis, such as a [DropdownMenu].
   final bool crossAxisUnconstrained;
-
-  /// If set to true, the [MenuAnchor] will always use a true popup window to
-  /// draw the contents in instead of an [Overlay].
-  /// 
-  /// When an applicaton is wrapped in the [WindowingApp] widget, the widget will
-  /// default to using a true popup window internally.
-  /// 
-  /// Defaults to false.
-  final bool alwaysUseWindowing;
 
   /// A list of children containing the menu items that are the contents of the
   /// menu surrounded by this [MenuAnchor].
@@ -470,7 +460,7 @@ class _MenuAnchorState extends State<MenuAnchor> {
       contents = CompositedTransformTarget(link: widget.layerLink!, child: contents);
     }
 
-    if (widget.alwaysUseWindowing || WindowingAppContext.of(context) != null) {
+    if (WindowingAppContext.of(context) != null) {
       _overlayController.initialize(true);
     } else {
       _overlayController.initialize(false);
