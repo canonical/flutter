@@ -69,7 +69,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   engine->Run();
 
   std::vector<std::string> engine_switches = GetEngineSwitches();
-  (void)engine_switches;
   bool const enable_multi_window = std::any_of(
       engine_switches.begin(), engine_switches.end(),
       [](std::string const& arg) { return arg == "enable-multi-window=true"; });
