@@ -40,6 +40,7 @@ abstract class WindowController with ChangeNotifier {
           _view = metadata.view;
           _state = metadata.state;
           _size = metadata.size;
+          notifyListeners();
 
           SchedulerBinding.instance.addPostFrameCallback((_) async {
             _listener = _WindowListener(
@@ -47,11 +48,13 @@ abstract class WindowController with ChangeNotifier {
               onChanged: (_WindowChangeProperties properties) {
                 if (properties.size != null) {
                   _size = properties.size!;
+                  notifyListeners();
                 }
               },
               onDestroyed: () {
                 _view = null;
                 _isPendingDestroy = false;
+                notifyListeners();
                 onDestroyed?.call();
               },
             );
