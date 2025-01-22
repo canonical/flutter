@@ -381,39 +381,3 @@ class _WindowingAppGlobalData {
     _listeners.add(listener);
   }
 }
-
-/// Declares that an application will create multiple windows.
-class WindowingApp extends StatefulWidget {
-  /// Creates a new windowing app with the provided child windows.
-  const WindowingApp({super.key, required this.children});
-
-  /// A list of initial windows to render. These windows will be placed inside
-  /// of a [ViewCollection].
-  final List<Widget> children;
-
-  @override
-  State<WindowingApp> createState() => _WindowingAppState();
-}
-
-class _WindowingAppState extends State<WindowingApp> {
-  @override
-  Widget build(BuildContext context) {
-    return _WindowingAppContext(windowingApp: this, child: ViewCollection(views: widget.children));
-  }
-}
-
-class _WindowingAppContext extends InheritedWidget {
-  const _WindowingAppContext({super.key, required super.child, required this.windowingApp});
-
-  final _WindowingAppState windowingApp;
-
-  /// Returns the [MultiWindowAppContext] if any
-  static _WindowingAppContext? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<_WindowingAppContext>();
-  }
-
-  @override
-  bool updateShouldNotify(_WindowingAppContext oldWidget) {
-    return windowingApp != oldWidget.windowingApp;
-  }
-}
