@@ -356,7 +356,7 @@ class _WindowingAppGlobalData {
         Size? size;
         if (arguments['size'] != null) {
           final List<Object?> sizeRaw = arguments['size']! as List<Object?>;
-          size = Size((sizeRaw[0]! as int).toDouble(), (sizeRaw[1]! as int).toDouble());
+          size = Size(sizeRaw[0]! as double, sizeRaw[1]! as double);
         }
 
         final _WindowChangeProperties properties = _WindowChangeProperties(size: size);
