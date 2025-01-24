@@ -17,6 +17,7 @@
 namespace flutter {
 
 class FlutterHostWindowController;
+class FlutterWindowsView;
 class FlutterWindowsViewController;
 
 // A Win32 window that hosts a |FlutterWindow| in its client area.
@@ -37,6 +38,14 @@ class FlutterHostWindow {
                     WindowArchetype archetype,
                     std::optional<HWND> owner,
                     std::optional<WindowPositioner> positioner);
+
+  // Creates a regular |FlutterHostWindow| from an existing |view| associated
+  // with a top-level |hwnd|. This is used when the native window is created by
+  // the runner code.
+  FlutterHostWindow(FlutterHostWindowController* controller,
+                    HWND hwnd,
+                    FlutterWindowsView* view);
+
   virtual ~FlutterHostWindow();
 
   // Returns the instance pointer for |hwnd| or nulllptr if invalid.
@@ -94,7 +103,8 @@ class FlutterHostWindow {
   // Controller for this window.
   FlutterHostWindowController* const window_controller_;
 
-  // Controller for the view hosted by this window.
+  // Controller for the view hosted in this window. Value-initialized if the
+  // window was created from an existing top-level |hwnd|.
   std::unique_ptr<FlutterWindowsViewController> view_controller_;
 
   // The window archetype.

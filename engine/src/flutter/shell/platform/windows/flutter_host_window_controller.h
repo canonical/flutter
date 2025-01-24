@@ -49,6 +49,10 @@ class FlutterHostWindowController {
       std::optional<WindowPositioner> positioner,
       std::optional<FlutterViewId> parent_view_id);
 
+  // Creates a |FlutterHostWindow| from an existing |view| and native top-level
+  // |hwnd|.
+  void CreateHostWindowFromExisting(FlutterWindowsView* view, HWND hwnd);
+
   // Destroys the window that hosts the view with ID |view_id|.
   //
   // Returns false if the controller does not have a window hosting a view with
@@ -60,6 +64,11 @@ class FlutterHostWindowController {
   // Returns nullptr if the controller does not have a window hosting a view
   // with ID |view_id|.
   FlutterHostWindow* GetHostWindow(FlutterViewId view_id) const;
+
+  // Gets the window with |hwnd| as its window handle.
+  //
+  // Returns nullptr if the controller does not manage a window with |hwnd|.
+  FlutterHostWindow* GetHostWindow(HWND hwnd) const;
 
   // Message handler called by |FlutterHostWindow::WndProc| to process window
   // messages before delegating them to the host window. This allows the
@@ -74,6 +83,11 @@ class FlutterHostWindowController {
   FlutterWindowsEngine* engine() const;
 
  private:
+  // Destroys the window with |hwnd| as its window handle.
+  //
+  // Returns false if the controller does not manage a window with |hwnd|.
+  bool DestroyHostWindow(HWND hwnd);
+
   // Destroys all windows managed by this controller.
   void DestroyAllWindows();
 

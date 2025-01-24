@@ -7,6 +7,7 @@
 #include <dwmapi.h>
 
 #include "flutter/shell/platform/windows/flutter_windows_engine.h"
+#include "flutter/shell/platform/windows/flutter_windows_view.h"
 
 namespace flutter {
 
@@ -71,6 +72,15 @@ std::optional<WindowMetadata> FlutterHostWindowController::CreateHostWindow(
   return result;
 }
 
+void FlutterHostWindowController::CreateHostWindowFromExisting(
+    FlutterWindowsView* view,
+    HWND hwnd) {
+  auto window = std::make_unique<FlutterHostWindow>(this, hwnd, view);
+  FlutterViewId const view_id = view->view_id();
+  windows_[view_id] = std::move(window);
+  SendOnWindowCreated(view_id, std::nullopt);
+}
+
 bool FlutterHostWindowController::DestroyHostWindow(FlutterViewId view_id) {
   if (auto it = windows_.find(view_id); it != windows_.end()) {
     FlutterHostWindow* const window = it->second.get();
@@ -92,29 +102,21 @@ FlutterHostWindow* FlutterHostWindowController::GetHostWindow(
   return nullptr;
 }
 
+FlutterHostWindow* FlutterHostWindowController::GetHostWindow(HWND hwnd) const {
+  auto const it =
+      std::find_if(windows_.begin(), windows_.end(), [hwnd](auto const& pair) {
+        return pair.second->GetWindowHandle() == hwnd;
+      });
+  return it != windows_.end() ? it->second.get() : nullptr;
+}
+
 LRESULT FlutterHostWindowController::HandleMessage(HWND hwnd,
                                                    UINT message,
                                                    WPARAM wparam,
                                                    LPARAM lparam) {
   switch (message) {
-    case WM_NCDESTROY: {
-      auto const it = std::find_if(
-          windows_.begin(), windows_.end(), [hwnd](auto const& window) {
-            return window.second->GetWindowHandle() == hwnd;
-          });
-      if (it != windows_.end()) {
-        FlutterViewId const view_id = it->first;
-        bool const quit_on_close = it->second->GetQuitOnClose();
-
-        windows_.erase(it);
-
-        SendOnWindowDestroyed(view_id);
-
-        if (quit_on_close) {
-          DestroyAllWindows();
-        }
-      }
-    }
+    case WM_NCDESTROY:
+      DestroyHostWindow(hwnd);
       return 0;
     case WM_ACTIVATE:
       if (wparam != WA_INACTIVE) {
@@ -165,6 +167,10 @@ LRESULT FlutterHostWindowController::HandleMessage(HWND hwnd,
 
   if (FlutterHostWindow* const window =
           FlutterHostWindow::GetThisFromHandle(hwnd)) {
+    if (message == WM_DESTROY && !window->view_controller_) {
+      DestroyHostWindow(hwnd);
+      return 0;
+    }
     return window->HandleMessage(hwnd, message, wparam, lparam);
   }
   return DefWindowProc(hwnd, message, wparam, lparam);
@@ -179,6 +185,24 @@ FlutterWindowsEngine* FlutterHostWindowController::engine() const {
   return engine_;
 }
 
+bool FlutterHostWindowController::DestroyHostWindow(HWND hwnd) {
+  auto const it = std::find_if(
+      windows_.begin(), windows_.end(), [hwnd](auto const& window) {
+        return window.second->GetWindowHandle() == hwnd;
+      });
+  if (it != windows_.end()) {
+    FlutterViewId const view_id = it->first;
+    bool const quit_on_close = it->second->GetQuitOnClose();
+    windows_.erase(it);
+    SendOnWindowDestroyed(view_id);
+    if (quit_on_close) {
+      DestroyAllWindows();
+    }
+    return true;
+  }
+  return false;
+}
+
 void FlutterHostWindowController::DestroyAllWindows() {
   if (!windows_.empty()) {
     // Destroy windows in reverse order of creation.
@@ -186,7 +210,7 @@ void FlutterHostWindowController::DestroyAllWindows() {
          it != std::prev(windows_.begin());) {
       auto current = it--;
       auto const& [view_id, window] = *current;
-      if (window->GetWindowHandle()) {
+      if (window->view_controller_ && window->GetWindowHandle()) {
         DestroyHostWindow(view_id);
       }
     }

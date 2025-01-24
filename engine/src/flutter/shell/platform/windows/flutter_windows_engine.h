@@ -137,6 +137,15 @@ class FlutterWindowsEngine {
   // Returns null if the view does not exist.
   FlutterWindowsView* view(FlutterViewId view_id) const;
 
+  // Returns the root view that has |hwnd| as the parent window.
+  FlutterWindowsView* GetViewFromTopLevelWindow(HWND hwnd) const;
+
+  // Handles window messages for a |hwnd| created by the runner.
+  void HandleExternalTopLevelWindow(HWND hwnd,
+                                    UINT message,
+                                    WPARAM wparam,
+                                    LPARAM lparam) const;
+
   // Returns the currently configured Plugin Registrar.
   FlutterDesktopPluginRegistrarRef GetRegistrar();
 

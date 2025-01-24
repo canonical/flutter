@@ -9,6 +9,7 @@
 #include "flutter/shell/platform/windows/dpi_utils.h"
 #include "flutter/shell/platform/windows/flutter_host_window_controller.h"
 #include "flutter/shell/platform/windows/flutter_window.h"
+#include "flutter/shell/platform/windows/flutter_windows_view.h"
 #include "flutter/shell/platform/windows/flutter_windows_view_controller.h"
 
 namespace {
@@ -498,22 +499,38 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   window_handle_ = hwnd;
 }
 
+FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
+                                     HWND hwnd,
+                                     FlutterWindowsView* view)
+    : window_controller_(controller), window_handle_(hwnd) {
+  if (!SetProp(hwnd, kWindowClassName, this)) {
+    FML_LOG(ERROR) << "Failed to set up entry in the property list";
+    return;
+  }
+  child_content_ = view->GetWindowHandle();
+}
+
 FlutterHostWindow::~FlutterHostWindow() {
   if (HWND const hwnd = window_handle_) {
     window_handle_ = nullptr;
-    DestroyWindow(hwnd);
 
-    // Unregisters the window class. It will fail silently if there are
-    // other windows using the class, as only the last window can
-    // successfully unregister the class.
-    if (!UnregisterClass(kWindowClassName, GetModuleHandle(nullptr))) {
-      // Clears the error information after the failed unregistering.
-      SetLastError(ERROR_SUCCESS);
+    if (view_controller_) {
+      DestroyWindow(hwnd);
+      // Unregisters the window class. It will fail silently if there are
+      // other windows using the class, as only the last window can
+      // successfully unregister the class.
+      if (!UnregisterClass(kWindowClassName, GetModuleHandle(nullptr))) {
+        // Clears the error information after the failed unregistering.
+        SetLastError(ERROR_SUCCESS);
+      }
     }
   }
 }
 
 FlutterHostWindow* FlutterHostWindow::GetThisFromHandle(HWND hwnd) {
+  if (HANDLE const data = GetProp(hwnd, kWindowClassName)) {
+    return reinterpret_cast<FlutterHostWindow*>(data);
+  }
   return reinterpret_cast<FlutterHostWindow*>(
       GetWindowLongPtr(hwnd, GWLP_USERDATA));
 }
@@ -727,7 +744,7 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       break;
   }
 
-  return DefWindowProc(hwnd, message, wparam, lparam);
+  return view_controller_ ? DefWindowProc(hwnd, message, wparam, lparam) : 0;
 }
 
 void FlutterHostWindow::SetChildContent(HWND content) {

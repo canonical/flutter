@@ -207,6 +207,7 @@ FlutterWindowsEngine::FlutterWindowsEngine(
         FlutterWindowsEngine* that =
             static_cast<FlutterWindowsEngine*>(user_data);
         BASE_DCHECK(that->lifecycle_manager_);
+        that->HandleExternalTopLevelWindow(hwnd, msg, wpar, lpar);
         return that->lifecycle_manager_->WindowProc(hwnd, msg, wpar, lpar,
                                                     result);
       },
@@ -673,6 +674,34 @@ FlutterWindowsView* FlutterWindowsEngine::view(FlutterViewId view_id) const {
   }
 
   return iterator->second;
+}
+
+FlutterWindowsView* FlutterWindowsEngine::GetViewFromTopLevelWindow(
+    HWND hwnd) const {
+  std::shared_lock read_lock(views_mutex_);
+
+  for (auto const& [id, view] : views_) {
+    if (GetParent(view->GetWindowHandle()) == hwnd) {
+      return view;
+    }
+  }
+
+  return nullptr;
+}
+
+void FlutterWindowsEngine::HandleExternalTopLevelWindow(HWND hwnd,
+                                                        UINT message,
+                                                        WPARAM wparam,
+                                                        LPARAM lparam) const {
+  if (!enable_multi_window_) {
+    return;
+  }
+  if (!host_window_controller_->GetHostWindow(hwnd)) {
+    if (FlutterWindowsView* const view = GetViewFromTopLevelWindow(hwnd)) {
+      host_window_controller_->CreateHostWindowFromExisting(view, hwnd);
+    }
+  }
+  host_window_controller_->HandleMessage(hwnd, message, wparam, lparam);
 }
 
 // Returns the currently configured Plugin Registrar.
