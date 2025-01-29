@@ -141,6 +141,12 @@ class RegularWindowController extends WindowController {
   Future<void> modify({Size? size}) {
     throw UnimplementedError();
   }
+
+  /// Request focus for the window.
+  Future<void> requestFocus() {
+    assert(isReady, 'Window is not ready');
+    return _requestFocus(view.viewId);
+  }
 }
 
 /// A widget that creates a regular window. This content of this window is
@@ -307,6 +313,18 @@ Future<void> _destroyWindow(int viewId) async {
   } on PlatformException catch (e) {
     throw ArgumentError(
       'Unable to delete window with view_id=$viewId. Does the window exist? Error: $e',
+    );
+  }
+}
+
+Future<void> _requestFocus(int viewId) async {
+  try {
+    await SystemChannels.windowing.invokeMethod('requestWindowFocus', <String, dynamic>{
+      'viewId': viewId,
+    });
+  } on PlatformException catch (e) {
+    throw ArgumentError(
+      'Unable to request focus for window with view_id=$viewId. Does the window exist? Error: $e',
     );
   }
 }

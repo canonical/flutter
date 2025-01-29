@@ -6,14 +6,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler(WidgetTester tester) {
+Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler({
+  required WidgetTester tester,
+  void Function(MethodCall)? onMethodCall,
+}) {
   return (MethodCall call) async {
+    onMethodCall?.call(call);
     final Map<Object?, Object?> args = call.arguments as Map<Object?, Object?>;
     if (call.method == 'createWindow') {
       final List<Object?> size = args['size']! as List<Object?>;
       final String state = args['state'] as String? ?? WindowState.restored.toString();
 
       return <String, Object?>{'viewId': tester.view.viewId, 'size': size, 'state': state};
+    } else if (call.method == 'requestWindowFocus') {
+      return null;
     } else if (call.method == 'destroyWindow') {
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         SystemChannels.windowing.name,
@@ -38,7 +44,7 @@ void main() {
 
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.windowing,
-      _createWindowMethodCallHandler(tester),
+      _createWindowMethodCallHandler(tester: tester),
     );
 
     final RegularWindowController controller = RegularWindowController(size: windowSize);
@@ -89,7 +95,7 @@ void main() {
 
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.windowing,
-      _createWindowMethodCallHandler(tester),
+      _createWindowMethodCallHandler(tester: tester),
     );
 
     bool destroyed = false;
@@ -123,7 +129,7 @@ void main() {
 
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.windowing,
-        _createWindowMethodCallHandler(tester),
+        _createWindowMethodCallHandler(tester: tester),
       );
 
       final RegularWindowController controller = RegularWindowController(size: initialSize);
@@ -153,4 +159,55 @@ void main() {
       expect(controller.size, newSize);
     },
   );
+
+  testWidgets('RegularWindowController.requestWindowFocus should be called', (
+    WidgetTester tester,
+  ) async {
+    const Size initialSize = Size(800, 600);
+
+    bool wasCalled = false;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(
+        tester: tester,
+        onMethodCall: (MethodCall call) {
+          if (call.method != 'requestWindowFocus') {
+            return;
+          }
+          wasCalled = true;
+        },
+      ),
+    );
+
+    final RegularWindowController controller = RegularWindowController(size: initialSize);
+    await tester.pump();
+
+    await controller.requestFocus();
+    await tester.pump();
+
+    expect(wasCalled, true);
+  });
+
+  testWidgets('RegularWindowController.requestWindowFocus should make a minimized window visible', (
+    WidgetTester tester,
+  ) async {
+    const Size initialSize = Size(800, 600);
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(tester: tester),
+    );
+
+    final RegularWindowController controller = RegularWindowController(
+      size: initialSize,
+      state: WindowState.minimized,
+    );
+
+    await tester.pump();
+
+    await controller.requestFocus();
+    await tester.pump();
+
+    expect(controller.state, WindowState.restored);
+  });
 }

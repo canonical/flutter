@@ -19,6 +19,9 @@ constexpr char kCreateWindowMethod[] = "createWindow";
 // The method to destroy a window.
 constexpr char kDestroyWindowMethod[] = "destroyWindow";
 
+// The method to request focus on a window.
+constexpr char kRequestWindowFocusMethod[] = "requestWindowFocus";
+
 // Keys used in method calls.
 constexpr char kMaxSizeKey[] = "maxSize";
 constexpr char kMinSizeKey[] = "minSize";
@@ -137,6 +140,8 @@ void WindowingHandler::HandleMethodCall(
     HandleCreateWindow(WindowArchetype::kRegular, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
     HandleDestroyWindow(method_call, *result);
+  } else if (method == kRequestWindowFocusMethod) {
+    HandleRequestWindowFocus(method_call, *result);
   } else {
     result->NotImplemented();
   }
@@ -264,4 +269,30 @@ void WindowingHandler::HandleDestroyWindow(MethodCall<> const& call,
   result.Success();
 }
 
+void WindowingHandler::HandleRequestWindowFocus(MethodCall<> const& call,
+                                                MethodResult<>& result) {
+  auto const* const arguments = call.arguments();
+  auto const* const map = std::get_if<EncodableMap>(arguments);
+  if (!map) {
+    result.Error(kInvalidValueError, "Method call argument is not a map.");
+    return;
+  }
+
+  auto const view_id =
+      GetSingleValueForKeyOrSendError<int>(kViewIdKey, map, result);
+  if (!view_id) {
+    result.Error(kInvalidValueError, "Value for '" + std::string(kViewIdKey) +
+                                         "' key must not be null.");
+    return;
+  }
+
+  if (!controller_->RequestWindowFocus(view_id.value())) {
+    result.Error(kInvalidValueError,
+                 "Can't find window with '" + std::string(kViewIdKey) + "' (" +
+                     std::to_string(view_id.value()) + ").");
+    return;
+  }
+
+  result.Success();
+}
 }  // namespace flutter
