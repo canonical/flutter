@@ -73,7 +73,7 @@ bool FlutterHostWindowController::DestroyHostWindow(FlutterViewId view_id) {
   return false;
 }
 
-bool FlutterHostWindowController::TakeWindowFocus(FlutterViewId view_id) {
+bool FlutterHostWindowController::RequestWindowFocus(FlutterViewId view_id) {
   if (auto const it = windows_.find(view_id); it != windows_.end()) {
     FlutterHostWindow* const window = it->second.get();
 

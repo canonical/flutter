@@ -11,13 +11,14 @@ Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler({
   void Function(MethodCall)? onMethodCall,
 }) {
   return (MethodCall call) async {
+    onMethodCall?.call(call);
     final Map<Object?, Object?> args = call.arguments as Map<Object?, Object?>;
     if (call.method == 'createWindow') {
       final List<Object?> size = args['size']! as List<Object?>;
       final String state = args['state'] as String? ?? WindowState.restored.toString();
 
       return <String, Object?>{'viewId': tester.view.viewId, 'size': size, 'state': state};
-    } else if (call.method == 'takeWindowFocus') {
+    } else if (call.method == 'requestWindowFocus') {
       return null;
     } else if (call.method == 'destroyWindow') {
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -159,7 +160,7 @@ void main() {
     },
   );
 
-  testWidgets('RegularWindowController.takeWindowFocus should be called', (
+  testWidgets('RegularWindowController.requestWindowFocus should be called', (
     WidgetTester tester,
   ) async {
     const Size initialSize = Size(800, 600);
@@ -170,7 +171,7 @@ void main() {
       _createWindowMethodCallHandler(
         tester: tester,
         onMethodCall: (MethodCall call) {
-          if (call.method != 'takeWindowFocus') {
+          if (call.method != 'requestWindowFocus') {
             return;
           }
           wasCalled = true;
@@ -181,32 +182,30 @@ void main() {
     final RegularWindowController controller = RegularWindowController(size: initialSize);
     await tester.pump();
 
-    await controller.takeFocus();
+    await controller.requestFocus();
     await tester.pump();
 
     expect(wasCalled, true);
   });
 
-  testWidgets('RegularWindowController.takeWindowFocus should make a minimized window visible', (
+  testWidgets('RegularWindowController.requestWindowFocus should make a minimized window visible', (
     WidgetTester tester,
   ) async {
     const Size initialSize = Size(800, 600);
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(tester: tester),
+    );
 
     final RegularWindowController controller = RegularWindowController(
       size: initialSize,
       state: WindowState.minimized,
     );
 
-    await tester.pumpWidget(
-      wrapWithView: false,
-      Builder(
-        builder: (BuildContext context) {
-          return RegularWindow(controller: controller, child: Container());
-        },
-      ),
-    );
+    await tester.pump();
 
-    await controller.takeFocus();
+    await controller.requestFocus();
     await tester.pump();
 
     expect(controller.state, WindowState.restored);

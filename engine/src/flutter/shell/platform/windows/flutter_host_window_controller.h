@@ -45,7 +45,7 @@ class FlutterHostWindowController {
   //
   // Returns false if the controller does not have a window hosting a view with
   // ID |view_id|.
-  virtual bool TakeWindowFocus(FlutterViewId view_id);
+  virtual bool RequestWindowFocus(FlutterViewId view_id);
 
   // Gets the window hosting the view with ID |view_id|.
   //

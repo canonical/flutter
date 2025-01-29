@@ -172,7 +172,7 @@ class _ActiveWindowsTable extends StatelessWidget {
                                   icon: const Icon(Icons.visibility),
                                   onPressed: () async {
                                     if (controller.controller.type == WindowArchetype.regular) {
-                                      (controller.controller as RegularWindowController).takeFocus();
+                                      (controller.controller as RegularWindowController).requestFocus();
                                     }
                                   },
                                 ),

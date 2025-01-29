@@ -19,8 +19,8 @@ constexpr char kCreateWindowMethod[] = "createWindow";
 // The method to destroy a window.
 constexpr char kDestroyWindowMethod[] = "destroyWindow";
 
-// The method to take focus on a window.
-constexpr char kTakeWindowFocusMethod[] = "takeWindowFocus";
+// The method to request focus on a window.
+constexpr char kRequestWindowFocusMethod[] = "requestWindowFocus";
 
 // Keys used in method calls.
 constexpr char kMaxSizeKey[] = "maxSize";
@@ -140,8 +140,8 @@ void WindowingHandler::HandleMethodCall(
     HandleCreateWindow(WindowArchetype::kRegular, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
     HandleDestroyWindow(method_call, *result);
-  } else if (method == kTakeWindowFocusMethod) {
-    HandleTakeWindowFocus(method_call, *result);
+  } else if (method == kRequestWindowFocusMethod) {
+    HandleRequestWindowFocus(method_call, *result);
   } else {
     result->NotImplemented();
   }
@@ -269,8 +269,8 @@ void WindowingHandler::HandleDestroyWindow(MethodCall<> const& call,
   result.Success();
 }
 
-void WindowingHandler::HandleTakeWindowFocus(MethodCall<> const& call,
-                                             MethodResult<>& result) {
+void WindowingHandler::HandleRequestWindowFocus(MethodCall<> const& call,
+                                                MethodResult<>& result) {
   auto const* const arguments = call.arguments();
   auto const* const map = std::get_if<EncodableMap>(arguments);
   if (!map) {
@@ -286,7 +286,7 @@ void WindowingHandler::HandleTakeWindowFocus(MethodCall<> const& call,
     return;
   }
 
-  if (!controller_->TakeWindowFocus(view_id.value())) {
+  if (!controller_->RequestWindowFocus(view_id.value())) {
     result.Error(kInvalidValueError,
                  "Can't find window with '" + std::string(kViewIdKey) + "' (" +
                      std::to_string(view_id.value()) + ").");

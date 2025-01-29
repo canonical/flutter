@@ -142,9 +142,10 @@ class RegularWindowController extends WindowController {
     throw UnimplementedError();
   }
 
-  Future<void> takeFocus() {
+  /// Request focus for the window.
+  Future<void> requestFocus() {
     assert(isReady, 'Window is not ready');
-    return _takeFocus(view.viewId);
+    return _requestFocus(view.viewId);
   }
 }
 
@@ -316,14 +317,14 @@ Future<void> _destroyWindow(int viewId) async {
   }
 }
 
-Future<void> _takeFocus(int viewId) async {
+Future<void> _requestFocus(int viewId) async {
   try {
-    await SystemChannels.windowing.invokeMethod('takeWindowFocus', <String, dynamic>{
+    await SystemChannels.windowing.invokeMethod('requestWindowFocus', <String, dynamic>{
       'viewId': viewId,
     });
   } on PlatformException catch (e) {
     throw ArgumentError(
-      'Unable to take focus for window with view_id=$viewId. Does the window exist? Error: $e',
+      'Unable to request focus for window with view_id=$viewId. Does the window exist? Error: $e',
     );
   }
 }
