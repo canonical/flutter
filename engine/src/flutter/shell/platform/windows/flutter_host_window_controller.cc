@@ -73,6 +73,21 @@ bool FlutterHostWindowController::DestroyHostWindow(FlutterViewId view_id) {
   return false;
 }
 
+bool FlutterHostWindowController::TakeWindowFocus(FlutterViewId view_id) {
+  if (auto const it = windows_.find(view_id); it != windows_.end()) {
+    FlutterHostWindow* const window = it->second.get();
+
+    if (window->GetState() == WindowState::kMinimized) {
+      ShowWindow(window->GetWindowHandle(), SW_RESTORE);
+    } else {
+      SetForegroundWindow(window->GetWindowHandle());
+    }
+
+    return true;
+  }
+  return false;
+}
+
 FlutterHostWindow* FlutterHostWindowController::GetHostWindow(
     FlutterViewId view_id) const {
   if (auto const it = windows_.find(view_id); it != windows_.end()) {

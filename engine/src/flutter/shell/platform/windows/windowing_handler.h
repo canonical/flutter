@@ -32,6 +32,10 @@ class WindowingHandler {
   void HandleDestroyWindow(flutter::MethodCall<> const& call,
                            flutter::MethodResult<>& result);
 
+  // Handles the take window focus method.
+  void HandleTakeWindowFocus(flutter::MethodCall<> const& call,
+                             flutter::MethodResult<>& result);
+
   // The MethodChannel used for communication with the Flutter engine.
   std::shared_ptr<flutter::MethodChannel<EncodableValue>> channel_;
 

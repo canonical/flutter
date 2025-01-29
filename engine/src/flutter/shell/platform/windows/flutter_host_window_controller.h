@@ -40,6 +40,13 @@ class FlutterHostWindowController {
   // ID |view_id|.
   virtual bool DestroyHostWindow(FlutterViewId view_id);
 
+  // Restores from minimized and takes focus to the window hosting the view
+  // with ID |view_id|.
+  //
+  // Returns false if the controller does not have a window hosting a view with
+  // ID |view_id|.
+  virtual bool TakeWindowFocus(FlutterViewId view_id);
+
   // Gets the window hosting the view with ID |view_id|.
   //
   // Returns nullptr if the controller does not have a window hosting a view
