@@ -76,7 +76,6 @@ TEST_F(FlutterHostWindowControllerTest, CreateRegularWindow) {
   // Validate the returned metadata.
   ASSERT_TRUE(result.has_value());
   EXPECT_NE(engine()->view(result->view_id), nullptr);
-  EXPECT_EQ(result->archetype, settings.archetype);
   EXPECT_GE(result->size.width(), settings.size.width());
   EXPECT_GE(result->size.height(), settings.size.height());
   EXPECT_FALSE(result->parent_id.has_value());
@@ -89,6 +88,48 @@ TEST_F(FlutterHostWindowControllerTest, CreateRegularWindow) {
   GetClientRect(window->GetWindowHandle(), &client_rect);
   EXPECT_EQ(client_rect.right - client_rect.left, settings.size.width());
   EXPECT_EQ(client_rect.bottom - client_rect.top, settings.size.height());
+}
+
+TEST_F(FlutterHostWindowControllerTest, CreatePopup) {
+  // Create a top-level window first.
+  WindowCreationSettings const parent_settings = {
+      .archetype = WindowArchetype::kRegular,
+      .size = {800.0, 600.0},
+      .title = "parent",
+  };
+  std::optional<WindowMetadata> const parent_result =
+      host_window_controller()->CreateHostWindow(parent_settings);
+  ASSERT_NE(parent_result, std::nullopt);
+
+  // Define parameters for the popup to be created.
+  WindowCreationSettings const popup_settings = {
+      .archetype = WindowArchetype::kPopup,
+      .size = {200.0, 200.0},
+      .parent_view_id = parent_result->view_id,
+      .positioner = WindowPositioner{},
+  };
+
+  // Create popup parented to top-level window.
+  std::optional<WindowMetadata> const popup_result =
+      host_window_controller()->CreateHostWindow(popup_settings);
+
+  // Validate the returned metadata.
+  ASSERT_TRUE(popup_result.has_value());
+  EXPECT_NE(engine()->view(popup_result->view_id), nullptr);
+  EXPECT_GE(popup_result->size.width(), popup_settings.size.width());
+  EXPECT_GE(popup_result->size.height(), popup_settings.size.height());
+  ASSERT_TRUE(popup_result->parent_id.has_value());
+  EXPECT_EQ(popup_result->parent_id.value(), parent_result->view_id);
+  EXPECT_TRUE(popup_result->relative_position.has_value());
+
+  // Verify the popup exists and the view has the expected dimensions.
+  FlutterHostWindow* const window =
+      host_window_controller()->GetHostWindow(popup_result->view_id);
+  ASSERT_NE(window, nullptr);
+  RECT client_rect;
+  GetClientRect(window->GetWindowHandle(), &client_rect);
+  EXPECT_EQ(client_rect.right - client_rect.left, popup_settings.size.width());
+  EXPECT_EQ(client_rect.bottom - client_rect.top, popup_settings.size.height());
 }
 
 TEST_F(FlutterHostWindowControllerTest, DestroyWindow) {

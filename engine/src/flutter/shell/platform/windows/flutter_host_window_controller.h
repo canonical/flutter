@@ -69,7 +69,7 @@ class FlutterHostWindowController {
   // Sends the "onWindowChanged" message to the Flutter engine.
   void SendOnWindowChanged(FlutterViewId view_id,
                            std::optional<Size> size,
-                           std::optional<Size> relative_position) const;
+                           std::optional<Point> relative_position) const;
 
   // Sends the "onWindowDestroyed" message to the Flutter engine.
   void SendOnWindowDestroyed(FlutterViewId view_id) const;

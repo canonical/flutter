@@ -48,14 +48,18 @@ std::optional<WindowMetadata> FlutterHostWindowController::CreateHostWindow(
   }
 
   FlutterViewId const view_id = window->GetFlutterViewId();
-  WindowState const state = window->GetState();
+  std::optional<WindowState> const state = window->GetState();
+  std::optional<Point> relative_position = window->GetRelativePosition();
   windows_[view_id] = std::move(window);
 
-  WindowMetadata const result = {.view_id = view_id,
-                                 .archetype = settings.archetype,
-                                 .size = GetWindowSize(view_id),
-                                 .parent_id = std::nullopt,
-                                 .state = state};
+  WindowMetadata result = {.view_id = view_id, .size = GetWindowSize(view_id)};
+  if (settings.archetype == WindowArchetype::kRegular) {
+    result.state = state;
+  }
+  if (settings.archetype == WindowArchetype::kPopup) {
+    result.parent_id = settings.parent_view_id;
+    result.relative_position = relative_position;
+  }
 
   return result;
 }
@@ -105,6 +109,39 @@ LRESULT FlutterHostWindowController::HandleMessage(HWND hwnd,
       }
     }
       return 0;
+    case WM_ACTIVATE:
+      if (wparam != WA_INACTIVE) {
+        if (FlutterHostWindow* const window =
+                FlutterHostWindow::GetThisFromHandle(hwnd)) {
+          if (window->GetArchetype() != WindowArchetype::kPopup) {
+            // If a non-popup window is activated, close popups for all windows.
+            auto it = windows_.begin();
+            while (it != windows_.end()) {
+              std::size_t const num_popups_closed =
+                  it->second->CloseOwnedPopups();
+              if (num_popups_closed > 0) {
+                it = windows_.begin();
+              } else {
+                ++it;
+              }
+            }
+          } else {
+            // If a popup window is activated, close its owned popups.
+            window->CloseOwnedPopups();
+          }
+        }
+      }
+      break;
+    case WM_ACTIVATEAPP:
+      if (wparam == FALSE) {
+        if (FlutterHostWindow* const window =
+                FlutterHostWindow::GetThisFromHandle(hwnd)) {
+          // Close owned popups if a window belonging to a different application
+          // is being activated.
+          window->CloseOwnedPopups();
+        }
+      }
+      break;
     case WM_SIZE: {
       auto const it = std::find_if(
           windows_.begin(), windows_.end(), [hwnd](auto const& window) {
@@ -172,7 +209,7 @@ Size FlutterHostWindowController::GetWindowSize(FlutterViewId view_id) const {
 void FlutterHostWindowController::SendOnWindowChanged(
     FlutterViewId view_id,
     std::optional<Size> size,
-    std::optional<Size> relative_position) const {
+    std::optional<Point> relative_position) const {
   if (channel_) {
     EncodableMap map{{EncodableValue(kViewIdKey), EncodableValue(view_id)}};
     if (size) {
@@ -183,9 +220,9 @@ void FlutterHostWindowController::SendOnWindowChanged(
     }
     if (relative_position) {
       map.insert({EncodableValue(kRelativePositionKey),
-                  EncodableValue(EncodableList{
-                      EncodableValue(relative_position->width()),
-                      EncodableValue(relative_position->height())})});
+                  EncodableValue(
+                      EncodableList{EncodableValue(relative_position->x()),
+                                    EncodableValue(relative_position->y())})});
     }
     channel_->InvokeMethod(kOnWindowChangedMethod,
                            std::make_unique<EncodableValue>(map));
