@@ -403,25 +403,31 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   // window. This doesn't work for multi window apps as the engine cannot have
   // multiple next frame callbacks. If multiple windows are created, only the
   // last one will be shown.
-  UINT const cmd_show = [&]() {
-    if (archetype_ == WindowArchetype::kRegular) {
-      switch (state_) {
-        case WindowState::kRestored:
-          return SW_SHOWNORMAL;
-          break;
-        case WindowState::kMaximized:
-          return SW_SHOWMAXIMIZED;
-          break;
-        case WindowState::kMinimized:
-          return SW_SHOWMINIMIZED;
-          break;
-        default:
-          FML_UNREACHABLE();
-      }
-    }
-    return SW_SHOWNORMAL;
-  }();
-  ShowWindow(hwnd, cmd_show);
+  // UINT const cmd_show = [&]() {
+  //   if (archetype_ == WindowArchetype::kRegular) {
+  //     switch (state_) {
+  //       case WindowState::kRestored:
+  //         return SW_SHOWNORMAL;
+  //         break;
+  //       case WindowState::kMaximized:
+  //         return SW_SHOWMAXIMIZED;
+  //         break;
+  //       case WindowState::kMinimized:
+  //         return SW_SHOWMINIMIZED;
+  //         break;
+  //       default:
+  //         FML_UNREACHABLE();
+  //     }
+  //   }
+  //   return SW_SHOWNORMAL;
+  // }();
+  // ShowWindow(hwnd, cmd_show);
+
+  // Test: trigger window resizing on first presentation
+  // allow_child_resizing = false;
+  // SetWindowPos(hwnd, nullptr, 0, 0, 100, 100,
+  //              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+  // allow_child_resizing = true;
 
   window_handle_ = hwnd;
 }
@@ -540,6 +546,7 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
     }
 
     case WM_SIZE: {
+      // if (allow_child_resizing) {
       if (child_content_ != nullptr) {
         // Resize and reposition the child content window.
         RECT client_rect;
@@ -548,6 +555,7 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
                    client_rect.right - client_rect.left,
                    client_rect.bottom - client_rect.top, TRUE);
       }
+      // }
       return 0;
     }
 
