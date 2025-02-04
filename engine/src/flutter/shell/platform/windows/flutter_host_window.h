@@ -96,6 +96,9 @@ class FlutterHostWindow {
   // The window state.
   WindowState state_ = WindowState::kRestored;
 
+  // Test
+  // bool allow_child_resizing = true;
+
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterHostWindow);
 };
 
