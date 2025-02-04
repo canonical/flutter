@@ -38,7 +38,9 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   FlutterWindowsView(
       FlutterViewId view_id,
       FlutterWindowsEngine* engine,
-      std::unique_ptr<WindowBindingHandler> window_binding,
+      std::unique_ptr<WindowBindingHandler> window_binding,\
+      std::optional<Size> min_size,
+      std::optional<Size> max_size,
       std::shared_ptr<WindowsProcTable> windows_proc_table = nullptr);
 
   virtual ~FlutterWindowsView();
@@ -413,6 +415,12 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
 
   // The engine associated with this view.
   FlutterWindowsEngine* engine_ = nullptr;
+
+  // The minimum size of the window.
+  std::optional<Size> min_size,
+
+  // The maximum size of the window.
+  std::optional<Size> max_size
 
   // Mocks win32 APIs.
   std::shared_ptr<WindowsProcTable> windows_proc_table_;

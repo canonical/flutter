@@ -504,10 +504,12 @@ bool FlutterWindowsEngine::Stop() {
 }
 
 std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
-    std::unique_ptr<WindowBindingHandler> window) {
+    std::unique_ptr<WindowBindingHandler> window,
+    std::optional<Size> min_size,
+    std::optional<Size> max_size) {
   auto view_id = next_view_id_;
   auto view = std::make_unique<FlutterWindowsView>(
-      view_id, this, std::move(window), windows_proc_table_);
+      view_id, this, std::move(window), min_size, max_size, windows_proc_table_);
 
   view->CreateRenderSurface();
 
