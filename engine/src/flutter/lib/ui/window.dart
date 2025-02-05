@@ -172,9 +172,9 @@ class FlutterView {
       minWidth: _viewConfiguration.minSize.width,
       minHeight: _viewConfiguration.minSize.height,
       maxWidth: _viewConfiguration.maxSize.width,
-      maxHeight: _viewConfiguration.maxSize.height
+      maxHeight: _viewConfiguration.maxSize.height,
     );
-  } 
+  }
 
   /// The current dimensions of the rectangle as last reported by the platform
   /// into which scenes rendered in this view are drawn.
