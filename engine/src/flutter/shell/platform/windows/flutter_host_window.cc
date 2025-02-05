@@ -183,23 +183,25 @@ std::optional<flutter::Size> GetWindowSizeForClientSize(
   double height = static_cast<double>(rect.bottom - rect.top);
 
   // Apply size constraints
-  double const non_client_width = width - (client_size.width() * scale_factor);
-  double const non_client_height =
-      height - (client_size.height() * scale_factor);
-  if (min_size) {
-    flutter::Size min_physical_size = ClampToVirtualScreen(
-        flutter::Size(min_size->width() * scale_factor + non_client_width,
-                      min_size->height() * scale_factor + non_client_height));
-    width = std::max(width, min_physical_size.width());
-    height = std::max(height, min_physical_size.height());
-  }
-  if (max_size) {
-    flutter::Size max_physical_size = ClampToVirtualScreen(
-        flutter::Size(max_size->width() * scale_factor + non_client_width,
-                      max_size->height() * scale_factor + non_client_height));
-    width = std::min(width, max_physical_size.width());
-    height = std::min(height, max_physical_size.height());
-  }
+  // double const non_client_width = width - (client_size.width() *
+  // scale_factor); double const non_client_height =
+  //     height - (client_size.height() * scale_factor);
+  // if (min_size) {
+  //   flutter::Size min_physical_size = ClampToVirtualScreen(
+  //       flutter::Size(min_size->width() * scale_factor + non_client_width,
+  //                     min_size->height() * scale_factor +
+  //                     non_client_height));
+  //   width = std::max(width, min_physical_size.width());
+  //   height = std::max(height, min_physical_size.height());
+  // }
+  // if (max_size) {
+  //   flutter::Size max_physical_size = ClampToVirtualScreen(
+  //       flutter::Size(max_size->width() * scale_factor + non_client_width,
+  //                     max_size->height() * scale_factor +
+  //                     non_client_height));
+  //   width = std::min(width, max_physical_size.width());
+  //   height = std::min(height, max_physical_size.height());
+  // }
 
   return flutter::Size{width, height};
 }
@@ -511,39 +513,42 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       return 0;
     }
 
-    case WM_GETMINMAXINFO: {
-      RECT window_rect;
-      GetWindowRect(hwnd, &window_rect);
-      RECT client_rect;
-      GetClientRect(hwnd, &client_rect);
-      LONG const non_client_width = (window_rect.right - window_rect.left) -
-                                    (client_rect.right - client_rect.left);
-      LONG const non_client_height = (window_rect.bottom - window_rect.top) -
-                                     (client_rect.bottom - client_rect.top);
+      // case WM_GETMINMAXINFO: {
+      //   RECT window_rect;
+      //   GetWindowRect(hwnd, &window_rect);
+      //   RECT client_rect;
+      //   GetClientRect(hwnd, &client_rect);
+      //   LONG const non_client_width = (window_rect.right - window_rect.left)
+      //   -
+      //                                 (client_rect.right - client_rect.left);
+      //   LONG const non_client_height = (window_rect.bottom - window_rect.top)
+      //   -
+      //                                  (client_rect.bottom -
+      //                                  client_rect.top);
 
-      UINT const dpi = flutter::GetDpiForHWND(hwnd);
-      double const scale_factor =
-          static_cast<double>(dpi) / USER_DEFAULT_SCREEN_DPI;
+      //   MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
+      //   if (min_size_) {
+      //     Size const min_physical_size =
+      //         ClampToVirtualScreen(Size(min_size_->width() +
+      //         non_client_width,
+      //                                   min_size_->height() +
+      //                                   non_client_height));
 
-      MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
-      if (min_size_) {
-        Size const min_physical_size = ClampToVirtualScreen(
-            Size(min_size_->width() * scale_factor + non_client_width,
-                 min_size_->height() * scale_factor + non_client_height));
+      //     info->ptMinTrackSize.x = min_physical_size.width();
+      //     info->ptMinTrackSize.y = min_physical_size.height();
+      //   }
+      //   if (max_size_) {
+      //     Size const max_physical_size =
+      //         ClampToVirtualScreen(Size(max_size_->width() +
+      //         non_client_width,
+      //                                   max_size_->height() +
+      //                                   non_client_height));
 
-        info->ptMinTrackSize.x = min_physical_size.width();
-        info->ptMinTrackSize.y = min_physical_size.height();
-      }
-      if (max_size_) {
-        Size const max_physical_size = ClampToVirtualScreen(
-            Size(max_size_->width() * scale_factor + non_client_width,
-                 max_size_->height() * scale_factor + non_client_height));
-
-        info->ptMaxTrackSize.x = max_physical_size.width();
-        info->ptMaxTrackSize.y = max_physical_size.height();
-      }
-      return 0;
-    }
+      //     info->ptMaxTrackSize.x = max_physical_size.width();
+      //     info->ptMaxTrackSize.y = max_physical_size.height();
+      //   }
+      //   return 0;
+      // }
 
     case WM_SIZE: {
       // if (allow_child_resizing) {

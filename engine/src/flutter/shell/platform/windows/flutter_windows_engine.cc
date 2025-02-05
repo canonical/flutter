@@ -1041,7 +1041,6 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
       ShowWindow(window_handle, SW_SHOW);
       SetForegroundWindow(window_handle);
       SetActiveWindow(window_handle);
-      return true;
     }
   }
 
