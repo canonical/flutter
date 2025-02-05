@@ -166,9 +166,10 @@ bool FlutterWindowsView::OnFrameGenerated(size_t width, size_t height) {
     return true;
   }
 
-  if (resize_target_width_ != width || resize_target_height_ != height) {
-    return false;
-  }
+  // Another hack: resizing even if the sizes don't match
+  // if (resize_target_width_ != width || resize_target_height_ != height) {
+  //   return false;
+  // }
 
   if (!ResizeRenderSurface(resize_target_width_, resize_target_height_)) {
     return false;
