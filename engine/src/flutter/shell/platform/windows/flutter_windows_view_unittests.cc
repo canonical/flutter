@@ -144,8 +144,8 @@ TEST(FlutterWindowsViewTest, SubMenuExpandedState) {
 
   auto window_binding_handler =
       std::make_unique<NiceMock<MockWindowBindingHandler>>();
-  std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(window_binding_handler), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
+      std::move(window_binding_handler), std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -268,7 +268,8 @@ TEST(FlutterWindowsViewTest, Shutdown) {
         .WillOnce(Return(&render_context));
     EXPECT_CALL(render_context, ClearCurrent).WillOnce(Return(true));
 
-    view = engine->CreateView(std::move(window_binding_handler), std::nullopt, std::nullopt);
+    view = engine->CreateView(std::move(window_binding_handler), std::nullopt,
+                              std::nullopt);
   }
 
   // The view must be removed before the surface can be destroyed.
@@ -293,8 +294,9 @@ TEST(FlutterWindowsViewTest, KeySequence) {
 
   test_response = false;
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   view->OnKey(kVirtualKeyA, kScanCodeKeyA, WM_KEYDOWN, 'a', false, false,
               [](bool handled) {});
@@ -309,8 +311,9 @@ TEST(FlutterWindowsViewTest, KeySequence) {
 TEST(FlutterWindowsViewTest, KeyEventCallback) {
   std::unique_ptr<FlutterWindowsEngine> engine = GetTestEngine();
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   class MockCallback {
    public:
@@ -350,8 +353,8 @@ TEST(FlutterWindowsViewTest, EnableSemantics) {
 
   auto window_binding_handler =
       std::make_unique<NiceMock<MockWindowBindingHandler>>();
-  std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(window_binding_handler), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
+      std::move(window_binding_handler), std::nullopt, std::nullopt);
 
   view->OnUpdateSemanticsEnabled(true);
   EXPECT_TRUE(semantics_enabled);
@@ -367,8 +370,8 @@ TEST(FlutterWindowsViewTest, AddSemanticsNodeUpdate) {
 
   auto window_binding_handler =
       std::make_unique<NiceMock<MockWindowBindingHandler>>();
-  std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(window_binding_handler), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
+      std::move(window_binding_handler), std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -464,8 +467,9 @@ TEST(FlutterWindowsViewTest, AddSemanticsNodeUpdateWithChildren) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -660,8 +664,9 @@ TEST(FlutterWindowsViewTest, NonZeroSemanticsRoot) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -790,8 +795,9 @@ TEST(FlutterWindowsViewTest, AccessibilityHitTesting) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -913,8 +919,9 @@ TEST(FlutterWindowsViewTest, WindowResizeTests) {
 
   engine_modifier.SetEGLManager(std::move(egl_manager));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   fml::AutoResetWaitableEvent metrics_sent_latch;
   engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
@@ -982,8 +989,9 @@ TEST(FlutterWindowsViewTest, TestEmptyFrameResizes) {
         return kSuccess;
       }));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   ViewModifier view_modifier{view.get()};
   engine_modifier.SetEGLManager(std::move(egl_manager));
@@ -1026,8 +1034,9 @@ TEST(FlutterWindowsViewTest, WindowResizeRace) {
   EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(true));
   EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(true));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   ViewModifier view_modifier{view.get()};
   engine_modifier.SetEGLManager(std::move(egl_manager));
@@ -1074,8 +1083,9 @@ TEST(FlutterWindowsViewTest, WindowResizeInvalidSurface) {
   EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(false));
   EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(false));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   ViewModifier view_modifier{view.get()};
   engine_modifier.SetEGLManager(std::move(egl_manager));
@@ -1102,8 +1112,9 @@ TEST(FlutterWindowsViewTest, WindowResizeWithoutSurface) {
 
   EXPECT_CALL(*egl_manager.get(), CreateWindowSurface).Times(0);
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   modifier.SetEGLManager(std::move(egl_manager));
 
@@ -1123,7 +1134,8 @@ TEST(FlutterWindowsViewTest, WindowRepaintTests) {
   EngineModifier modifier(engine.get());
 
   FlutterWindowsView view{kImplicitViewId, engine.get(),
-                          std::make_unique<flutter::FlutterWindow>(100, 100), std::nullopt, std::nullopt};
+                          std::make_unique<flutter::FlutterWindow>(100, 100),
+                          std::nullopt, std::nullopt};
 
   bool schedule_frame_called = false;
   modifier.embedder_api().ScheduleFrame =
@@ -1150,8 +1162,9 @@ TEST(FlutterWindowsViewTest, CheckboxNativeState) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -1294,8 +1307,9 @@ TEST(FlutterWindowsViewTest, SwitchNativeState) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -1411,8 +1425,9 @@ TEST(FlutterWindowsViewTest, TooltipNodeData) {
         return kSuccess;
       };
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 
   // Enable semantics to instantiate accessibility bridge.
   view->OnUpdateSemanticsEnabled(true);
@@ -1490,8 +1505,9 @@ TEST(FlutterWindowsViewTest, DisablesVSyncAtStartup) {
   EngineModifier modifier{engine.get()};
   modifier.SetEGLManager(std::move(egl_manager));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 }
 
 // Blocks until the v-blank if it is enabled by the window.
@@ -1525,8 +1541,9 @@ TEST(FlutterWindowsViewTest, EnablesVSyncAtStartup) {
   EngineModifier modifier{engine.get()};
   modifier.SetEGLManager(std::move(egl_manager));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 }
 
 // Don't block until the v-blank if it is disabled by the window.
@@ -1568,8 +1585,9 @@ TEST(FlutterWindowsViewTest, DisablesVSyncAfterStartup) {
   EngineModifier modifier{engine.get()};
   modifier.SetEGLManager(std::move(egl_manager));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 }
 
 // Blocks until the v-blank if it is enabled by the window.
@@ -1614,8 +1632,9 @@ TEST(FlutterWindowsViewTest, EnablesVSyncAfterStartup) {
   EngineModifier modifier{engine.get()};
   modifier.SetEGLManager(std::move(egl_manager));
 
-  std::unique_ptr<FlutterWindowsView> view = engine->CreateView(
-      std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> view =
+      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+                         std::nullopt, std::nullopt);
 }
 
 // Desktop Window Manager composition can be disabled on Windows 7.
@@ -1660,7 +1679,8 @@ TEST(FlutterWindowsViewTest, UpdatesVSyncOnDwmUpdates) {
     engine_modifier.SetEGLManager(std::move(egl_manager));
 
     view = engine->CreateView(
-        std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt, std::nullopt);
+        std::make_unique<NiceMock<MockWindowBindingHandler>>(), std::nullopt,
+        std::nullopt);
   }
 
   // Disabling DWM composition should enable vsync blocking on the surface.

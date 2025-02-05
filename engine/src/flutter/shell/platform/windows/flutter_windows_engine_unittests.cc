@@ -640,7 +640,11 @@ class MockFlutterWindowsView : public FlutterWindowsView {
  public:
   MockFlutterWindowsView(FlutterWindowsEngine* engine,
                          std::unique_ptr<WindowBindingHandler> wbh)
-      : FlutterWindowsView(kImplicitViewId, engine, std::move(wbh), std::nullopt, std::nullopt) {}
+      : FlutterWindowsView(kImplicitViewId,
+                           engine,
+                           std::move(wbh),
+                           std::nullopt,
+                           std::nullopt) {}
   ~MockFlutterWindowsView() {}
 
   MOCK_METHOD(void,
@@ -1283,16 +1287,17 @@ TEST_F(FlutterWindowsEngineTest, AddViewFailureDoesNotHang) {
   // engine.
   auto implicit_window = std::make_unique<NiceMock<MockWindowBindingHandler>>();
 
-  std::unique_ptr<FlutterWindowsView> implicit_view =
-      engine->CreateView(std::move(implicit_window), std::nullopt, std::nullopt);
+  std::unique_ptr<FlutterWindowsView> implicit_view = engine->CreateView(
+      std::move(implicit_window), std::nullopt, std::nullopt);
 
   EXPECT_TRUE(implicit_view);
 
   // Create a second view. The embedder attempts to add it to the engine.
   auto second_window = std::make_unique<NiceMock<MockWindowBindingHandler>>();
 
-  EXPECT_DEBUG_DEATH(engine->CreateView(std::move(second_window), std::nullopt, std::nullopt),
-                     "FlutterEngineAddView returned an unexpected result");
+  EXPECT_DEBUG_DEATH(
+      engine->CreateView(std::move(second_window), std::nullopt, std::nullopt),
+      "FlutterEngineAddView returned an unexpected result");
 }
 
 TEST_F(FlutterWindowsEngineTest, RemoveViewFailureDoesNotHang) {

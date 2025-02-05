@@ -509,7 +509,8 @@ std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
     std::optional<Size> max_size) {
   auto view_id = next_view_id_;
   auto view = std::make_unique<FlutterWindowsView>(
-      view_id, this, std::move(window), min_size, max_size, windows_proc_table_);
+      view_id, this, std::move(window), min_size, max_size,
+      windows_proc_table_);
 
   view->CreateRenderSurface();
 
