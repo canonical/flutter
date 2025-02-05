@@ -365,7 +365,7 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       width, height, engine->windows_proc_table());
 
   std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(view_window));
+      engine->CreateView(std::move(view_window), min_size_, max_size_);
   if (!view) {
     FML_LOG(ERROR) << "Failed to create view";
     return;

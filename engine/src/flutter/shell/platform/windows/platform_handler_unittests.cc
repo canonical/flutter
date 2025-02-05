@@ -156,7 +156,8 @@ class PlatformHandlerTest : public WindowsTest {
 
     engine_ = builder.Build();
     view_ = std::make_unique<FlutterWindowsView>(kImplicitViewId, engine_.get(),
-                                                 std::move(window));
+                                                 std::move(window),
+                                                 std::nullopt, std::nullopt);
 
     EngineModifier modifier{engine_.get()};
     modifier.SetImplicitView(view_.get());

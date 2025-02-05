@@ -92,7 +92,7 @@ static FlutterDesktopViewControllerRef CreateViewController(
   }
 
   std::unique_ptr<flutter::FlutterWindowsView> view =
-      engine_ptr->CreateView(std::move(window_wrapper));
+      engine_ptr->CreateView(std::move(window_wrapper), std::nullopt, std::nullopt);
   if (!view) {
     return nullptr;
   }

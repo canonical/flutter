@@ -417,10 +417,10 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   FlutterWindowsEngine* engine_ = nullptr;
 
   // The minimum size of the window.
-  std::optional<Size> min_size,
+  std::optional<Size> min_size;
 
   // The maximum size of the window.
-  std::optional<Size> max_size
+  std::optional<Size> max_size;
 
   // Mocks win32 APIs.
   std::shared_ptr<WindowsProcTable> windows_proc_table_;
