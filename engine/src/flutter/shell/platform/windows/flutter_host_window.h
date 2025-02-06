@@ -96,8 +96,10 @@ class FlutterHostWindow {
   // The window state.
   WindowState state_ = WindowState::kRestored;
 
-  // Test
-  // bool allow_child_resizing = true;
+  // Whether the window needs to be shown.
+  // Windows are created as hidden and shown only when the first frame is ready
+  // to be presented.
+  bool pending_show_ = true;
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterHostWindow);
 };

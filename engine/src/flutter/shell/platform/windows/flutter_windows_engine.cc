@@ -1009,12 +1009,7 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
   }
 
   FlutterWindowsView* view = iterator->second;
-  FlutterViewId const view_id = view->view_id();
-  // TODO(hbatagelo): Access host_window_controller_ under mutex
-  if (FlutterHostWindow* const window =
-          host_window_controller_->GetHostWindow(view_id)) {
-    HWND const window_handle = window->GetWindowHandle();
-
+  if (HWND const window_handle = GetParent(view->GetWindowHandle())) {
     if (!IsWindowVisible(window_handle)) {
       // Resize window so its client rect has the size of the child view
       RECT client_rect;
@@ -1034,10 +1029,7 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
                      layer_height + border_height,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
       }
-
       // Show and activate the window
-      // TODO(hbatagelo): Take into account the initial window state (assuming
-      // kRestored for now)
       ShowWindow(window_handle, SW_SHOW);
       SetForegroundWindow(window_handle);
       SetActiveWindow(window_handle);
