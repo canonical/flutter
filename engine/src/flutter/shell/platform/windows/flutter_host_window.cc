@@ -365,7 +365,7 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       width, height, engine->windows_proc_table());
 
   std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(view_window));
+      engine->CreateView(std::move(view_window), min_size_, max_size_);
   if (!view) {
     FML_LOG(ERROR) << "Failed to create view";
     return;
@@ -403,25 +403,25 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   // window. This doesn't work for multi window apps as the engine cannot have
   // multiple next frame callbacks. If multiple windows are created, only the
   // last one will be shown.
-  UINT const cmd_show = [&]() {
-    if (archetype_ == WindowArchetype::kRegular) {
-      switch (state_) {
-        case WindowState::kRestored:
-          return SW_SHOWNORMAL;
-          break;
-        case WindowState::kMaximized:
-          return SW_SHOWMAXIMIZED;
-          break;
-        case WindowState::kMinimized:
-          return SW_SHOWMINIMIZED;
-          break;
-        default:
-          FML_UNREACHABLE();
-      }
-    }
-    return SW_SHOWNORMAL;
-  }();
-  ShowWindow(hwnd, cmd_show);
+  // UINT const cmd_show = [&]() {
+  //   if (archetype_ == WindowArchetype::kRegular) {
+  //     switch (state_) {
+  //       case WindowState::kRestored:
+  //         return SW_SHOWNORMAL;
+  //         break;
+  //       case WindowState::kMaximized:
+  //         return SW_SHOWMAXIMIZED;
+  //         break;
+  //       case WindowState::kMinimized:
+  //         return SW_SHOWMINIMIZED;
+  //         break;
+  //       default:
+  //         FML_UNREACHABLE();
+  //     }
+  //   }
+  //   return SW_SHOWNORMAL;
+  // }();
+  // ShowWindow(hwnd, cmd_show);
 
   window_handle_ = hwnd;
 }
@@ -505,6 +505,39 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       return 0;
     }
 
+    case WM_SHOWWINDOW: {
+      if (wparam == TRUE && lparam == 0 && pending_show_) {
+        pending_show_ = false;
+
+        UINT const show_cmd = [&]() {
+          if (archetype_ == WindowArchetype::kRegular) {
+            switch (state_) {
+              case WindowState::kRestored:
+                return SW_SHOW;
+                break;
+              case WindowState::kMaximized:
+                return SW_SHOWMAXIMIZED;
+                break;
+              case WindowState::kMinimized:
+                return SW_SHOWMINIMIZED;
+                break;
+              default:
+                FML_UNREACHABLE();
+            }
+          }
+          return SW_SHOWNORMAL;
+        }();
+
+        WINDOWPLACEMENT window_placement = {
+            .length = sizeof(WINDOWPLACEMENT),
+        };
+        GetWindowPlacement(hwnd, &window_placement);
+        window_placement.showCmd = show_cmd;
+        SetWindowPlacement(hwnd, &window_placement);
+      }
+      return 0;
+    }
+
     case WM_GETMINMAXINFO: {
       RECT window_rect;
       GetWindowRect(hwnd, &window_rect);
@@ -515,23 +548,19 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       LONG const non_client_height = (window_rect.bottom - window_rect.top) -
                                      (client_rect.bottom - client_rect.top);
 
-      UINT const dpi = flutter::GetDpiForHWND(hwnd);
-      double const scale_factor =
-          static_cast<double>(dpi) / USER_DEFAULT_SCREEN_DPI;
-
       MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
       if (min_size_) {
-        Size const min_physical_size = ClampToVirtualScreen(
-            Size(min_size_->width() * scale_factor + non_client_width,
-                 min_size_->height() * scale_factor + non_client_height));
+        Size const min_physical_size =
+            ClampToVirtualScreen(Size(min_size_->width() + non_client_width,
+                                      min_size_->height() + non_client_height));
 
         info->ptMinTrackSize.x = min_physical_size.width();
         info->ptMinTrackSize.y = min_physical_size.height();
       }
       if (max_size_) {
-        Size const max_physical_size = ClampToVirtualScreen(
-            Size(max_size_->width() * scale_factor + non_client_width,
-                 max_size_->height() * scale_factor + non_client_height));
+        Size const max_physical_size =
+            ClampToVirtualScreen(Size(max_size_->width() + non_client_width,
+                                      max_size_->height() + non_client_height));
 
         info->ptMaxTrackSize.x = max_physical_size.width();
         info->ptMaxTrackSize.y = max_physical_size.height();

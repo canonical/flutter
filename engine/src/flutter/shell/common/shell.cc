@@ -1037,12 +1037,15 @@ void Shell::OnPlatformViewSetViewportMetrics(int64_t view_id,
         }
       });
 
-  {
+  bool const has_loose_size_constraint =
+      metrics.physical_min_width < metrics.physical_max_width &&
+      metrics.physical_min_height < metrics.physical_max_height;
+  if (!has_loose_size_constraint) {
     std::scoped_lock<std::mutex> lock(resize_mutex_);
     expected_frame_sizes_[view_id] =
         SkISize::Make(metrics.physical_width, metrics.physical_height);
-    device_pixel_ratio_ = metrics.device_pixel_ratio;
   }
+  device_pixel_ratio_ = metrics.device_pixel_ratio;
 }
 
 // |PlatformView::Delegate|
