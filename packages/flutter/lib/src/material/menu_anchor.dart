@@ -39,6 +39,7 @@ import 'text_button.dart';
 import 'text_theme.dart';
 import 'theme.dart';
 import 'theme_data.dart';
+import 'windowing.dart';
 
 // Examples can assume:
 // bool _throwShotAway = false;
@@ -313,6 +314,87 @@ class MenuAnchor extends StatefulWidget {
   }
 }
 
+class _MenuAnchorStateController {
+  _MenuAnchorStateController({required this.anchor});
+
+  final _MenuAnchorState anchor;
+  final OverlayPortalController _overlayPortalController = OverlayPortalController(
+    debugLabel: kReleaseMode ? null : 'MenuAnchor controller',
+  );
+  PopupWindowController? _popupWindowController;
+  bool _useWindowing = false;
+
+  void init(BuildContext context) {
+    _useWindowing = Windowing.of(context);
+  }
+
+  bool get isShowing {
+    if (_useWindowing) {
+      return _popupWindowController != null;
+    } else {
+      return _overlayPortalController.isShowing;
+    }
+  }
+
+  void initWindowing() {
+    if (_popupWindowController != null) {
+      return;
+    }
+
+    final BuildContext anchorContext = anchor._anchorKey.currentContext!;
+    final RenderBox box = anchorContext.findRenderObject()! as RenderBox;
+    final Offset position = box.localToGlobal(Offset.zero);
+    final WindowPositioner positioner;
+    if (anchor._parent != null) {
+      positioner = WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.topRight,
+        childAnchor: WindowPositionerAnchor.topLeft,
+        offset: anchor.widget.alignmentOffset ?? Offset.zero,
+      );
+    } else {
+      positioner = WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.bottomLeft,
+        childAnchor: WindowPositionerAnchor.topLeft,
+        offset: anchor.widget.alignmentOffset ?? Offset.zero,
+      );
+    }
+
+    _popupWindowController = PopupWindowController(
+      size: const Size(200, 400), // TODO: Get a real size
+      onDestroyed: _onHide,
+      onError: (String? error) => _onHide,
+      anchorRect: Rect.fromPoints(
+        position,
+        Offset(position.dx + box.size.width, position.dy + box.size.height),
+      ),
+      positioner: positioner,
+      parent: WindowControllerContext.of(anchorContext)!.controller.rootView,
+    );
+  }
+
+  void _onHide() {
+    _popupWindowController = null;
+    anchor.hidePopup();
+  }
+
+  void show() {
+    if (_useWindowing) {
+      initWindowing();
+      anchor.showPopup();
+    } else {
+      _overlayPortalController.show();
+    }
+  }
+
+  Future<void> hide() async {
+    if (_useWindowing) {
+      await _popupWindowController!.destroy();
+    } else {
+      _overlayPortalController.hide();
+    }
+  }
+}
+
 class _MenuAnchorState extends State<MenuAnchor> {
   // This is the global key that is used later to determine the bounding rect
   // for the anchor's region that the CustomSingleChildLayout's delegate
@@ -322,13 +404,14 @@ class _MenuAnchorState extends State<MenuAnchor> {
     debugLabel: kReleaseMode ? null : 'MenuAnchor',
   );
   _MenuAnchorState? _parent;
+  bool _popupShown = false;
   late final FocusScopeNode _menuScopeNode;
   MenuController? _internalMenuController;
   final List<_MenuAnchorState> _anchorChildren = <_MenuAnchorState>[];
   ScrollPosition? _scrollPosition;
   Size? _viewSize;
-  final OverlayPortalController _overlayController = OverlayPortalController(
-    debugLabel: kReleaseMode ? null : 'MenuAnchor controller',
+  late final _MenuAnchorStateController _overlayController = _MenuAnchorStateController(
+    anchor: this,
   );
   Offset? _menuPosition;
   Axis get _orientation => Axis.vertical;
@@ -408,22 +491,29 @@ class _MenuAnchorState extends State<MenuAnchor> {
       contents = CompositedTransformTarget(link: widget.layerLink!, child: contents);
     }
 
-    Widget child = OverlayPortal(
-      controller: _overlayController,
-      overlayChildBuilder: (BuildContext context) {
-        return _Submenu(
-          anchor: this,
-          layerLink: widget.layerLink,
-          menuStyle: widget.style,
-          alignmentOffset: widget.alignmentOffset ?? Offset.zero,
-          menuPosition: _menuPosition,
-          clipBehavior: widget.clipBehavior,
-          menuChildren: widget.menuChildren,
-          crossAxisUnconstrained: widget.crossAxisUnconstrained,
-        );
-      },
-      child: contents,
-    );
+    Widget child;
+
+    _overlayController.init(context);
+    if (!Windowing.of(context)) {
+      child = OverlayPortal(
+        controller: _overlayController._overlayPortalController!,
+        overlayChildBuilder: (BuildContext context) {
+          return _Submenu(
+            anchor: this,
+            layerLink: widget.layerLink,
+            menuStyle: widget.style,
+            alignmentOffset: widget.alignmentOffset ?? Offset.zero,
+            menuPosition: _menuPosition,
+            clipBehavior: widget.clipBehavior,
+            menuChildren: widget.menuChildren,
+            crossAxisUnconstrained: widget.crossAxisUnconstrained,
+          );
+        },
+        child: contents,
+      );
+    } else {
+      child = ViewAnchor(view: _buildPopupView(), child: contents);
+    }
 
     if (!widget.anchorTapClosesMenu) {
       child = TapRegion(
@@ -463,6 +553,35 @@ class _MenuAnchorState extends State<MenuAnchor> {
         },
       ),
     );
+  }
+
+  Widget? _buildPopupView() {
+    if (!_popupShown) {
+      return null;
+    }
+
+    return PopupWindow(
+      controller: _overlayController._popupWindowController!,
+      child: FocusScope(
+        node: _menuScopeNode,
+        skipTraversal: true,
+        child: _MenuPanel(
+          orientation: _orientation,
+          menuStyle: widget.style,
+          clipBehavior: widget.clipBehavior,
+          crossAxisUnconstrained: widget.crossAxisUnconstrained,
+          children: widget.menuChildren,
+        ),
+      ),
+    );
+  }
+
+  void showPopup() {
+    setState(() => _popupShown = true);
+  }
+
+  void hidePopup() {
+    setState(() => _popupShown = false);
   }
 
   // Returns the first focusable item in the submenu, where "first" is
