@@ -18,6 +18,11 @@ Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler({
       final String state = args['state'] as String? ?? WindowState.restored.toString();
 
       return <String, Object?>{'viewId': tester.view.viewId, 'size': size, 'state': state};
+    } else if (call.method == 'createPopup') {
+      final int parent = args['parentViewId']! as int;
+      final List<Object?> size = args['size']! as List<Object?>;
+
+      return <String, Object?>{'viewId': tester.view.viewId, 'size': size, 'parentViewId': parent};
     } else if (call.method == 'modifyRegular') {
       return null;
     } else if (call.method == 'destroyWindow') {
@@ -277,5 +282,89 @@ void main() {
     await tester.pump();
 
     expect(() async => controller.modify(), throwsA(isA<AssertionError>()));
+  });
+  testWidgets('PopupWindow widget can specify anchorRect', (WidgetTester tester) async {
+    const Size childWindow = Size(400, 300);
+
+    bool called = false;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(
+        tester: tester,
+        onMethodCall: (MethodCall call) {
+          final Map<Object?, Object?> args = call.arguments as Map<Object?, Object?>;
+          if (call.method == 'createPopup') {
+            final Map<Object?, Object?> positioner = args['positioner']! as Map<Object?, Object?>;
+            final List<Object?>? anchorRect = positioner['anchorRect'] as List<Object?>?;
+            expect(anchorRect, <Object?>[0, 0, 100, 100]);
+            called = true;
+          }
+        },
+      ),
+    );
+
+    final PopupWindowController controller = PopupWindowController(
+      parent: tester.binding.window,
+      size: childWindow,
+      anchorRect: const Rect.fromLTWH(0, 0, 100, 100),
+    );
+
+    await tester.pump();
+
+    expect(called, true);
+  });
+
+  testWidgets('PopupWindow widget can specify positioner', (WidgetTester tester) async {
+    const Size childWindow = Size(400, 300);
+    const Set<WindowPositionerConstraintAdjustment> constraintAdjustment =
+        <WindowPositionerConstraintAdjustment>{
+          WindowPositionerConstraintAdjustment.flipX,
+          WindowPositionerConstraintAdjustment.resizeX,
+        };
+
+    bool called = false;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(
+        tester: tester,
+        onMethodCall: (MethodCall call) {
+          final Map<Object?, Object?> args = call.arguments as Map<Object?, Object?>;
+          if (call.method == 'createPopup') {
+            final Map<Object?, Object?> positioner = args['positioner']! as Map<Object?, Object?>;
+            final String positionerParentAnchor = positioner['parentAnchor']! as String;
+            final String positionerChildAnchor = positioner['childAnchor']! as String;
+            final List<Object?> positionerOffset = positioner['offset']! as List<Object?>;
+
+            final List<Object?> positionerConstraintAdjustment =
+                positioner['constraintAdjustment']! as List<Object?>;
+
+            expect(positionerParentAnchor, WindowPositionerAnchor.left.toString());
+            expect(positionerChildAnchor, WindowPositionerAnchor.left.toString());
+            expect(positionerOffset, <Object?>[100, 100]);
+
+            expect(positionerConstraintAdjustment, <Object?>[
+              WindowPositionerConstraintAdjustment.flipX.toString(),
+              WindowPositionerConstraintAdjustment.resizeX.toString(),
+            ]);
+            called = true;
+          }
+        },
+      ),
+    );
+
+    final PopupWindowController controller = PopupWindowController(
+      parent: tester.binding.window,
+      size: childWindow,
+      positioner: const WindowPositioner(
+        parentAnchor: WindowPositionerAnchor.left,
+        childAnchor: WindowPositionerAnchor.left,
+        offset: Offset(100, 100),
+        constraintAdjustment: constraintAdjustment,
+      ),
+    );
+
+    await tester.pump();
+
+    expect(called, true);
   });
 }
