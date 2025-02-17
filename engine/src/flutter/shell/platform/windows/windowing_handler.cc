@@ -22,6 +22,9 @@ constexpr char kModifyRegularMethod[] = "modifyRegular";
 // The method to destroy a window.
 constexpr char kDestroyWindowMethod[] = "destroyWindow";
 
+// The method to request focus on a window.
+constexpr char kRequestWindowFocusMethod[] = "requestWindowFocus";
+
 // Keys used in method calls.
 constexpr char kMaxSizeKey[] = "maxSize";
 constexpr char kMinSizeKey[] = "minSize";
@@ -149,6 +152,8 @@ void WindowingHandler::HandleMethodCall(
     HandleModifyWindow(WindowArchetype::kRegular, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
     HandleDestroyWindow(method_call, *result);
+  } else if (method == kRequestWindowFocusMethod) {
+    HandleRequestWindowFocus(method_call, *result);
   } else {
     result->NotImplemented();
   }
@@ -342,6 +347,43 @@ void WindowingHandler::HandleDestroyWindow(MethodCall<> const& call,
                                            std::to_string(*view_id_opt) + ".");
       return;
     }
+    result.Success();
+  } else {
+    return;
+  }
+}
+
+void WindowingHandler::HandleRequestWindowFocus(MethodCall<> const& call,
+                                                MethodResult<>& result) {
+  auto const* const arguments = call.arguments();
+  auto const* const map = std::get_if<EncodableMap>(arguments);
+  if (!map) {
+    result.Error(kBadArgumentsError, "Method call argument is not a map.");
+    return;
+  }
+
+  if (auto const [view_id_opt, success] =
+          GetSingleValueForKeyOrSendError<int>(kViewIdKey, map, result);
+      success) {
+    if (!view_id_opt.has_value()) {
+      result.Error(kBadArgumentsError, "Value for '" + std::string(kViewIdKey) +
+                                           "' key must not be null.");
+      return;
+    }
+    if (*view_id_opt < 0) {
+      result.Error(kBadArgumentsError,
+                   "Value for '" + std::string(kViewIdKey) + "' (" +
+                       std::to_string(*view_id_opt) + ") cannot be negative.");
+      return;
+    }
+
+    if (!controller_->RequestWindowFocus(*view_id_opt)) {
+      result.Error(kBadArgumentsError, "Can't find window with '" +
+                                           std::string(kViewIdKey) + "' (" +
+                                           std::to_string(*view_id_opt) + ").");
+      return;
+    }
+
     result.Success();
   } else {
     return;

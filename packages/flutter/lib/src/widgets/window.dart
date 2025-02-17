@@ -204,6 +204,15 @@ class RegularWindowController extends WindowController {
     assert(isReady, 'Window is not ready');
     return _modifyRegular(viewId: rootView.viewId, size: size, title: title, state: state);
   }
+
+  /// Request focus for the window.
+  ///
+  /// This method will request focus for the window. If the window is not ready,
+  /// then an assertion will be thrown.
+  Future<void> requestFocus() {
+    assert(isReady, 'Window is not ready');
+    return _requestFocus(rootView.viewId);
+  }
 }
 
 /// The [RegularWindow] widget provides a way to render a regular window in the
@@ -404,6 +413,18 @@ Future<void> _destroyWindow(int viewId) async {
   } on PlatformException catch (e) {
     throw ArgumentError(
       'Unable to delete window with view_id=$viewId. Does the window exist? Error: $e',
+    );
+  }
+}
+
+Future<void> _requestFocus(int viewId) async {
+  try {
+    await SystemChannels.windowing.invokeMethod('requestWindowFocus', <String, dynamic>{
+      'viewId': viewId,
+    });
+  } on PlatformException catch (e) {
+    throw ArgumentError(
+      'Unable to request focus for window with view_id=$viewId. Does the window exist? Error: $e',
     );
   }
 }
