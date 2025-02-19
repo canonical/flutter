@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import 'dart:ui' show DartPerformanceMode;
 
 import 'button_style.dart';
 import 'color_scheme.dart';
@@ -30,6 +31,7 @@ import 'text_theme.dart';
 import 'theme.dart';
 import 'theme_data.dart';
 import 'tooltip.dart';
+import 'windowing.dart';
 
 // Examples can assume:
 // enum Commands { heroAndScholar, hurricaneCame }
@@ -581,18 +583,44 @@ class _CheckedPopupMenuItemState<T> extends PopupMenuItemState<T, CheckedPopupMe
   }
 }
 
+class _PopupMenuData<T> {
+  _PopupMenuData({
+    required this.items,
+    required this.itemSizes,
+    required this.animation,
+    this.initialValue,
+    this.menuPadding,
+    this.shape,
+    this.color,
+    this.shadowColor,
+    this.surfaceTintColor,
+    this.elevation,
+  });
+
+  final List<PopupMenuEntry<T>> items;
+  final List<Size?> itemSizes;
+  final Animation<double> animation;
+  final T? initialValue;
+  final EdgeInsetsGeometry? menuPadding;
+  final ShapeBorder? shape;
+  final Color? color;
+  final Color? shadowColor;
+  final Color? surfaceTintColor;
+  final double? elevation;
+}
+
 class _PopupMenu<T> extends StatefulWidget {
   const _PopupMenu({
     super.key,
     required this.itemKeys,
-    required this.route,
+    required this.data,
     required this.semanticLabel,
     this.constraints,
     required this.clipBehavior,
   });
 
   final List<GlobalKey> itemKeys;
-  final _PopupMenuRoute<T> route;
+  final _PopupMenuData<T> data;
   final String? semanticLabel;
   final BoxConstraints? constraints;
   final Clip clipBehavior;
@@ -613,8 +641,8 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
   @override
   void didUpdateWidget(covariant _PopupMenu<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.route.items.length != widget.route.items.length ||
-        oldWidget.route.animation != widget.route.animation) {
+    if (oldWidget.data.items.length != widget.data.items.length ||
+        oldWidget.data.animation != widget.data.animation) {
       _setOpacities();
     }
   }
@@ -626,12 +654,12 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
     final List<CurvedAnimation> newOpacities = <CurvedAnimation>[];
     final double unit =
         1.0 /
-        (widget.route.items.length + 1.5); // 1.0 for the width and 0.5 for the last item's fade.
-    for (int i = 0; i < widget.route.items.length; i += 1) {
+        (widget.data.items.length + 1.5); // 1.0 for the width and 0.5 for the last item's fade.
+    for (int i = 0; i < widget.data.items.length; i += 1) {
       final double start = (i + 1) * unit;
       final double end = clampDouble(start + 1.5 * unit, 0.0, 1.0);
       final CurvedAnimation opacity = CurvedAnimation(
-        parent: widget.route.animation!,
+        parent: widget.data.animation!,
         curve: Interval(start, end),
       );
       newOpacities.add(opacity);
@@ -651,24 +679,24 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
   Widget build(BuildContext context) {
     final double unit =
         1.0 /
-        (widget.route.items.length + 1.5); // 1.0 for the width and 0.5 for the last item's fade.
+        (widget.data.items.length + 1.5); // 1.0 for the width and 0.5 for the last item's fade.
     final List<Widget> children = <Widget>[];
     final ThemeData theme = Theme.of(context);
     final PopupMenuThemeData popupMenuTheme = PopupMenuTheme.of(context);
     final PopupMenuThemeData defaults =
         theme.useMaterial3 ? _PopupMenuDefaultsM3(context) : _PopupMenuDefaultsM2(context);
 
-    for (int i = 0; i < widget.route.items.length; i += 1) {
+    for (int i = 0; i < widget.data.items.length; i += 1) {
       final CurvedAnimation opacity = _opacities[i];
-      Widget item = widget.route.items[i];
-      if (widget.route.initialValue != null &&
-          widget.route.items[i].represents(widget.route.initialValue)) {
+      Widget item = widget.data.items[i];
+      if (widget.data.initialValue != null &&
+          widget.data.items[i].represents(widget.data.initialValue)) {
         item = ColoredBox(color: Theme.of(context).highlightColor, child: item);
       }
       children.add(
         _MenuItem(
           onLayout: (Size size) {
-            widget.route.itemSizes[i] = size;
+            widget.data.itemSizes[i] = size;
           },
           child: FadeTransition(key: widget.itemKeys[i], opacity: opacity, child: item),
         ),
@@ -677,7 +705,7 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
 
     final CurveTween opacity = CurveTween(curve: const Interval(0.0, 1.0 / 3.0));
     final CurveTween width = CurveTween(curve: Interval(0.0, unit));
-    final CurveTween height = CurveTween(curve: Interval(0.0, unit * widget.route.items.length));
+    final CurveTween height = CurveTween(curve: Interval(0.0, unit * widget.data.items.length));
 
     final Widget child = ConstrainedBox(
       constraints:
@@ -691,7 +719,7 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
           explicitChildNodes: true,
           label: widget.semanticLabel,
           child: SingleChildScrollView(
-            padding: widget.route.menuPadding ?? popupMenuTheme.menuPadding ?? defaults.menuPadding,
+            padding: widget.data.menuPadding ?? popupMenuTheme.menuPadding ?? defaults.menuPadding,
             child: ListBody(children: children),
           ),
         ),
@@ -699,26 +727,26 @@ class _PopupMenuState<T> extends State<_PopupMenu<T>> {
     );
 
     return AnimatedBuilder(
-      animation: widget.route.animation!,
+      animation: widget.data.animation!,
       builder: (BuildContext context, Widget? child) {
         return FadeTransition(
-          opacity: opacity.animate(widget.route.animation!),
+          opacity: opacity.animate(widget.data.animation!),
           child: Material(
-            shape: widget.route.shape ?? popupMenuTheme.shape ?? defaults.shape,
-            color: widget.route.color ?? popupMenuTheme.color ?? defaults.color,
+            shape: widget.data.shape ?? popupMenuTheme.shape ?? defaults.shape,
+            color: widget.data.color ?? popupMenuTheme.color ?? defaults.color,
             clipBehavior: widget.clipBehavior,
             type: MaterialType.card,
-            elevation: widget.route.elevation ?? popupMenuTheme.elevation ?? defaults.elevation!,
+            elevation: widget.data.elevation ?? popupMenuTheme.elevation ?? defaults.elevation!,
             shadowColor:
-                widget.route.shadowColor ?? popupMenuTheme.shadowColor ?? defaults.shadowColor,
+                widget.data.shadowColor ?? popupMenuTheme.shadowColor ?? defaults.shadowColor,
             surfaceTintColor:
-                widget.route.surfaceTintColor ??
+                widget.data.surfaceTintColor ??
                 popupMenuTheme.surfaceTintColor ??
                 defaults.surfaceTintColor,
             child: Align(
               alignment: AlignmentDirectional.topEnd,
-              widthFactor: width.evaluate(widget.route.animation!),
-              heightFactor: height.evaluate(widget.route.animation!),
+              widthFactor: width.evaluate(widget.data.animation!),
+              heightFactor: height.evaluate(widget.data.animation!),
               child: child,
             ),
           ),
@@ -952,7 +980,18 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
     }
 
     final Widget menu = _PopupMenu<T>(
-      route: this,
+      data: _PopupMenuData<T>(
+        items: items,
+        itemSizes: itemSizes,
+        animation: animation,
+        initialValue: initialValue,
+        menuPadding: menuPadding,
+        shape: shape,
+        color: color,
+        shadowColor: shadowColor,
+        surfaceTintColor: surfaceTintColor,
+        elevation: elevation,
+      ),
       itemKeys: itemKeys,
       semanticLabel: semanticLabel,
       constraints: constraints,
@@ -991,6 +1030,184 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
   void dispose() {
     _animation?.dispose();
     super.dispose();
+  }
+}
+
+class _PopupWindowRoute<T> extends Route<T> {
+  _PopupWindowRoute({
+    required this.controllerBuilder,
+    required this.builder,
+    required NavigatorState navigator,
+    AnimationStyle? popUpAnimationStyle,
+  }) : _navigator = navigator,
+       _popUpAnimationStyle = popUpAnimationStyle;
+
+  final PopupWindowController Function() controllerBuilder;
+  final Widget Function(BuildContext context, Animation<double> animation) builder;
+
+  @override
+  List<OverlayEntry> get overlayEntries => _overlayEntries;
+  final List<OverlayEntry> _overlayEntries = <OverlayEntry>[];
+  final NavigatorState _navigator;
+  final AnimationStyle? _popUpAnimationStyle;
+
+  late final AnimationController _animationController;
+  late final Animation<double> _animation;
+  late final PopupWindowController _controller;
+
+  /// Handle to the performance mode request.
+  ///
+  /// When the route is animating, the performance mode is requested. It is then
+  /// disposed when the animation ends. Requesting [DartPerformanceMode.latency]
+  /// indicates to the engine that the transition is latency sensitive and to delay
+  /// non-essential work while this handle is active.
+  PerformanceModeRequestHandle? _performanceModeRequestHandle;
+
+  @override
+  void install() {
+    assert(_overlayEntries.isEmpty);
+    final Duration duration = _popUpAnimationStyle?.duration ?? _kMenuDuration;
+    _animationController = AnimationController(
+      duration: duration,
+      reverseDuration: duration,
+      debugLabel: 'PopupWindowRoute',
+      vsync: _navigator,
+    );
+    _animation = createAnimation()..addStatusListener(_handleStatusChanged);
+    _controller = controllerBuilder();
+    _overlayEntries.add(
+      OverlayEntry(
+        builder: (BuildContext context) {
+          return ViewAnchor(
+            view: PopupWindow(controller: _controller, child: builder(context, createAnimation())),
+            child: Container());
+        },
+      ),
+    );
+    super.install();
+  }
+
+  /// Called to create the animation that exposes the current progress of
+  /// the transition controlled by the animation controller created by
+  /// [createAnimationController()].
+  Animation<double> createAnimation() {
+    if (_popUpAnimationStyle != AnimationStyle.noAnimation) {
+      return CurvedAnimation(
+        parent: _animationController.view,
+        curve: _popUpAnimationStyle?.curve ?? Curves.linear,
+        reverseCurve:
+            _popUpAnimationStyle?.reverseCurve ?? const Interval(0.0, _kMenuCloseIntervalEnd),
+      );
+    }
+
+    return _animationController.view;
+  }
+
+  @override
+  TickerFuture didPush() {
+    super.didPush();
+    return _animationController.forward();
+  }
+
+  void _handleStatusChanged(AnimationStatus status) {
+    switch (status) {
+      case AnimationStatus.completed:
+        _performanceModeRequestHandle?.dispose();
+        _performanceModeRequestHandle = null;
+      case AnimationStatus.forward:
+      case AnimationStatus.reverse:
+        _performanceModeRequestHandle ??= SchedulerBinding.instance.requestPerformanceMode(
+          DartPerformanceMode.latency,
+        );
+      case AnimationStatus.dismissed:
+        // We might still be an active route if a subclass is controlling the
+        // transition and hits the dismissed status. For example, the iOS
+        // back gesture drives this animation to the dismissed status before
+        // removing the route and disposing it.
+        if (!isActive) {
+          navigator!.finalizeRoute(this);
+          _performanceModeRequestHandle?.dispose();
+          _performanceModeRequestHandle = null;
+        }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animation.removeStatusListener(_handleStatusChanged);
+    _animationController.dispose();
+    _performanceModeRequestHandle?.dispose();
+    _performanceModeRequestHandle = null;
+    for (final OverlayEntry entry in _overlayEntries) {
+      entry.dispose();
+    }
+    _overlayEntries.clear();
+    super.dispose();
+  }
+
+  @override
+  void didComplete(T? result) {
+    _controller.destroy();
+    super.didComplete(result);
+  }
+}
+
+class _PopupMenuWindowRouteContent<T> extends StatelessWidget {
+  _PopupMenuWindowRouteContent({
+    this.position,
+    required this.items,
+    required this.itemKeys,
+    this.initialValue,
+    this.elevation,
+    this.surfaceTintColor,
+    this.shadowColor,
+    this.semanticLabel,
+    this.shape,
+    this.menuPadding,
+    this.color,
+    required this.capturedThemes,
+    this.constraints,
+    required this.clipBehavior,
+    required this.animation,
+  }) : itemSizes = List<Size?>.filled(items.length, null);
+
+  final RelativeRect? position;
+  final List<PopupMenuEntry<T>> items;
+  final List<GlobalKey> itemKeys;
+  final List<Size?> itemSizes;
+  final T? initialValue;
+  final double? elevation;
+  final Color? surfaceTintColor;
+  final Color? shadowColor;
+  final String? semanticLabel;
+  final ShapeBorder? shape;
+  final EdgeInsetsGeometry? menuPadding;
+  final Color? color;
+  final CapturedThemes capturedThemes;
+  final BoxConstraints? constraints;
+  final Clip clipBehavior;
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PopupMenu<T>(
+      data: _PopupMenuData<T>(
+        items: items,
+        itemSizes: itemSizes,
+        animation: animation,
+        initialValue: initialValue,
+        menuPadding: menuPadding,
+        shape: shape,
+        color: color,
+        shadowColor: shadowColor,
+        surfaceTintColor: surfaceTintColor,
+        elevation: elevation,
+      ),
+      itemKeys: itemKeys,
+      semanticLabel: semanticLabel,
+      constraints: constraints,
+      clipBehavior: clipBehavior,
+    );
   }
 }
 
@@ -1127,29 +1344,71 @@ Future<T?> showMenu<T>({
     (int index) => GlobalKey(),
   );
   final NavigatorState navigator = Navigator.of(context, rootNavigator: useRootNavigator);
-  return navigator.push(
-    _PopupMenuRoute<T>(
-      position: position,
-      positionBuilder: positionBuilder,
-      items: items,
-      itemKeys: menuItemKeys,
-      initialValue: initialValue,
-      elevation: elevation,
-      shadowColor: shadowColor,
-      surfaceTintColor: surfaceTintColor,
-      semanticLabel: semanticLabel,
-      barrierLabel: MaterialLocalizations.of(context).menuDismissLabel,
-      shape: shape,
-      menuPadding: menuPadding,
-      color: color,
-      capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
-      constraints: constraints,
-      clipBehavior: clipBehavior,
-      settings: routeSettings,
-      popUpAnimationStyle: popUpAnimationStyle,
-      requestFocus: requestFocus,
-    ),
-  );
+  final bool useWindowingApi = Windowing.of(context);
+  if (!useWindowingApi) {
+    return navigator.push(
+      _PopupMenuRoute<T>(
+        position: position,
+        positionBuilder: positionBuilder,
+        items: items,
+        itemKeys: menuItemKeys,
+        initialValue: initialValue,
+        elevation: elevation,
+        shadowColor: shadowColor,
+        surfaceTintColor: surfaceTintColor,
+        semanticLabel: semanticLabel,
+        barrierLabel: MaterialLocalizations.of(context).menuDismissLabel,
+        shape: shape,
+        menuPadding: menuPadding,
+        color: color,
+        capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
+        constraints: constraints,
+        clipBehavior: clipBehavior,
+        settings: routeSettings,
+        popUpAnimationStyle: popUpAnimationStyle,
+        requestFocus: requestFocus,
+      ),
+    );
+  } else {
+    return navigator.push(
+      _PopupWindowRoute<T>(
+        builder: (BuildContext context, Animation<double> animation) {
+          return _PopupMenuWindowRouteContent<T>(
+            position: position,
+            items: items,
+            itemKeys: menuItemKeys,
+            initialValue: initialValue,
+            elevation: elevation,
+            shadowColor: shadowColor,
+            surfaceTintColor: surfaceTintColor,
+            semanticLabel: semanticLabel,
+            shape: shape,
+            menuPadding: menuPadding,
+            color: color,
+            capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
+            constraints: constraints,
+            clipBehavior: clipBehavior,
+            animation: animation,
+          );
+        },
+        navigator: navigator,
+        popUpAnimationStyle: popUpAnimationStyle,
+        controllerBuilder: () {
+          final Size size = Size(100, 200);  // TODO: Get a real size
+          final RelativeRect resultingPosition = position ?? positionBuilder!.call(context, BoxConstraints.loose(size));
+          return PopupWindowController(
+          parent: WindowControllerContext.of(context)!.controller.rootView,
+          size: size,
+          anchorRect:Rect.fromLTRB(resultingPosition.left, resultingPosition.top, resultingPosition.right, resultingPosition.bottom),
+          positioner: const WindowPositioner(
+            parentAnchor: WindowPositionerAnchor.topRight,
+            childAnchor: WindowPositionerAnchor.topLeft,
+          ),
+        ); 
+        }
+      ),
+    );
+  }
 }
 
 /// Signature for the callback invoked when a menu item is selected. The
