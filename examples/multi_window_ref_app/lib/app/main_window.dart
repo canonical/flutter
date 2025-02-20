@@ -198,6 +198,14 @@ class _ActiveWindowsTable extends StatelessWidget {
                                   }
                                 },
                               ),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility),
+                                  onPressed: () async {
+                                    if (controller.controller.type == WindowArchetype.regular) {
+                                      (controller.controller as RegularWindowController).requestFocus();
+                                    }
+                                  },
+                                ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outlined),
                                 onPressed: () async {

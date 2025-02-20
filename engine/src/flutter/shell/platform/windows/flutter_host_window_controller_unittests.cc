@@ -338,5 +338,26 @@ TEST_F(FlutterHostWindowControllerTest, DestroyWindow) {
   }
 }
 
+TEST_F(FlutterHostWindowControllerTest, RequestWindowFocus) {
+  // Create a regular window.
+  WindowCreationSettings const creation_settings = {
+      .archetype = WindowArchetype::kRegular,
+      .size = {800.0, 600.0},
+      .title = "window",
+  };
+
+  // Create the window.
+  std::optional<WindowMetadata> const metadata =
+      host_window_controller()->CreateHostWindow(creation_settings);
+  ASSERT_TRUE(metadata.has_value());
+  // Retrieve the created window and verify it exists.
+  FlutterHostWindow* const window =
+      host_window_controller()->GetHostWindow(metadata->view_id);
+  ASSERT_NE(window, nullptr);
+
+  // Request window focus.
+  EXPECT_TRUE(host_window_controller()->RequestWindowFocus(metadata->view_id));
+}
+
 }  // namespace testing
 }  // namespace flutter
