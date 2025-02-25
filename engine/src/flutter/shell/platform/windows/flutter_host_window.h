@@ -143,6 +143,11 @@ class FlutterHostWindow {
   // The window state. Used by WindowArchetype::kRegular.
   std::optional<WindowState> state_;
 
+  // Whether the window needs to be shown.
+  // Windows are created as hidden and shown only when the first frame is ready
+  // to be presented.
+  bool pending_show_ = true;
+
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterHostWindow);
 };
 
