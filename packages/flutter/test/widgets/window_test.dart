@@ -20,6 +20,8 @@ Future<Object?>? Function(MethodCall)? _createWindowMethodCallHandler({
       return <String, Object?>{'viewId': tester.view.viewId, 'size': size, 'state': state};
     } else if (call.method == 'modifyRegular') {
       return null;
+    } else if (call.method == 'requestWindowFocus') {
+      return null;
     } else if (call.method == 'destroyWindow') {
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         SystemChannels.windowing.name,
@@ -277,5 +279,33 @@ void main() {
     await tester.pump();
 
     expect(() async => controller.modify(), throwsA(isA<AssertionError>()));
+  });
+
+  testWidgets('RegularWindowController.requestWindowFocus should be called', (
+    WidgetTester tester,
+  ) async {
+    const Size initialSize = Size(800, 600);
+
+    bool wasCalled = false;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.windowing,
+      _createWindowMethodCallHandler(
+        tester: tester,
+        onMethodCall: (MethodCall call) {
+          if (call.method != 'requestWindowFocus') {
+            return;
+          }
+          wasCalled = true;
+        },
+      ),
+    );
+
+    final RegularWindowController controller = RegularWindowController(size: initialSize);
+    await tester.pump();
+
+    await controller.requestFocus();
+    await tester.pump();
+
+    expect(wasCalled, true);
   });
 }

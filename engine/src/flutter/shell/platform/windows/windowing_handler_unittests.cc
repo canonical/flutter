@@ -27,6 +27,7 @@ constexpr char kChannelName[] = "flutter/windowing";
 constexpr char kCreateRegularMethod[] = "createRegular";
 constexpr char kDestroyWindowMethod[] = "destroyWindow";
 constexpr char kModifyRegularMethod[] = "modifyRegular";
+constexpr char kRequestWindowFocusMethod[] = "requestWindowFocus";
 
 constexpr char kMaxSizeKey[] = "maxSize";
 constexpr char kMinSizeKey[] = "minSize";
@@ -67,6 +68,10 @@ class MockFlutterHostWindowController : public FlutterHostWindowController {
                WindowModificationSettings const& settings),
               (override, const));
   MOCK_METHOD(bool,
+              RequestWindowFocus,
+              (FlutterViewId view_id),
+              (override, const));
+  MOCK_METHOD(bool,
               DestroyHostWindow,
               (FlutterViewId view_id),
               (override, const));
@@ -100,6 +105,7 @@ class WindowingHandlerTest : public WindowsTest {
         });
     ON_CALL(*mock_controller_, ModifyHostWindow).WillByDefault(Return(true));
     ON_CALL(*mock_controller_, DestroyHostWindow).WillByDefault(Return(true));
+    ON_CALL(*mock_controller_, RequestWindowFocus).WillByDefault(Return(true));
   }
 
   MockFlutterHostWindowController* controller() {
@@ -231,6 +237,30 @@ TEST_F(WindowingHandlerTest, HandleDestroyWindow) {
   EXPECT_CALL(*controller(), DestroyHostWindow(view_id)).Times(1);
 
   SimulateWindowingMessage(&messenger, kDestroyWindowMethod,
+                           std::make_unique<EncodableValue>(arguments),
+                           &result_handler);
+
+  EXPECT_TRUE(success);
+}
+
+TEST_F(WindowingHandlerTest, HandleRequestWindowFocus) {
+  TestBinaryMessenger messenger;
+  WindowingHandler windowing_handler(&messenger, controller());
+
+  FlutterViewId const view_id = 1;
+
+  EncodableMap const arguments = {
+      {EncodableValue(kViewIdKey), EncodableValue(static_cast<int>(view_id))},
+  };
+
+  bool success = false;
+  MethodResultFunctions<> result_handler(
+      [&success](const EncodableValue* result) { success = true; }, nullptr,
+      nullptr);
+
+  EXPECT_CALL(*controller(), RequestWindowFocus(view_id)).Times(1);
+
+  SimulateWindowingMessage(&messenger, kRequestWindowFocusMethod,
                            std::make_unique<EncodableValue>(arguments),
                            &result_handler);
 
