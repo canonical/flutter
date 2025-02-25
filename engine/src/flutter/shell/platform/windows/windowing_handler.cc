@@ -15,6 +15,7 @@ constexpr char kChannelName[] = "flutter/windowing";
 
 // Methods for creating different types of windows.
 constexpr char kCreateRegularMethod[] = "createRegular";
+constexpr char kCreatePopupMethod[] = "createPopup";
 
 // Methods for modifying the attributes of windows.
 constexpr char kModifyRegularMethod[] = "modifyRegular";
@@ -23,8 +24,16 @@ constexpr char kModifyRegularMethod[] = "modifyRegular";
 constexpr char kDestroyWindowMethod[] = "destroyWindow";
 
 // Keys used in method calls.
+constexpr char kAnchorRectKey[] = "anchorRect";
+constexpr char kChildAnchorKey[] = "childAnchor";
+constexpr char kConstraintAdjustmentKey[] = "constraintAdjustment";
 constexpr char kMaxSizeKey[] = "maxSize";
 constexpr char kMinSizeKey[] = "minSize";
+constexpr char kOffsetKey[] = "offset";
+constexpr char kParentAnchorKey[] = "parentAnchor";
+constexpr char kParentViewIdKey[] = "parentViewId";
+constexpr char kPositionerKey[] = "positioner";
+constexpr char kRelativePositionKey[] = "relativePosition";
 constexpr char kSizeKey[] = "size";
 constexpr char kStateKey[] = "state";
 constexpr char kTitleKey[] = "title";
@@ -119,6 +128,68 @@ std::pair<std::optional<std::vector<T>>, bool> GetListOfValuesForKeyOrSendError(
   return {std::nullopt, false};
 }
 
+// Converts the string representation of |WindowPositionerAnchor| defined in the
+// framework to a |flutter::WindowPositioner::Anchor|. Returns std::nullopt if
+// the given string is invalid.
+std::optional<flutter::WindowPositioner::Anchor> StringToWindowPositionerAnchor(
+    std::string_view str) {
+  if (str == "WindowPositionerAnchor.center") {
+    return flutter::WindowPositioner::Anchor::kCenter;
+  }
+  if (str == "WindowPositionerAnchor.top") {
+    return flutter::WindowPositioner::Anchor::kTop;
+  }
+  if (str == "WindowPositionerAnchor.bottom") {
+    return flutter::WindowPositioner::Anchor::kBottom;
+  }
+  if (str == "WindowPositionerAnchor.left") {
+    return flutter::WindowPositioner::Anchor::kLeft;
+  }
+  if (str == "WindowPositionerAnchor.right") {
+    return flutter::WindowPositioner::Anchor::kRight;
+  }
+  if (str == "WindowPositionerAnchor.topLeft") {
+    return flutter::WindowPositioner::Anchor::kTopLeft;
+  }
+  if (str == "WindowPositionerAnchor.bottomLeft") {
+    return flutter::WindowPositioner::Anchor::kBottomLeft;
+  }
+  if (str == "WindowPositionerAnchor.topRight") {
+    return flutter::WindowPositioner::Anchor::kTopRight;
+  }
+  if (str == "WindowPositionerAnchor.bottomRight") {
+    return flutter::WindowPositioner::Anchor::kBottomRight;
+  }
+  return std::nullopt;
+}
+
+// Converts the string representation of |WindowPositionerConstraintAdjustment|
+// defined in the framework to a
+// |flutter::WindowPositioner::ConstraintAdjustment|. Returns std::nullopt if
+// the given string is invalid.
+std::optional<flutter::WindowPositioner::ConstraintAdjustment>
+StringToWindowPositionerConstraintAdjustment(std::string_view str) {
+  if (str == "WindowPositionerConstraintAdjustment.slideX") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kSlideX;
+  }
+  if (str == "WindowPositionerConstraintAdjustment.slideY") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kSlideY;
+  }
+  if (str == "WindowPositionerConstraintAdjustment.flipX") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kFlipX;
+  }
+  if (str == "WindowPositionerConstraintAdjustment.flipY") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kFlipY;
+  }
+  if (str == "WindowPositionerConstraintAdjustment.resizeX") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kResizeX;
+  }
+  if (str == "WindowPositionerConstraintAdjustment.resizeY") {
+    return flutter::WindowPositioner::ConstraintAdjustment::kResizeY;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 namespace flutter {
@@ -145,6 +216,8 @@ void WindowingHandler::HandleMethodCall(
 
   if (method == kCreateRegularMethod) {
     HandleCreateWindow(WindowArchetype::kRegular, method_call, *result);
+  } else if (method == kCreatePopupMethod) {
+    HandleCreateWindow(WindowArchetype::kPopup, method_call, *result);
   } else if (method == kModifyRegularMethod) {
     HandleModifyWindow(WindowArchetype::kRegular, method_call, *result);
   } else if (method == kDestroyWindowMethod) {
@@ -165,6 +238,7 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
   }
 
   WindowCreationSettings settings;
+  settings.archetype = archetype;
 
   // Get value for the 'size' key (non-nullable).
   if (auto const [size_list, success] =
@@ -179,6 +253,185 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
     settings.size = {size_list->at(0), size_list->at(1)};
   } else {
     return;
+  }
+
+  if (archetype == WindowArchetype::kPopup) {
+    // Get value for the 'parentViewId' key (non-nullable)
+    if (auto const [parent_view_id, success] =
+            GetSingleValueForKeyOrSendError<int>(kParentViewIdKey, map, result);
+        success) {
+      if (!parent_view_id.has_value()) {
+        result.Error(kBadArgumentsError, "Value for the '" +
+                                             std::string(kParentViewIdKey) +
+                                             "' key must not be null.");
+        return;
+      }
+      if (*parent_view_id < 0) {
+        result.Error(kBadArgumentsError,
+                     "Value for '" + std::string(kParentViewIdKey) + "' (" +
+                         std::to_string(settings.parent_view_id.value()) +
+                         ") must be equal or greater than zero.");
+        return;
+      }
+      settings.parent_view_id = parent_view_id;
+    } else {
+      return;
+    }
+
+    // Get value for the 'positioner' key (non-nullable)
+    if (auto const [positioner_map, success] =
+            GetSingleValueForKeyOrSendError<EncodableMap>(kPositionerKey, map,
+                                                          result);
+        success) {
+      if (!positioner_map.has_value()) {
+        result.Error(kBadArgumentsError, "Value for the '" +
+                                             std::string(kPositionerKey) +
+                                             "' key must not be null.");
+        return;
+      }
+
+      WindowPositioner positioner;
+
+      // Get value for the 'anchorRect' key (nullable)
+      if (auto const [anchor_rect, success] =
+              GetListOfValuesForKeyOrSendError<double, 4>(
+                  kAnchorRectKey, &positioner_map.value(), result);
+          success) {
+        if (anchor_rect.has_value()) {
+          positioner.anchor_rect = {{anchor_rect->at(0), anchor_rect->at(1)},
+                                    {anchor_rect->at(2) - anchor_rect->at(0),
+                                     anchor_rect->at(3) - anchor_rect->at(1)}};
+        }
+      } else {
+        return;
+      }
+
+      // Get value for the 'parentAnchor' key (non-nullable)
+      if (auto const [parent_anchor, success] =
+              GetSingleValueForKeyOrSendError<std::string>(
+                  kParentAnchorKey, &positioner_map.value(), result);
+          success) {
+        if (!parent_anchor.has_value()) {
+          result.Error(kBadArgumentsError, "Value for the '" +
+                                               std::string(kParentAnchorKey) +
+                                               "' key must not be null.");
+          return;
+        }
+        auto const anchor_opt = StringToWindowPositionerAnchor(*parent_anchor);
+        if (!anchor_opt.has_value()) {
+          result.Error(kBadArgumentsError,
+                       "Value for the '" + std::string(kParentAnchorKey) +
+                           "' key is not a valid string representation of "
+                           "WindowPositionerAnchor.");
+          return;
+        }
+        positioner.parent_anchor = *anchor_opt;
+      } else {
+        return;
+      }
+
+      // Get value for the 'childAnchor' key (non-nullable)
+      if (auto const [child_anchor, success] =
+              GetSingleValueForKeyOrSendError<std::string>(
+                  kChildAnchorKey, &positioner_map.value(), result);
+          success) {
+        if (!child_anchor.has_value()) {
+          result.Error(kBadArgumentsError, "Value for the '" +
+                                               std::string(kChildAnchorKey) +
+                                               "' key must not be null.");
+          return;
+        }
+        auto const anchor_opt = StringToWindowPositionerAnchor(*child_anchor);
+        if (!anchor_opt.has_value()) {
+          result.Error(kBadArgumentsError,
+                       "Value for the '" + std::string(kChildAnchorKey) +
+                           "' key is not a valid string representation of "
+                           "WindowPositionerAnchor.");
+          return;
+        }
+        positioner.child_anchor = *anchor_opt;
+      } else {
+        return;
+      }
+
+      // Get value for the 'offset' key (non-nullable)
+      if (auto const [offset, success] =
+              GetListOfValuesForKeyOrSendError<double, 2>(
+                  kOffsetKey, &positioner_map.value(), result);
+          success) {
+        if (!offset.has_value()) {
+          result.Error(kBadArgumentsError, "Value for the '" +
+                                               std::string(kOffsetKey) +
+                                               "' key must not be null.");
+          return;
+        }
+        positioner.offset = {offset->at(0), offset->at(1)};
+      } else {
+        return;
+      }
+
+      // Get value for the 'constraintAdjustment' key (non-nullable)
+      if (auto const [constraint_adjustments, success] =
+              GetListOfValuesForKeyOrSendError<std::string>(
+                  kConstraintAdjustmentKey, &positioner_map.value(), result);
+          success) {
+        if (!constraint_adjustments.has_value()) {
+          result.Error(kBadArgumentsError,
+                       "Value for the '" +
+                           std::string(kConstraintAdjustmentKey) +
+                           "' key must not be null.");
+          return;
+        }
+        for (auto const& adjustment_str : *constraint_adjustments) {
+          auto const adjustment_opt =
+              StringToWindowPositionerConstraintAdjustment(adjustment_str);
+          if (!adjustment_opt) {
+            result.Error(kBadArgumentsError,
+                         "Value in the array of the '" +
+                             std::string(kConstraintAdjustmentKey) +
+                             "' key is not a valid string representation of "
+                             "WindowPositionerConstraintAdjustment.");
+            return;
+          }
+          positioner.constraint_adjustment =
+              static_cast<WindowPositioner::ConstraintAdjustment>(
+                  static_cast<size_t>(positioner.constraint_adjustment) |
+                  static_cast<size_t>(*adjustment_opt));
+        }
+      } else {
+        return;
+      }
+
+      settings.positioner = positioner;
+    } else {
+      return;
+    }
+  }
+
+  if (archetype == WindowArchetype::kRegular ||
+      archetype == WindowArchetype::kPopup) {
+    // Get value for the 'minSize' key (nullable).
+    if (auto const [list, success] =
+            GetListOfValuesForKeyOrSendError<double, 2>(kMinSizeKey, map,
+                                                        result);
+        success) {
+      if (list.has_value()) {
+        settings.min_size = {list->at(0), list->at(1)};
+      }
+    } else {
+      return;
+    }
+    // Get value for the 'maxSize' key (nullable).
+    if (auto const [list, success] =
+            GetListOfValuesForKeyOrSendError<double, 2>(kMaxSizeKey, map,
+                                                        result);
+        success) {
+      if (list.has_value()) {
+        settings.max_size = {list->at(0), list->at(1)};
+      }
+    } else {
+      return;
+    }
   }
 
   if (archetype == WindowArchetype::kRegular) {
@@ -204,6 +457,7 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
     } else {
       return;
     }
+
     // Get value for the 'title' key (nullable).
     if (auto const [title, success] =
             GetSingleValueForKeyOrSendError<std::string>(kTitleKey, map,
@@ -231,17 +485,26 @@ void WindowingHandler::HandleCreateWindow(WindowArchetype archetype,
     WindowMetadata const& data = data_opt.value();
     EncodableMap map;
 
+    map.insert({EncodableValue(kViewIdKey), EncodableValue(data.view_id)});
+    map.insert(
+        {EncodableValue(kSizeKey),
+         EncodableValue(EncodableList{EncodableValue(data.size.width()),
+                                      EncodableValue(data.size.height())})});
     if (archetype == WindowArchetype::kRegular) {
-      map.insert({EncodableValue(kViewIdKey), EncodableValue(data.view_id)});
-      map.insert(
-          {EncodableValue(kSizeKey),
-           EncodableValue(EncodableList{EncodableValue(data.size.width()),
-                                        EncodableValue(data.size.height())})});
       assert(data.state.has_value());
       map.insert({EncodableValue(kStateKey),
                   EncodableValue(WindowStateToString(data.state.value()))});
-    }
+    } else if (archetype == WindowArchetype::kPopup) {
+      assert(data.parent_id.has_value());
+      map.insert({EncodableValue(kParentViewIdKey),
+                  EncodableValue(data.parent_id.value())});
 
+      assert(data.relative_position.has_value());
+      map.insert({EncodableValue(kRelativePositionKey),
+                  EncodableValue(EncodableList{
+                      EncodableValue(data.relative_position->x()),
+                      EncodableValue(data.relative_position->y())})});
+    }
     result.Success(EncodableValue(map));
   } else {
     result.Error(kUnavailableError, "Can't create window.");
