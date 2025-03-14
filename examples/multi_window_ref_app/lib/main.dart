@@ -8,7 +8,6 @@ import 'app/window_manager_model.dart';
 void main() {
   final RegularWindowController controller = RegularWindowController(
     size: const Size(800, 600),
-    sizeConstraints: const BoxConstraints(minWidth: 640, minHeight: 480),
     title: "Multi-Window Reference Application",
   );
 

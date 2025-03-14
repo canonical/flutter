@@ -271,6 +271,7 @@ class _WindowCreatorCard extends StatelessWidget {
                           onError: (String error) =>
                               windowManagerModel.remove(key),
                           size: windowSettings.popupSizeNotifier.value,
+                          sizeConstraints: BoxConstraints.loose(const Size(500, 500)),
                           anchorRect:
                               windowSettings.anchorToWindowNotifier.value
                                   ? null
