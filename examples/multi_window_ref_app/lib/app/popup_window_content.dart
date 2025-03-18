@@ -26,7 +26,10 @@ class PopupWindowContent extends StatelessWidget {
             windowSettings: windowSettings,
             positionerSettingsModifier: positionerSettingsModifier,
             controller: controller),
-        child: SizedBox(
+        child: FocusScope(
+          skipTraversal: false,
+          autofocus: true,
+          child: SizedBox(
                 width: windowSettings.popupSizeNotifier.value.width,
                 height: windowSettings.popupSizeNotifier.value.height,
                 child: Container(
@@ -62,6 +65,22 @@ class PopupWindowContent extends StatelessWidget {
                                           .onPrimary,
                                     ),
                               ),
+                              const SizedBox(height: 20.0),
+                              ElevatedButton(
+                                  onPressed: () {
+                                  final UniqueKey key = UniqueKey();
+                                    windowManagerModel.add(KeyedWindowController(
+                                        key: key,
+                                        controller: RegularWindowController(
+                                          onDestroyed: () =>
+                                              windowManagerModel.remove(key),
+                                          onError: (String error) =>
+                                              windowManagerModel.remove(key),
+                                          title: "Regular",
+                                          size: windowSettings.regularSizeNotifier.value,
+                                        )));
+                                  },
+                                  child: const Text('Regular window')),
                               const SizedBox(height: 20.0),
                               ElevatedButton(
                                   onPressed: () {
@@ -108,6 +127,6 @@ class PopupWindowContent extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ))));
+                    )))));
   }
 }

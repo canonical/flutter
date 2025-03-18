@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import 'child_window_renderer.dart';
@@ -166,6 +168,7 @@ class _ActiveWindowsTable extends StatelessWidget {
                             Row(children: [
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined),
+                                tooltip: "Properties",
                                 onPressed: () {
                                   if (controller.controller.type ==
                                       WindowArchetype.regular) {
@@ -194,7 +197,17 @@ class _ActiveWindowsTable extends StatelessWidget {
                                 },
                               ),
                               IconButton(
+                                icon: const Icon(Icons.visibility),
+                                tooltip: "Focus",
+                                onPressed: () async {
+                                  if (controller.controller.type == WindowArchetype.regular) {
+                                    focusView(controller.controller.rootView);
+                                  }
+                                },
+                              ),
+                              IconButton(
                                 icon: const Icon(Icons.delete_outlined),
+                                tooltip: "Close",
                                 onPressed: () async {
                                   await controller.controller.destroy();
                                 },
@@ -261,6 +274,12 @@ class _WindowCreatorCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 OutlinedButton(
                   onPressed: windowManagerModel.selected == null ? null : () {
+                    if (selectedWindow != null) {
+                      // Focus the parent to activate it. This ensures that when the popup
+                      // is created, it doesn't trigger a reactivation of the parent window,
+                      // which would otherwise cause the popup to be closed immediately.
+                      focusView(selectedWindow!.rootView);
+                    }
                     final UniqueKey key = UniqueKey();
                     windowManagerModel.add(KeyedWindowController(
                         key: key,
@@ -400,4 +419,12 @@ class _PositionerEditorCardState extends State<_PositionerEditorCard> {
               })),
     );
   }
+}
+
+void focusView(FlutterView view) {
+  WidgetsBinding.instance.platformDispatcher.requestViewFocusChange(
+    viewId: view.viewId,
+    direction: ViewFocusDirection.forward,
+    state: ViewFocusState.focused,
+  );
 }

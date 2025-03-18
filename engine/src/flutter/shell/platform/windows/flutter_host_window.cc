@@ -799,9 +799,6 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
               owner_window->owned_windows_.erase(this);
               FML_CHECK(owner_window->num_owned_popups_ > 0);
               --owner_window->num_owned_popups_;
-              if (owner_window->child_content_) {
-                SetFocus(owner_window->child_content_);
-              }
             }
             break;
           default:
@@ -908,6 +905,10 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
             SetActiveWindow(enabled_descendant->GetWindowHandle());
           }
           return 0;
+        }
+
+        if (child_content_ != nullptr) {
+          SetFocus(child_content_);
         }
       }
       return 0;

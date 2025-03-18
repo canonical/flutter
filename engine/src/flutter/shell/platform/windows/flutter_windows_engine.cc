@@ -732,6 +732,9 @@ void FlutterWindowsEngine::SendKeyEvent(const FlutterKeyEvent& event,
 
 void FlutterWindowsEngine::SendViewFocusEvent(
     const FlutterViewFocusEvent& event) {
+  if (event.state == FlutterViewFocusState::kUnfocused) {
+    return;
+  }
   if (engine_) {
     embedder_api_.SendViewFocusEvent(engine_, &event);
   }
@@ -1100,11 +1103,21 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
                      layer_height + border_height,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
       }
+
+      // Unlock mutex to allow other views to be destroyed while the current one
+      // is being shown.
+      read_lock.unlock();
+
       // The initial window state is set when handling WM_SHOWWINDOW.
       ShowWindow(host_hwnd, SW_SHOW);
-      if (HWND const child_content = view->GetWindowHandle()) {
-        SetFocus(child_content);
+
+      // Lock again and make sure the current view still exists.
+      read_lock.lock();
+      auto iterator = views_.find(info->view_id);
+      if (iterator == views_.end()) {
+        return false;
       }
+      view = iterator->second;
     }
   }
 

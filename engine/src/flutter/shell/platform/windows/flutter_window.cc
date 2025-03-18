@@ -191,10 +191,11 @@ bool FlutterWindow::Focus() {
     return false;
   }
 
-  HWND prevFocus = ::SetFocus(hwnd);
-  if (prevFocus == nullptr) {
+  if (!IsWindowVisible(hwnd)) {
     return false;
   }
+
+  ::SetFocus(hwnd);
 
   return true;
 }
@@ -392,9 +393,8 @@ void FlutterWindow::OnWindowStateEvent(WindowStateEvent event) {
     case WindowStateEvent::kFocus:
       focused_ = true;
       if (binding_handler_delegate_) {
-        binding_handler_delegate_->OnFocus(
-            FlutterViewFocusState::kFocused,
-            FlutterViewFocusDirection::kUndefined);
+        binding_handler_delegate_->OnFocus(FlutterViewFocusState::kFocused,
+                                           FlutterViewFocusDirection::kForward);
       }
       break;
     case WindowStateEvent::kUnfocus:
