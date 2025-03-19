@@ -1081,45 +1081,36 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
   }
 
   FlutterWindowsView* view = iterator->second;
-  if (HWND const host_hwnd = GetParent(view->GetWindowHandle())) {
-    // Show the window if it was created as hidden.
-    if (!IsWindowVisible(host_hwnd)) {
-      RECT client_rect;
-      GetClientRect(host_hwnd, &client_rect);
-      uint32_t const layer_width = info->layers[0]->size.width;
-      uint32_t const layer_height = info->layers[0]->size.height;
-      if (layer_width != client_rect.right ||
-          layer_height != client_rect.bottom) {
-        // Resize the window so its client rect matches the layer size.
-        // This is necessary when the associated root view is created with loose
-        // size constraints.
-        RECT window_rect;
-        GetWindowRect(host_hwnd, &window_rect);
-        LONG const border_width =
-            (window_rect.right - window_rect.left) - client_rect.right;
-        LONG const border_height =
-            (window_rect.bottom - window_rect.top) - client_rect.bottom;
-        SetWindowPos(host_hwnd, nullptr, 0, 0, layer_width + border_width,
-                     layer_height + border_height,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+
+  task_runner_->PostTask([hwnd = view->GetWindowHandle(), info]() {
+    if (HWND const host_hwnd = GetParent(hwnd)) {
+      // Show the window if it was created as hidden.
+      if (!IsWindowVisible(host_hwnd)) {
+        RECT client_rect;
+        GetClientRect(host_hwnd, &client_rect);
+        uint32_t const layer_width = info->layers[0]->size.width;
+        uint32_t const layer_height = info->layers[0]->size.height;
+        if (layer_width != client_rect.right ||
+            layer_height != client_rect.bottom) {
+          // Resize the window so its client rect matches the layer size.
+          // This is necessary when the associated root view is created with
+          // loose size constraints.
+          RECT window_rect;
+          GetWindowRect(host_hwnd, &window_rect);
+          LONG const border_width =
+              (window_rect.right - window_rect.left) - client_rect.right;
+          LONG const border_height =
+              (window_rect.bottom - window_rect.top) - client_rect.bottom;
+          SetWindowPos(
+              host_hwnd, nullptr, 0, 0, layer_width + border_width,
+              layer_height + border_height,
+              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+        }
+        // The initial window state is set when handling WM_SHOWWINDOW.
+        ShowWindow(host_hwnd, SW_SHOW);
       }
-
-      // Unlock mutex to allow other views to be destroyed while the current one
-      // is being shown.
-      read_lock.unlock();
-
-      // The initial window state is set when handling WM_SHOWWINDOW.
-      ShowWindow(host_hwnd, SW_SHOW);
-
-      // Lock again and make sure the current view still exists.
-      read_lock.lock();
-      auto iterator = views_.find(info->view_id);
-      if (iterator == views_.end()) {
-        return false;
-      }
-      view = iterator->second;
     }
-  }
+  });
 
   return compositor_->Present(view, info->layers, info->layers_count);
 }
