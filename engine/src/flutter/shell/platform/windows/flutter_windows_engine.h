@@ -30,6 +30,7 @@
 #include "flutter/shell/platform/windows/egl/manager.h"
 #include "flutter/shell/platform/windows/egl/proc_table.h"
 #include "flutter/shell/platform/windows/flutter_desktop_messenger.h"
+#include "flutter/shell/platform/windows/flutter_host_window.h"
 #include "flutter/shell/platform/windows/flutter_project_bundle.h"
 #include "flutter/shell/platform/windows/flutter_windows_texture_registrar.h"
 #include "flutter/shell/platform/windows/keyboard_handler_base.h"
@@ -42,6 +43,7 @@
 #include "flutter/shell/platform/windows/text_input_plugin.h"
 #include "flutter/shell/platform/windows/window_proc_delegate_manager.h"
 #include "flutter/shell/platform/windows/window_state.h"
+#include "flutter/shell/platform/windows/windowing_handler.h"
 #include "flutter/shell/platform/windows/windows_lifecycle_manager.h"
 #include "flutter/shell/platform/windows/windows_proc_table.h"
 #include "third_party/rapidjson/include/rapidjson/document.h"
@@ -237,7 +239,8 @@ class FlutterWindowsEngine {
   void OnVsync(intptr_t baton);
 
   // Dispatches a semantics action to the specified semantics node.
-  bool DispatchSemanticsAction(uint64_t id,
+  bool DispatchSemanticsAction(FlutterViewId view_id,
+                               uint64_t node_id,
                                FlutterSemanticsAction action,
                                fml::MallocMapping data);
 
@@ -307,6 +310,13 @@ class FlutterWindowsEngine {
     return windows_proc_table_;
   }
 
+  // Sets the cursor that should be used when the mouse is over the Flutter
+  // content. See mouse_cursor.dart for the values and meanings of cursor_name.
+  void UpdateFlutterCursor(const std::string& cursor_name) const;
+
+  // Sets the cursor directly from a cursor handle.
+  void SetFlutterCursor(HCURSOR cursor) const;
+
  protected:
   // Creates the keyboard key handler.
   //
@@ -340,6 +350,24 @@ class FlutterWindowsEngine {
  private:
   // Allows swapping out embedder_api_ calls in tests.
   friend class EngineModifier;
+
+  // Forwards the window message to the top-level window manager.
+  void ForwardToHostWindowController(HWND hwnd,
+                                     UINT message,
+                                     WPARAM wparam,
+                                     LPARAM lparam) const;
+
+  // Returns the root view associated with the top-level window with |hwnd| as
+  // the window handle.
+  FlutterWindowsView* GetViewFromTopLevelWindow(HWND hwnd) const;
+
+  // Maps a Flutter cursor name to an HCURSOR.
+  //
+  // Returns the arrow cursor for unknown constants.
+  //
+  // This map must be kept in sync with Flutter framework's
+  // services/mouse_cursor.dart.
+  HCURSOR GetCursorByName(const std::string& cursor_name) const;
 
   // Sends system locales to the engine.
   //
@@ -434,8 +462,15 @@ class FlutterWindowsEngine {
   // Handler for the flutter/platform channel.
   std::unique_ptr<PlatformHandler> platform_handler_;
 
+  // Handler for the flutter/windowing channel.
+  std::unique_ptr<WindowingHandler> windowing_handler_;
+
   // Handlers for keyboard events from Windows.
   std::unique_ptr<KeyboardHandlerBase> keyboard_key_handler_;
+
+  // The controller that manages the lifecycle of |FlutterHostWindow|s, native
+  // Win32 windows hosting a Flutter view in their client area.
+  std::unique_ptr<FlutterHostWindowController> host_window_controller_;
 
   // Handlers for text events from Windows.
   std::unique_ptr<TextInputPlugin> text_input_plugin_;
@@ -464,6 +499,8 @@ class FlutterWindowsEngine {
   bool high_contrast_enabled_ = false;
 
   bool enable_impeller_ = false;
+
+  bool enable_multi_window_ = false;
 
   // The manager for WindowProc delegate registration and callbacks.
   std::unique_ptr<WindowProcDelegateManager> window_proc_delegate_manager_;

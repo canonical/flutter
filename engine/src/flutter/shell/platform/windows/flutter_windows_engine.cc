@@ -195,6 +195,10 @@ FlutterWindowsEngine::FlutterWindowsEngine(
   enable_impeller_ = std::find(switches.begin(), switches.end(),
                                "--enable-impeller=true") != switches.end();
 
+  enable_multi_window_ =
+      std::find(switches.begin(), switches.end(),
+                "--enable-multi-window=true") != switches.end();
+
   egl_manager_ = egl::Manager::Create(
       static_cast<egl::GpuPreference>(project_->gpu_preference()));
   window_proc_delegate_manager_ = std::make_unique<WindowProcDelegateManager>();
@@ -205,6 +209,7 @@ FlutterWindowsEngine::FlutterWindowsEngine(
         FlutterWindowsEngine* that =
             static_cast<FlutterWindowsEngine*>(user_data);
         BASE_DCHECK(that->lifecycle_manager_);
+        that->ForwardToHostWindowController(hwnd, msg, wpar, lpar);
         return that->lifecycle_manager_->WindowProc(hwnd, msg, wpar, lpar,
                                                     result);
       },
@@ -224,12 +229,19 @@ FlutterWindowsEngine::FlutterWindowsEngine(
       std::make_unique<CursorHandler>(messenger_wrapper_.get(), this);
   platform_handler_ =
       std::make_unique<PlatformHandler>(messenger_wrapper_.get(), this);
+  if (enable_multi_window_) {
+    host_window_controller_ =
+        std::make_unique<FlutterHostWindowController>(this);
+    windowing_handler_ = std::make_unique<WindowingHandler>(
+        messenger_wrapper_.get(), host_window_controller_.get());
+  }
   settings_plugin_ = std::make_unique<SettingsPlugin>(messenger_wrapper_.get(),
                                                       task_runner_.get());
 }
 
 FlutterWindowsEngine::~FlutterWindowsEngine() {
   messenger_->SetEngine(nullptr);
+  host_window_controller_.reset();
   Stop();
 }
 
@@ -354,9 +366,7 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
                                        void* user_data) {
     auto host = static_cast<FlutterWindowsEngine*>(user_data);
 
-    // TODO(loicsharma): Remove implicit view assumption.
-    // https://github.com/flutter/flutter/issues/142845
-    auto view = host->view(kImplicitViewId);
+    auto view = host->view(update->view_id);
     if (!view) {
       return;
     }
@@ -518,6 +528,7 @@ std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
       view_id, this, std::move(window), windows_proc_table_);
 
   view->CreateRenderSurface();
+  view->UpdateSemanticsEnabled(semantics_enabled_);
 
   next_view_id_++;
 
@@ -801,6 +812,79 @@ void FlutterWindowsEngine::SetNextFrameCallback(fml::closure callback) {
       this);
 }
 
+void FlutterWindowsEngine::ForwardToHostWindowController(HWND hwnd,
+                                                         UINT message,
+                                                         WPARAM wparam,
+                                                         LPARAM lparam) const {
+  if (!host_window_controller_) {
+    return;
+  }
+  if (!FlutterHostWindow::GetThisFromHandle(hwnd)) {
+    if (FlutterWindowsView* const view = GetViewFromTopLevelWindow(hwnd)) {
+      host_window_controller_->CreateHostWindowFromExisting(hwnd, view);
+    } else {
+      FML_LOG(ERROR)
+          << "Failed to retrieve FlutterWindowsView from top-level window: "
+             "the view's native window must be a child of the top-level "
+             "window.";
+      return;
+    }
+  }
+  host_window_controller_->HandleMessage(hwnd, message, wparam, lparam);
+}
+
+FlutterWindowsView* FlutterWindowsEngine::GetViewFromTopLevelWindow(
+    HWND hwnd) const {
+  std::shared_lock read_lock(views_mutex_);
+  auto const iterator =
+      std::find_if(views_.begin(), views_.end(), [hwnd](auto const& pair) {
+        FlutterWindowsView* const view = pair.second;
+        return GetParent(view->GetWindowHandle()) == hwnd;
+      });
+  if (iterator != views_.end()) {
+    return iterator->second;
+  }
+  return nullptr;
+}
+
+HCURSOR FlutterWindowsEngine::GetCursorByName(
+    const std::string& cursor_name) const {
+  static auto* cursors = new std::map<std::string, const wchar_t*>{
+      {"allScroll", IDC_SIZEALL},
+      {"basic", IDC_ARROW},
+      {"click", IDC_HAND},
+      {"forbidden", IDC_NO},
+      {"help", IDC_HELP},
+      {"move", IDC_SIZEALL},
+      {"none", nullptr},
+      {"noDrop", IDC_NO},
+      {"precise", IDC_CROSS},
+      {"progress", IDC_APPSTARTING},
+      {"text", IDC_IBEAM},
+      {"resizeColumn", IDC_SIZEWE},
+      {"resizeDown", IDC_SIZENS},
+      {"resizeDownLeft", IDC_SIZENESW},
+      {"resizeDownRight", IDC_SIZENWSE},
+      {"resizeLeft", IDC_SIZEWE},
+      {"resizeLeftRight", IDC_SIZEWE},
+      {"resizeRight", IDC_SIZEWE},
+      {"resizeRow", IDC_SIZENS},
+      {"resizeUp", IDC_SIZENS},
+      {"resizeUpDown", IDC_SIZENS},
+      {"resizeUpLeft", IDC_SIZENWSE},
+      {"resizeUpRight", IDC_SIZENESW},
+      {"resizeUpLeftDownRight", IDC_SIZENWSE},
+      {"resizeUpRightDownLeft", IDC_SIZENESW},
+      {"wait", IDC_WAIT},
+  };
+  const wchar_t* idc_name = IDC_ARROW;
+  auto it = cursors->find(cursor_name);
+  if (it != cursors->end()) {
+    idc_name = it->second;
+  }
+  return windows_proc_table_->LoadCursor(nullptr, idc_name);
+}
+
 void FlutterWindowsEngine::SendSystemLocales() {
   std::vector<LanguageInfo> languages =
       GetPreferredLanguageInfo(*windows_proc_table_);
@@ -894,12 +978,19 @@ bool FlutterWindowsEngine::PostRasterThreadTask(fml::closure callback) const {
 }
 
 bool FlutterWindowsEngine::DispatchSemanticsAction(
+    FlutterViewId view_id,
     uint64_t target,
     FlutterSemanticsAction action,
     fml::MallocMapping data) {
-  return (embedder_api_.DispatchSemanticsAction(engine_, target, action,
-                                                data.GetMapping(),
-                                                data.GetSize()) == kSuccess);
+  FlutterSendSemanticsActionInfo info{
+      .struct_size = sizeof(FlutterSendSemanticsActionInfo),
+      .view_id = view_id,
+      .node_id = target,
+      .action = action,
+      .data = data.GetMapping(),
+      .data_length = data.GetSize(),
+  };
+  return (embedder_api_.SendSemanticsAction(engine_, &info));
 }
 
 void FlutterWindowsEngine::UpdateSemanticsEnabled(bool enabled) {
@@ -993,6 +1084,15 @@ std::optional<LRESULT> FlutterWindowsEngine::ProcessExternalWindowMessage(
                                                      lparam);
   }
   return std::nullopt;
+}
+
+void FlutterWindowsEngine::UpdateFlutterCursor(
+    const std::string& cursor_name) const {
+  SetFlutterCursor(GetCursorByName(cursor_name));
+}
+
+void FlutterWindowsEngine::SetFlutterCursor(HCURSOR cursor) const {
+  windows_proc_table_->SetCursor(cursor);
 }
 
 void FlutterWindowsEngine::OnChannelUpdate(std::string name, bool listening) {
