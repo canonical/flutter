@@ -366,9 +366,7 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
                                        void* user_data) {
     auto host = static_cast<FlutterWindowsEngine*>(user_data);
 
-    // TODO(loicsharma): Remove implicit view assumption.
-    // https://github.com/flutter/flutter/issues/142845
-    auto view = host->view(kImplicitViewId);
+    auto view = host->view(update->view_id);
     if (!view) {
       return;
     }
@@ -533,6 +531,7 @@ std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
       windows_proc_table_);
 
   view->CreateRenderSurface();
+  view->UpdateSemanticsEnabled(semantics_enabled_);
 
   next_view_id_++;
 
@@ -985,12 +984,19 @@ bool FlutterWindowsEngine::PostRasterThreadTask(fml::closure callback) const {
 }
 
 bool FlutterWindowsEngine::DispatchSemanticsAction(
+    FlutterViewId view_id,
     uint64_t target,
     FlutterSemanticsAction action,
     fml::MallocMapping data) {
-  return (embedder_api_.DispatchSemanticsAction(engine_, target, action,
-                                                data.GetMapping(),
-                                                data.GetSize()) == kSuccess);
+  FlutterSendSemanticsActionInfo info{
+      .struct_size = sizeof(FlutterSendSemanticsActionInfo),
+      .view_id = view_id,
+      .node_id = target,
+      .action = action,
+      .data = data.GetMapping(),
+      .data_length = data.GetSize(),
+  };
+  return (embedder_api_.SendSemanticsAction(engine_, &info));
 }
 
 void FlutterWindowsEngine::UpdateSemanticsEnabled(bool enabled) {
