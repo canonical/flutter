@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 
 class ChildWindowControllerText extends StatelessWidget {
   const ChildWindowControllerText({super.key, required this.controller});
@@ -16,8 +15,7 @@ class ChildWindowControllerText extends StatelessWidget {
           return Text(
               'View #${controller.rootView.viewId}\n'
               'Parent View: ${controller.parent.viewId}\n'
-              'View Size: ${(controller.rootView.physicalSize.width / dpr).toStringAsFixed(1)}\u00D7${(controller.rootView!.physicalSize.height / dpr).toStringAsFixed(1)}\n'
-              'Window Size: ${controller.size?.width}\u00D7${controller.size?.height}\n'
+              'Size: ${controller.size.width.toStringAsFixed(1)}\u00D7${controller.size.height.toStringAsFixed(1)}\n'
               'Device Pixel Ratio: $dpr',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(

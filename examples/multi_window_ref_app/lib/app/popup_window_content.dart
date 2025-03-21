@@ -26,9 +26,12 @@ class PopupWindowContent extends StatelessWidget {
             windowSettings: windowSettings,
             positionerSettingsModifier: positionerSettingsModifier,
             controller: controller),
-        child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: SizedBox.expand(
+        child: FocusScope(
+          skipTraversal: false,
+          autofocus: true,
+          child: SizedBox(
+                width: windowSettings.popupSizeNotifier.value.width,
+                height: windowSettings.popupSizeNotifier.value.height,
                 child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -65,14 +68,29 @@ class PopupWindowContent extends StatelessWidget {
                               const SizedBox(height: 20.0),
                               ElevatedButton(
                                   onPressed: () {
+                                  final UniqueKey key = UniqueKey();
+                                    windowManagerModel.add(KeyedWindowController(
+                                        key: key,
+                                        controller: RegularWindowController(
+                                          onDestroyed: () =>
+                                              windowManagerModel.remove(key),
+                                          onError: (String error) =>
+                                              windowManagerModel.remove(key),
+                                          title: "Regular",
+                                          size: windowSettings.regularSizeNotifier.value,
+                                        )));
+                                  },
+                                  child: const Text('Regular window')),
+                              const SizedBox(height: 20.0),
+                              ElevatedButton(
+                                  onPressed: () {
                                     final UniqueKey key = UniqueKey();
                                     windowManagerModel
                                         .add(KeyedWindowController(
                                             key: key,
                                             parent: controller,
                                             controller: PopupWindowController(
-                                              parent: windowManagerModel
-                                                  .selected!.rootView,
+                                              parent: controller.rootView,
                                               onDestroyed: () =>
                                                   windowManagerModel
                                                       .remove(key),
@@ -81,27 +99,25 @@ class PopupWindowContent extends StatelessWidget {
                                                       .remove(key),
                                               size: windowSettings
                                                   .popupSizeNotifier.value,
-                                              anchorRect: windowSettings
-                                                      .anchorToWindowNotifier
-                                                      .value
-                                                  ? null
-                                                  : windowSettings
-                                                      .anchorRectNotifier.value,
-                                              positioner: WindowPositioner(
-                                                  parentAnchor:
-                                                      positionerSettingsModifier
-                                                          .selected
-                                                          .parentAnchor,
-                                                  childAnchor:
-                                                      positionerSettingsModifier
-                                                          .selected.childAnchor,
-                                                  offset:
-                                                      positionerSettingsModifier
-                                                          .selected.offset,
-                                                  constraintAdjustment:
-                                                      positionerSettingsModifier
-                                                          .selected
-                                                          .constraintAdjustments),
+                                              sizeConstraints:
+                                                  BoxConstraints.loose(
+                                                      const Size(500, 500)),
+                                              anchorRect: null,
+                                              positioner:
+                                                  const WindowPositioner(
+                                                      parentAnchor:
+                                                          WindowPositionerAnchor
+                                                              .topLeft,
+                                                      childAnchor:
+                                                          WindowPositionerAnchor
+                                                              .topLeft,
+                                                      offset: Offset(50, 50),
+                                                      constraintAdjustment: {
+                                                    WindowPositionerConstraintAdjustment
+                                                        .slideX,
+                                                    WindowPositionerConstraintAdjustment
+                                                        .slideY
+                                                  }),
                                             )));
                                   },
                                   child: const Text('Another popup')),
