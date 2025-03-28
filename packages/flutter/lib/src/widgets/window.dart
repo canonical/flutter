@@ -2,15 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui' show FlutterView, AppExitType;
+import 'dart:ui' show AppExitType, FlutterView;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'window_linux.dart';
-import 'window_macos.dart';
-import 'window_win32.dart';
+import '_window_ffi.dart' if (dart.library.js_util) '_window_web.dart' as window_impl;
 
 /// Defines the possible archetypes for a window.
 enum WindowArchetype {
@@ -185,15 +182,7 @@ abstract class WindowingOwner {
 
   /// Creates default windowing owner for standard desktop embedders.
   static WindowingOwner createDefaultOwner() {
-    if (defaultTargetPlatform == TargetPlatform.windows) {
-      return WindowingOwnerWin32();
-    } else if (defaultTargetPlatform == TargetPlatform.macOS) {
-      return WindowingOwnerMacOS();
-    } else if (defaultTargetPlatform == TargetPlatform.linux) {
-      return WindowingOwnerLinux();
-    } else {
-      return _FallbackWindowingOwner();
-    }
+    return window_impl.createDefaultOwner() ?? _FallbackWindowingOwner();
   }
 }
 
