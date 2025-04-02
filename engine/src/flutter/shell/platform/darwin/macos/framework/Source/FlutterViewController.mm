@@ -327,6 +327,7 @@ static void CommonInit(FlutterViewController* controller, FlutterEngine* engine)
             @"engine %@ before initialization.",
             controller.engine);
   [engine addViewController:controller];
+
   NSCAssert(controller.engine != nil,
             @"The FlutterViewController unexpectedly stays unattached after initialization. "
             @"In unit tests, this is likely because either the FlutterViewController or "
@@ -418,10 +419,14 @@ static void CommonInit(FlutterViewController* controller, FlutterEngine* engine)
   _keyUpMonitor = nil;
 }
 
-- (void)dealloc {
+- (void)dispose {
   if ([self attached]) {
     [_engine removeViewController:self];
   }
+}
+
+- (void)dealloc {
+  [self dispose];
 }
 
 #pragma mark - Public methods
