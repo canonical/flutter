@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart' as ffi;
 import 'package:flutter/material.dart';
 import 'package:flutter/src/foundation/binding.dart';
 
+/// The macOS implementation of the windowing API.
 class WindowingOwnerMacOS extends WindowingOwner {
   @override
   RegularWindowController createRegularWindowController({
@@ -28,9 +29,22 @@ class WindowingOwnerMacOS extends WindowingOwner {
   }
 
   final List<WindowController> _activeControllers = <WindowController>[];
+
+  /// Returns the window handle for the given [view], or null is the window
+  /// handle is not available.
+  /// The window handle is a pointer to NSWindow instance.
+  static Pointer<Void> getWindowHandle(FlutterView view) {
+    return _getWindowHandle(PlatformDispatcher.instance.engineId!, view.viewId);
+  }
+
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
+  external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
 }
 
+/// The macOS implementation of the regular window controller.
 class RegularWindowControllerMacOS extends RegularWindowController {
+  /// Creates a new regular window controller for macOS. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
   RegularWindowControllerMacOS({
     required WindowingOwnerMacOS owner,
     required RegularWindowControllerDelegate delegate,
@@ -64,8 +78,10 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     }
   }
 
+  /// Returns window handle for the current window.
+  /// The handle is a pointer to NSWindow instance.
   Pointer<Void> getWindowHandle() {
-    return _getWindowHandle(PlatformDispatcher.instance.engineId!, rootView.viewId);
+    return WindowingOwnerMacOS.getWindowHandle(rootView);
   }
 
   bool _destroyed = false;
@@ -91,10 +107,12 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     notifyListeners();
   }
 
+  /// Updates the window size.
   void setSize(Size size) {
     _setWindowSize(getWindowHandle(), size.width, size.height);
   }
 
+  /// Updates the window title.
   void setTitle(String title) {
     final Pointer<ffi.Utf8> titlePointer = title.toNativeUtf8();
     _setWindowTitle(getWindowHandle(), titlePointer);
@@ -131,34 +149,32 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   @override
   WindowState get state => WindowState.values[_getWindowState(getWindowHandle())];
 
+  /// Updates window state.
   void setState(WindowState state) {
     _setWindowState(getWindowHandle(), state.index);
   }
 
   @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
-    symbol: 'flutter_create_regular_window',
+    symbol: 'FlutterCreateRegularWindow',
   )
   external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
 
-  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'flutter_get_window_handle')
-  external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
-
-  @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'flutter_destroy_window')
+  @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'FlutterDestroyWindow')
   external static void _destroyWindow(int engineId, Pointer<Void> handle);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Size>)>(symbol: 'flutter_get_window_size')
+  @Native<Void Function(Pointer<Void>, Pointer<_Size>)>(symbol: 'FlutterGetWindowSize')
   external static void _getWindowSize(Pointer<Void> windowHandle, Pointer<_Size> size);
 
-  @Native<Void Function(Pointer<Void>, Double, Double)>(symbol: 'flutter_set_window_size')
+  @Native<Void Function(Pointer<Void>, Double, Double)>(symbol: 'FlutterSetWindowSize')
   external static void _setWindowSize(Pointer<Void> windowHandle, double width, double height);
 
-  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'flutter_set_window_title')
+  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'FlutterSetWindowTitle')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf8> title);
 
-  @Native<Int64 Function(Pointer<Void>)>(symbol: 'flutter_get_window_state')
+  @Native<Int64 Function(Pointer<Void>)>(symbol: 'FlutterGetWindowState')
   external static int _getWindowState(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'flutter_set_window_state')
+  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'FlutterSetWindowState')
   external static void _setWindowState(Pointer<Void> windowHandle, int state);
 }
 
