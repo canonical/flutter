@@ -363,7 +363,7 @@ struct Settings {
 
   // Enable support for multiple windows. Ignored if not supported on the
   // platform.
-  bool enable_multi_window = false;
+  bool enable_windowing = false;
 };
 
 }  // namespace flutter
