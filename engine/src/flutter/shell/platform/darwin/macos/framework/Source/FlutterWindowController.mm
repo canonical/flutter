@@ -1,3 +1,7 @@
+// Copyright 2013 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 #import "flutter/shell/platform/darwin/macos/framework/Source/FlutterWindowController.h"
 
 #import "flutter/shell/platform/darwin/common/framework/Headers/FlutterChannels.h"
@@ -6,17 +10,6 @@
 #import "flutter/shell/platform/darwin/macos/framework/Source/FlutterViewController_Internal.h"
 
 #include "flutter/shell/platform/common/isolate_scope.h"
-
-struct FlutterWindowCreationRequest {
-  double width;
-  double height;
-  double min_width;
-  double min_height;
-  double max_width;
-  double max_height;
-  void (*on_close)();
-  void (*on_size_change)();
-};
 
 /// A delegate for a Flutter managed window.
 @interface FlutterWindowOwner : NSObject <NSWindowDelegate> {
@@ -134,57 +127,43 @@ struct FlutterWindowCreationRequest {
 
 @end
 
-extern "C" {
 // NOLINTBEGIN(google-objc-function-naming)
 
-FLUTTER_DARWIN_EXPORT
-int64_t flutter_create_regular_window(int64_t engine_id,
-                                      const FlutterWindowCreationRequest* request) {
+int64_t FlutterCreateRegularWindow(int64_t engine_id, const FlutterWindowCreationRequest* request) {
   FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
   [engine enableMultiView];
   return [engine.windowController createRegularWindow:request];
 }
 
-FLUTTER_DARWIN_EXPORT
-void flutter_destroy_window(int64_t engine_id, void* window) {
+void FlutterDestroyWindow(int64_t engine_id, void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
   FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
   [engine.windowController destroyWindow:w];
 }
 
-FLUTTER_DARWIN_EXPORT
-void* flutter_get_window_handle(int64_t engine_id, FlutterViewIdentifier view_id) {
+void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id) {
   FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
   FlutterViewController* controller = [engine viewControllerForIdentifier:view_id];
   return (__bridge void*)controller.view.window;
 }
 
-struct FlutterWindowSize {
-  double width;
-  double height;
-};
-
-FLUTTER_DARWIN_EXPORT
-void flutter_get_window_size(void* window, FlutterWindowSize* size) {
+void FlutterGetWindowSize(void* window, FlutterWindowSize* size) {
   NSWindow* w = (__bridge NSWindow*)window;
   size->width = w.frame.size.width;
   size->height = w.frame.size.height;
 }
 
-FLUTTER_DARWIN_EXPORT
-void flutter_set_window_size(void* window, double width, double height) {
+void FlutterSetWindowSize(void* window, double width, double height) {
   NSWindow* w = (__bridge NSWindow*)window;
   [w setContentSize:NSMakeSize(width, height)];
 }
 
-FLUTTER_DARWIN_EXPORT
-void flutter_set_window_title(void* window, const char* title) {
+void FlutterSetWindowTitle(void* window, const char* title) {
   NSWindow* w = (__bridge NSWindow*)window;
   w.title = [NSString stringWithUTF8String:title];
 }
 
-FLUTTER_DARWIN_EXPORT
-int64_t flutter_get_window_state(void* window) {
+int64_t FlutterGetWindowState(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
   if (w.isZoomed) {
     return 1;
@@ -195,8 +174,7 @@ int64_t flutter_get_window_state(void* window) {
   }
 }
 
-FLUTTER_DARWIN_EXPORT
-void flutter_set_window_state(void* window, int64_t state) {
+void FlutterSetWindowState(void* window, int64_t state) {
   NSWindow* w = (__bridge NSWindow*)window;
   if (state == 1) {
     [w zoom:nil];
@@ -217,4 +195,3 @@ void flutter_set_window_state(void* window, int64_t state) {
 }
 
 // NOLINTEND(google-objc-function-naming)
-}  // extern "C"
