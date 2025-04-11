@@ -196,9 +196,8 @@ FlutterWindowsEngine::FlutterWindowsEngine(
   enable_impeller_ = std::find(switches.begin(), switches.end(),
                                "--enable-impeller=true") != switches.end();
 
-  enable_multi_window_ =
-      std::find(switches.begin(), switches.end(),
-                "--enable-multi-window=true") != switches.end();
+  enable_windowing_ = std::find(switches.begin(), switches.end(),
+                                "--enable-windowing=true") != switches.end();
 
   egl_manager_ = egl::Manager::Create(
       static_cast<egl::GpuPreference>(project_->gpu_preference()));
@@ -239,7 +238,7 @@ FlutterWindowsEngine::FlutterWindowsEngine(
       std::make_unique<CursorHandler>(messenger_wrapper_.get(), this);
   platform_handler_ =
       std::make_unique<PlatformHandler>(messenger_wrapper_.get(), this);
-  if (enable_multi_window_) {
+  if (enable_windowing_) {
     host_window_controller_ =
         std::make_unique<FlutterHostWindowController>(this);
   }
@@ -321,7 +320,7 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
 
   if (project_->ui_thread_policy() ==
           FlutterUIThreadPolicy::RunOnPlatformThread ||
-      enable_multi_window_) {
+      enable_windowing_) {
     FML_LOG(WARNING)
         << "Running with merged platform and UI thread. Experimental.";
     custom_task_runners.ui_task_runner = &platform_task_runner;

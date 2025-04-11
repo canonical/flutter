@@ -1290,12 +1290,12 @@ abstract class FlutterCommand extends Command<void> {
     );
   }
 
-  void addMultiWindowFlag({required bool verboseHelp}) {
-    argParser.addFlag('enable-multi-window',
+  void addWindowingFlag({required bool verboseHelp}) {
+    argParser.addFlag('enable-windowing',
         hide: !verboseHelp,
         help: 'Whether to enable support for multiple windows. '
-              'This flag is only available on Windows, is disabled by default, '
-              'and will be ignored on other platforms.',
+              'Disabled by default. Ignored on platforms other than '
+              'macOS, Linux, and Windows.',
     );
   }
 
