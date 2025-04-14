@@ -135,7 +135,7 @@ FlutterHostWindowController::FlutterHostWindowController(
 void FlutterHostWindowController::Initialize(
     const WindowingInitRequest* request) {
   on_message_ = request->on_message;
-  isolate_ = Isolate();
+  isolate_ = Isolate::Current();
 
   // Send messages accumulated before isolate called this method.
   for (WindowsMessage& message : pending_messages_) {

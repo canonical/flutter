@@ -266,10 +266,8 @@ void UpdateTheme(HWND window) {
 namespace flutter {
 
 FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
-                                     WindowCreationSettings const& settings)
-    : window_controller_(controller) {
-  archetype_ = settings.archetype;
-
+                                     WindowArchetype archetype)
+    : window_controller_(controller), archetype_(archetype) {
   // Check preconditions and set window styles based on window type.
   DWORD window_style = 0;
   DWORD extended_window_style = 0;
@@ -535,7 +533,7 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
   return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
-void FlutterHostWindow::SetClientSize(Size const& client_size) const {
+void FlutterHostWindow::SetClientSize(Size const& client_size) {
   WINDOWINFO window_info = {.cbSize = sizeof(WINDOWINFO)};
   GetWindowInfo(window_handle_, &window_info);
 
@@ -546,6 +544,14 @@ void FlutterHostWindow::SetClientSize(Size const& client_size) const {
   Size const size = window_size.value_or(client_size);
   SetWindowPos(window_handle_, NULL, 0, 0, size.width(), size.height(),
                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void FlutterHostWindow::SetMinClientSize(Size const& min_size) {
+  min_size_ = min_size;
+}
+
+void FlutterHostWindow::SetMaxClientSize(Size const& max_size) {
+  max_size_ = max_size;
 }
 
 void FlutterHostWindow::SetChildContent(HWND content) {
