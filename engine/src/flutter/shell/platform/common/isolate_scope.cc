@@ -24,17 +24,17 @@ IsolateScope::IsolateScope(const Isolate& isolate) {
 };
 
 IsolateScope::~IsolateScope() {
-    Dart_Isolate current = Dart_CurrentIsolate();
-    FML_DCHECK(!current || current == isolate_);
-    if (previous_ == isolate_) {
-      return;
-    }
-    if (current) {
-      Dart_ExitIsolate();
-    }
-    if (previous_) {
-      Dart_EnterIsolate(previous_);
-    }
+  Dart_Isolate current = Dart_CurrentIsolate();
+  FML_DCHECK(!current || current == isolate_);
+  if (previous_ == isolate_) {
+    return;
   }
+  if (current) {
+    Dart_ExitIsolate();
+  }
+  if (previous_) {
+    Dart_EnterIsolate(previous_);
+  }
+}
 
 }  // namespace flutter
