@@ -450,6 +450,7 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
   // factories. Lifecycle is tied to the engine.
   FlutterPlatformViewController* _platformViewController;
 
+  // Used to manage Flutter windows.
   FlutterWindowController* _windowController;
 
   // A message channel for sending user settings to the flutter engine.
@@ -484,7 +485,12 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
   // The text input plugin that handles text editing state for text fields.
   FlutterTextInputPlugin* _textInputPlugin;
 
+  // Whether the engine is running in multi-window mode. This affects behavior
+  // when adding view controller (it will fail when calling multiple times without
+  // _multiviewEnabled).
   BOOL _multiviewEnabled;
+
+  // View identifier for the next view to be created.
   FlutterViewIdentifier _nextViewIdentifier;
 }
 
@@ -634,6 +640,16 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
   return cocoa_task_runner_description;
 }
 
+- (void)onFocusChangeRequest:(const FlutterViewFocusChangeRequest*)request {
+  FlutterViewController* controller = [self viewControllerForIdentifier:request->view_id];
+  if (controller == nil) {
+    return;
+  }
+  if (request->state == kFocused) {
+    [controller.flutterView.window makeFirstResponder:controller.flutterView];
+  }
+}
+
 - (BOOL)runWithEntrypoint:(NSString*)entrypoint {
   if (self.running) {
     return NO;
@@ -740,10 +756,11 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
     [engine onVSync:baton];
   };
 
-  flutterArguments.view_focus_change_request_callback = [](const FlutterViewFocusChangeRequest* req,
-                                                           void* user_data) {
-    NSLog(@"Focus calllback %lli %i\n", req->view_id, req->state);
-  };
+  flutterArguments.view_focus_change_request_callback =
+      [](const FlutterViewFocusChangeRequest* request, void* user_data) {
+        FlutterEngine* engine = (__bridge FlutterEngine*)user_data;
+        [engine onFocusChangeRequest:request];
+      };
 
   FlutterRendererConfig rendererConfig = [_renderer createRendererConfig];
   FlutterEngineResult result = _embedderAPI.Initialize(
@@ -805,10 +822,12 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
                  forIdentifier:(FlutterViewIdentifier)viewIdentifier {
   _macOSCompositor->AddView(viewIdentifier);
   NSAssert(controller != nil, @"The controller must not be nil.");
-  // NSAssert(controller.engine == nil,
-  //          @"The FlutterViewController is unexpectedly attached to "
-  //          @"engine %@ before initialization.",
-  //          controller.engine);
+  if (!_multiviewEnabled) {
+    NSAssert(controller.engine == nil,
+             @"The FlutterViewController is unexpectedly attached to "
+             @"engine %@ before initialization.",
+             controller.engine);
+  }
   NSAssert([_viewControllers objectForKey:@(viewIdentifier)] == nil,
            @"The requested view ID is occupied.");
   [_viewControllers setObject:controller forKey:@(viewIdentifier)];
@@ -828,23 +847,29 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
   }
 
   if (viewIdentifier != kFlutterImplicitViewId) {
-    fml::AutoResetWaitableEvent latch;
+    // These will be overriden immediately after the FlutterView is created
+    // by actual values.
     FlutterWindowMetricsEvent metrics{
         .struct_size = sizeof(FlutterWindowMetricsEvent),
-        .width = 100,
-        .height = 100,
-        .pixel_ratio = 2.0,
+        .width = 0,
+        .height = 0,
+        .pixel_ratio = 1.0,
     };
+    bool added = false;
     FlutterAddViewInfo info{.struct_size = sizeof(FlutterAddViewInfo),
                             .view_id = viewIdentifier,
                             .view_metrics = &metrics,
-                            .user_data = &latch,
+                            .user_data = &added,
                             .add_view_callback = [](const FlutterAddViewResult* r) {
-                              auto l = reinterpret_cast<fml::AutoResetWaitableEvent*>(r->user_data);
-                              l->Signal();
+                              auto added = reinterpret_cast<bool*>(r->user_data);
+                              *added = true;
                             }};
+    // The callback should be called synchronously from platform thread.
     _embedderAPI.AddView(_engine, &info);
-    latch.Wait();
+    FML_DCHECK(added);
+    if (!added) {
+      NSLog(@"Failed to add view with ID %llu", viewIdentifier);
+    }
   }
 }
 

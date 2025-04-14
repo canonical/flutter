@@ -10,37 +10,32 @@
 
 namespace flutter {
 
+/// This class is a thin wrapper around dart isolate. It can be used
+/// as argument to IsolateScope constructor to enter and exit the isolate.
 class Isolate {
  public:
-  Isolate() : isolate_(Dart_CurrentIsolate()) {
-    FML_DCHECK(isolate_ != nullptr);
-  }
+  static Isolate Current();
+
   ~Isolate() = default;
 
  private:
+  explicit Isolate(Dart_Isolate isolate) : isolate_(isolate) {
+    FML_DCHECK(isolate_ != nullptr);
+  }
+
   friend class IsolateScope;
   Dart_Isolate isolate_;
 };
 
+// Enters provided isolate for as long as the scope is alive.
 class IsolateScope {
  public:
-  explicit IsolateScope(const Isolate& isolate) {
-    if (Dart_CurrentIsolate() == nullptr) {
-      Dart_EnterIsolate(isolate.isolate_);
-      should_exit_isolate_ = true;
-    } else {
-      FML_DCHECK(Dart_CurrentIsolate() == isolate.isolate_);
-    }
-  };
-
-  ~IsolateScope() {
-    if (should_exit_isolate_) {
-      Dart_ExitIsolate();
-    }
-  }
+  explicit IsolateScope(const Isolate& isolate);
+  ~IsolateScope();
 
  private:
-  bool should_exit_isolate_ = false;
+  Dart_Isolate isolate_;
+  Dart_Isolate previous_;
   IsolateScope() = delete;
   IsolateScope(IsolateScope const&) = delete;
 };

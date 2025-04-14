@@ -59,6 +59,7 @@ source_set("common_cpp_input") {
 
 source_set("common_cpp_isolate_scope") {
   public = [ "isolate_scope.h" ]
+  sources = [ "isolate_scope.cc" ]
 
   deps = [
     "$dart_src/runtime:dart_api",
