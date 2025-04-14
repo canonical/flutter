@@ -152,6 +152,9 @@ static const CFTimeInterval kTimerLatencyCompensation = 0.001;
 }
 
 - (void)dealloc {
+  // It is possible that there is pending vsync request while the view for which
+  // this waiter belongs is being destroyed. In that case trigger the vsync
+  // immediately to avoid deadlock.
   if (_pendingBaton.has_value()) {
     CFTimeInterval now = CACurrentMediaTime();
     _block(now, now, _pendingBaton.value());

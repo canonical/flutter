@@ -10,6 +10,7 @@
 #import "flutter/shell/platform/darwin/macos/framework/Source/FlutterViewController_Internal.h"
 
 #include "flutter/shell/platform/common/isolate_scope.h"
+#include "flutter/shell/platform/common/windowing.h"
 
 /// A delegate for a Flutter managed window.
 @interface FlutterWindowOwner : NSObject <NSWindowDelegate> {
@@ -17,7 +18,7 @@
   /// window.
   NSWindow* _window;
   FlutterViewController* _flutterViewController;
-  flutter::Isolate _isolate;
+  std::optional<flutter::Isolate> _isolate;
   FlutterWindowCreationRequest _creationRequest;
 }
 
@@ -42,6 +43,7 @@
     _window = window;
     _flutterViewController = viewController;
     _creationRequest = creationRequest;
+    _isolate = flutter::Isolate::Current();
   }
   return self;
 }
@@ -55,13 +57,13 @@
 }
 
 - (BOOL)windowShouldClose:(NSWindow*)sender {
-  flutter::IsolateScope isolate_scope(_isolate);
+  flutter::IsolateScope isolate_scope(*_isolate);
   _creationRequest.on_close();
   return NO;
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
-  flutter::IsolateScope isolate_scope(_isolate);
+  flutter::IsolateScope isolate_scope(*_isolate);
   _creationRequest.on_size_change();
 }
 
@@ -119,6 +121,8 @@
   }
   if (owner != nil) {
     [_windows removeObject:owner];
+    // Make sure to unregister the controller from the engine and remove the FlutterView
+    // before destroying the window and Flutter NSView.
     [owner.flutterViewController dispose];
     owner.window.delegate = nil;
     [owner.window close];
@@ -147,10 +151,12 @@ void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id) {
   return (__bridge void*)controller.view.window;
 }
 
-void FlutterGetWindowSize(void* window, FlutterWindowSize* size) {
+FlutterWindowSize FlutterGetWindowSize(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
-  size->width = w.frame.size.width;
-  size->height = w.frame.size.height;
+  return {
+      .width = w.frame.size.width,
+      .height = w.frame.size.height,
+  };
 }
 
 void FlutterSetWindowSize(void* window, double width, double height) {
@@ -166,11 +172,11 @@ void FlutterSetWindowTitle(void* window, const char* title) {
 int64_t FlutterGetWindowState(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
   if (w.isZoomed) {
-    return 1;
+    return static_cast<int64_t>(flutter::WindowState::kMaximized);
   } else if (w.isMiniaturized) {
-    return 2;
+    return static_cast<int64_t>(flutter::WindowState::kMinimized);
   } else {
-    return 0;
+    return static_cast<int64_t>(flutter::WindowState::kRestored);
   }
 }
 

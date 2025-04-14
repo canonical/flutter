@@ -226,9 +226,21 @@ typedef NS_ENUM(NSInteger, FlutterAppExitResponse) {
 
 @property(nonatomic, readonly) FlutterWindowController* windowController;
 
+/**
+ * Toggles multi-view support. Called by [FlutterWindowController] before
+ * creating a new window. This allows registering multiple view controllers
+ * with the engine.
+ */
 - (void)enableMultiView;
 
+/**
+ * Notifies the engine that window with the given identifier has been made key.
+ */
 - (void)windowDidBecomeKey:(FlutterViewIdentifier)viewIdentifier;
+
+/**
+ * Notifies the engine that window with the given identifier has resigned being key.
+ */
 - (void)windowDidResignKey:(FlutterViewIdentifier)viewIdentifier;
 
 /**
