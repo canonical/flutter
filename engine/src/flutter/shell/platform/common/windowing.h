@@ -7,6 +7,13 @@
 
 namespace flutter {
 
+// Types of windows.
+// The value must match value from WindowType in the Dart code.
+enum class WindowArchetype {
+  // Regular top-level window.
+  kRegular,
+};
+
 // Possible states a window can be in.
 // The values must match values from WindowState in the Dart code.
 enum class WindowState {
