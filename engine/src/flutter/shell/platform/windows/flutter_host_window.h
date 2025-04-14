@@ -14,7 +14,6 @@
 #include "flutter/shell/platform/common/geometry.h"
 #include "flutter/shell/platform/common/windowing.h"
 
-
 namespace flutter {
 
 class FlutterHostWindowController;
