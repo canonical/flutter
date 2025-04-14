@@ -11,6 +11,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/isolate_scope.h"
+#include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/windows/flutter_host_window.h"
 
 namespace flutter {
