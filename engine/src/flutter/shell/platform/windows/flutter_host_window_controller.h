@@ -5,20 +5,22 @@
 #ifndef FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_HOST_WINDOW_CONTROLLER_H_
 #define FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_HOST_WINDOW_CONTROLLER_H_
 
+#include <windows.h>
 #include <optional>
 #include <unordered_map>
 #include <vector>
 
+#include "flutter/shell/platform/common/public/flutter_export.h"
+
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/isolate_scope.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/windows/flutter_host_window.h"
 
 namespace flutter {
 
 class FlutterWindowsEngine;
+class FlutterHostWindow;
 struct WindowingInitRequest;
-struct WindowCreationRequest;
 
 struct WindowsMessage {
   int64_t view_id;
@@ -28,6 +30,25 @@ struct WindowsMessage {
   LPARAM lParam;
   LRESULT result;
   bool handled;
+};
+
+struct FlutterWindowSizing {
+  bool has_size;
+  double width;
+  double height;
+  bool has_constraints;
+  double min_width;
+  double min_height;
+  double max_width;
+  double max_height;
+};
+
+struct WindowingInitRequest {
+  void (*on_message)(WindowsMessage*);
+};
+
+struct WindowCreationRequest {
+  FlutterWindowSizing content_size;
 };
 
 // A controller class for managing |FlutterHostWindow| instances.
@@ -81,5 +102,41 @@ class FlutterHostWindowController {
 };
 
 }  // namespace flutter
+
+extern "C" {
+
+FLUTTER_EXPORT
+void FlutterWindowingInitialize(int64_t engine_id,
+                                const flutter::WindowingInitRequest* request);
+
+FLUTTER_EXPORT
+bool FlutterWindowingHasTopLevelWindows(int64_t engine_id);
+
+FLUTTER_EXPORT
+int64_t FlutterCreateRegularWindow(
+    int64_t engine_id,
+    const flutter::WindowCreationRequest* request);
+
+FLUTTER_EXPORT
+HWND FlutterGetWindowHandle(int64_t engine_id, FlutterViewId view_id);
+
+struct FlutterWindowSize {
+  double width;
+  double height;
+};
+
+FLUTTER_EXPORT
+FlutterWindowSize FlutterGetWindowContentSize(HWND hwnd);
+
+FLUTTER_EXPORT
+int64_t FlutterGetWindowState(HWND hwnd);
+
+FLUTTER_EXPORT
+void FlutterSetWindowState(HWND hwnd, int64_t state);
+
+FLUTTER_EXPORT
+void FlutterSetWindowContentSize(HWND hwnd,
+                                 const flutter::FlutterWindowSizing* size);
+}
 
 #endif  // FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_HOST_WINDOW_CONTROLLER_H_

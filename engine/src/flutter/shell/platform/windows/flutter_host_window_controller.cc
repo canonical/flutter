@@ -10,121 +10,13 @@
 
 #include "embedder.h"
 #include "flutter/shell/platform/common/windowing.h"
+#include "flutter/shell/platform/windows/flutter_host_window.h"
 #include "flutter/shell/platform/windows/flutter_windows_engine.h"
 #include "flutter/shell/platform/windows/flutter_windows_view_controller.h"
 #include "fml/logging.h"
 #include "shell/platform/windows/client_wrapper/include/flutter/flutter_view.h"
 #include "shell/platform/windows/flutter_host_window.h"
 #include "shell/platform/windows/flutter_windows_view.h"
-
-namespace flutter {
-
-struct WindowingInitRequest {
-  void (*on_message)(WindowsMessage*);
-};
-
-struct WindowCreationRequest {
-  double width;
-  double height;
-  double min_width;
-  double min_height;
-  double max_width;
-  double max_height;
-};
-}  // namespace flutter
-
-extern "C" {
-
-FLUTTER_EXPORT
-void flutter_windowing_initialize(
-    int64_t engine_id,
-    const flutter::WindowingInitRequest* request) {
-  flutter::FlutterWindowsEngine* engine =
-      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
-  engine->get_host_window_controller()->Initialize(request);
-}
-
-FLUTTER_EXPORT
-bool flutter_windowing_has_top_level_windows(int64_t engine_id) {
-  flutter::FlutterWindowsEngine* engine =
-      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
-  return engine->get_host_window_controller()->HasTopLevelWindows();
-}
-
-FLUTTER_EXPORT
-int64_t flutter_create_regular_window(
-    int64_t engine_id,
-    const flutter::WindowCreationRequest* request) {
-  flutter::FlutterWindowsEngine* engine =
-      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
-  return engine->get_host_window_controller()->CreateRegularWindow(request);
-}
-
-FLUTTER_EXPORT
-HWND flutter_get_window_handle(int64_t engine_id, FlutterViewId view_id) {
-  flutter::FlutterWindowsEngine* engine =
-      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
-  flutter::FlutterWindowsView* view = engine->view(view_id);
-  if (view == nullptr) {
-    return nullptr;
-  } else {
-    return GetAncestor(view->GetWindowHandle(), GA_ROOT);
-  }
-}
-
-struct Size {
-  double width;
-  double height;
-};
-
-FLUTTER_EXPORT
-void flutter_get_window_size(HWND hwnd, Size* size) {
-  RECT rect;
-  GetClientRect(hwnd, &rect);
-  double const dpr = FlutterDesktopGetDpiForHWND(hwnd) /
-                     static_cast<double>(USER_DEFAULT_SCREEN_DPI);
-  double const width = rect.right / dpr;
-  double const height = rect.bottom / dpr;
-  size->width = width;
-  size->height = height;
-}
-
-FLUTTER_EXPORT
-int64_t flutter_get_window_state(HWND hwnd) {
-  if (IsIconic(hwnd)) {
-    return static_cast<int64_t>(flutter::WindowState::kMinimized);
-  } else if (IsZoomed(hwnd)) {
-    return static_cast<int64_t>(flutter::WindowState::kMaximized);
-  } else {
-    return static_cast<int64_t>(flutter::WindowState::kRestored);
-  }
-}
-
-FLUTTER_EXPORT
-void flutter_set_window_state(HWND hwnd, int64_t state) {
-  switch (static_cast<flutter::WindowState>(state)) {
-    case flutter::WindowState::kRestored:
-      ShowWindow(hwnd, SW_RESTORE);
-      break;
-    case flutter::WindowState::kMaximized:
-      ShowWindow(hwnd, SW_MAXIMIZE);
-      break;
-    case flutter::WindowState::kMinimized:
-      ShowWindow(hwnd, SW_MINIMIZE);
-      break;
-  }
-}
-
-FLUTTER_EXPORT
-void flutter_set_window_size(HWND hwnd, double width, double height) {
-  flutter::FlutterHostWindow* window =
-      flutter::FlutterHostWindow::GetThisFromHandle(hwnd);
-  if (window) {
-    window->SetClientSize(flutter::Size(width, height));
-  }
-}
-
-}  // extern "C"
 
 namespace flutter {
 
@@ -151,13 +43,8 @@ bool FlutterHostWindowController::HasTopLevelWindows() const {
 
 FlutterViewId FlutterHostWindowController::CreateRegularWindow(
     const WindowCreationRequest* request) {
-  WindowCreationSettings settings;
-  settings.size = Size(request->width, request->height);
-  settings.min_size = Size(request->min_width, request->min_height);
-  if (request->max_width != 0 && request->max_height != 0) {
-    settings.max_size = Size(request->max_width, request->max_height);
-  }
-  auto window = std::make_unique<FlutterHostWindow>(this, settings);
+  auto window = std::make_unique<FlutterHostWindow>(
+      this, WindowArchetype::kRegular, request->content_size);
   if (!window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create host window";
     return 0;
@@ -226,3 +113,81 @@ FlutterWindowsEngine* FlutterHostWindowController::engine() const {
 }
 
 }  // namespace flutter
+
+void FlutterWindowingInitialize(int64_t engine_id,
+                                const flutter::WindowingInitRequest* request) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  engine->get_host_window_controller()->Initialize(request);
+}
+
+bool FlutterWindowingHasTopLevelWindows(int64_t engine_id) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  return engine->get_host_window_controller()->HasTopLevelWindows();
+}
+
+int64_t FlutterCreateRegularWindow(
+    int64_t engine_id,
+    const flutter::WindowCreationRequest* request) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  return engine->get_host_window_controller()->CreateRegularWindow(request);
+}
+
+HWND FlutterGetWindowHandle(int64_t engine_id, FlutterViewId view_id) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  flutter::FlutterWindowsView* view = engine->view(view_id);
+  if (view == nullptr) {
+    return nullptr;
+  } else {
+    return GetAncestor(view->GetWindowHandle(), GA_ROOT);
+  }
+}
+
+FlutterWindowSize FlutterGetWindowContentSize(HWND hwnd) {
+  RECT rect;
+  GetClientRect(hwnd, &rect);
+  double const dpr = FlutterDesktopGetDpiForHWND(hwnd) /
+                     static_cast<double>(USER_DEFAULT_SCREEN_DPI);
+  double const width = rect.right / dpr;
+  double const height = rect.bottom / dpr;
+  return {
+      .width = rect.right / dpr,
+      .height = rect.bottom / dpr,
+  };
+}
+
+int64_t FlutterGetWindowState(HWND hwnd) {
+  if (IsIconic(hwnd)) {
+    return static_cast<int64_t>(flutter::WindowState::kMinimized);
+  } else if (IsZoomed(hwnd)) {
+    return static_cast<int64_t>(flutter::WindowState::kMaximized);
+  } else {
+    return static_cast<int64_t>(flutter::WindowState::kRestored);
+  }
+}
+
+void FlutterSetWindowState(HWND hwnd, int64_t state) {
+  switch (static_cast<flutter::WindowState>(state)) {
+    case flutter::WindowState::kRestored:
+      ShowWindow(hwnd, SW_RESTORE);
+      break;
+    case flutter::WindowState::kMaximized:
+      ShowWindow(hwnd, SW_MAXIMIZE);
+      break;
+    case flutter::WindowState::kMinimized:
+      ShowWindow(hwnd, SW_MINIMIZE);
+      break;
+  }
+}
+
+void FlutterSetWindowContentSize(HWND hwnd,
+                                 const flutter::FlutterWindowSizing* size) {
+  flutter::FlutterHostWindow* window =
+      flutter::FlutterHostWindow::GetThisFromHandle(hwnd);
+  if (window) {
+    window->SetContentSize(*size);
+  }
+}
