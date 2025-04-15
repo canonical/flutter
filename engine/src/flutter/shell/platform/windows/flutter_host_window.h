@@ -6,13 +6,13 @@
 #define FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_HOST_WINDOW_H_
 
 #include <windows.h>
-
 #include <memory>
 #include <optional>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/geometry.h"
 #include "flutter/shell/platform/common/windowing.h"
+#include "flutter/shell/platform/windows/flutter_host_window_controller.h"
 
 namespace flutter {
 
@@ -28,7 +28,8 @@ class FlutterHostWindow {
   // |FlutterHostWindow|. On success, a valid window handle can be retrieved
   // via |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
-                    WindowArchetype archetype);
+                    WindowArchetype archetype,
+                    const FlutterWindowSizing& content_size);
 
   virtual ~FlutterHostWindow();
 
@@ -40,14 +41,8 @@ class FlutterHostWindow {
   HWND GetWindowHandle() const;
 
   // Resizes the window to accommodate a client area of the given
-  // |client_size|.
-  void SetClientSize(Size const& client_size);
-
-  // Sets the minimum client size for the window.
-  void SetMinClientSize(Size const& min_size);
-
-  // Sets the maximum client size for the window.
-  void SetMaxClientSize(Size const& max_size);
+  // |size|.
+  void SetContentSize(const FlutterWindowSizing& size);
 
  private:
   friend FlutterHostWindowController;

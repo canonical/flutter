@@ -76,11 +76,11 @@ class WindowingOwnerWin32 extends WindowingOwner {
     return _hasTopLevelWindows(PlatformDispatcher.instance.engineId!);
   }
 
-  @Native<Bool Function(Int64)>(symbol: 'flutter_windowing_has_top_level_windows')
+  @Native<Bool Function(Int64)>(symbol: 'FlutterWindowingHasTopLevelWindows')
   external static bool _hasTopLevelWindows(int engineId);
 
   @Native<Void Function(Int64, Pointer<_WindowingInitRequest>)>(
-    symbol: 'flutter_windowing_initialize',
+    symbol: 'FlutterWindowingInitialize',
   )
   external static void _initializeWindowing(int engineId, Pointer<_WindowingInitRequest> request);
 }
@@ -108,10 +108,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
   @override
   Size get contentSize {
     _ensureNotDestroyed();
-    final Pointer<_Size> size = ffi.calloc<_Size>();
-    _getWindowContentSize(getWindowHandle(), size);
-    final Size result = Size(size.ref.width, size.ref.height);
-    ffi.calloc.free(size);
+    final _Size size = _getWindowContentSize(getWindowHandle());
+    final Size result = Size(size.width, size.height);
     return result;
   }
 
@@ -209,29 +207,29 @@ class RegularWindowControllerWin32 extends RegularWindowController
   final WindowingOwnerWin32 _owner;
 
   @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
-    symbol: 'flutter_create_regular_window',
+    symbol: 'FlutterCreateRegularWindow',
   )
   external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
 
-  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'flutter_get_window_handle')
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
 
   @Native<Void Function(Pointer<Void>)>(symbol: 'DestroyWindow')
   external static void _destroyWindow(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Size>)>(symbol: 'flutter_get_window_size')
-  external static void _getWindowContentSize(Pointer<Void> windowHandle, Pointer<_Size> size);
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
 
-  @Native<Int64 Function(Pointer<Void>)>(symbol: 'flutter_get_window_state')
+  @Native<Int64 Function(Pointer<Void>)>(symbol: 'FlutterGetWindowState')
   external static int _getWindowState(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'flutter_set_window_state')
+  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'FlutterSetWindowState')
   external static void _setWindowState(Pointer<Void> windowHandle, int state);
 
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf16>)>(symbol: 'SetWindowTextW')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf16> title);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'flutter_set_window_size')
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 }
 
