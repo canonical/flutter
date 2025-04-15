@@ -161,8 +161,8 @@ class _ActiveWindowsTable extends StatelessWidget {
                                 onPressed: () {
                                   if (controller.controller.type == WindowArchetype.regular) {
                                     showRegularWindowEditDialog(context,
-                                        initialWidth: controller.controller.size.width,
-                                        initialHeight: controller.controller.size.height,
+                                        initialWidth: controller.controller.contentSize.width,
+                                        initialHeight: controller.controller.contentSize.height,
                                         initialTitle: "",
                                         initialState:
                                             (controller.controller as RegularWindowController)
