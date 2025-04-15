@@ -70,7 +70,7 @@ abstract class WindowController with ChangeNotifier {
   WindowArchetype get type;
 
   /// The current size of the window. This may differ from the requested size.
-  Size get size;
+  Size get contentSize;
 
   /// Destroys this window. It is permissible to call this method multiple times.
   void destroy();

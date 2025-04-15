@@ -96,13 +96,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
        super.empty() {
     owner.addMessageHandler(this);
     final Pointer<_WindowCreationRequest> request =
-        ffi.calloc<_WindowCreationRequest>()
-          ..ref.width = 0
-          ..ref.height = 0;
-          // ..ref.minWidth = sizeConstraints?.minWidth ?? 0
-          // ..ref.minHeight = sizeConstraints?.minHeight ?? 0
-          // ..ref.maxWidth = sizeConstraints?.maxWidth ?? 0
-          // ..ref.maxHeight = sizeConstraints?.maxHeight ?? 0;
+        ffi.calloc<_WindowCreationRequest>()..ref.contentSize.set(contentSize);
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
     ffi.calloc.free(request);
     final FlutterView flutterView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
@@ -112,10 +106,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }
 
   @override
-  Size get size {
+  Size get contentSize {
     _ensureNotDestroyed();
     final Pointer<_Size> size = ffi.calloc<_Size>();
-    _getWindowSize(getWindowHandle(), size);
+    _getWindowContentSize(getWindowHandle(), size);
     final Size result = Size(size.ref.width, size.ref.height);
     ffi.calloc.free(size);
     return result;
@@ -137,8 +131,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
     if (title != null) {
       setWindowTitle(title);
     }
-    if (size != null) {
-      // setWindowSize(size);
+    if (contentSize != null) {
+      setContentSize(contentSize);
     }
   }
 
@@ -154,9 +148,12 @@ class RegularWindowControllerWin32 extends RegularWindowController
     ffi.calloc.free(titlePointer);
   }
 
-  void setWindowSize(Size size) {
+  void setContentSize(WindowSizing size) {
     _ensureNotDestroyed();
-    _setWindowSize(getWindowHandle(), size.width, size.height);
+    final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();
+    sizing.ref.set(size);
+    _setWindowContentSize(getWindowHandle(), sizing);
+    ffi.calloc.free(sizing);
   }
 
   Pointer<Void> getWindowHandle() {
@@ -223,7 +220,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
   external static void _destroyWindow(Pointer<Void> windowHandle);
 
   @Native<Void Function(Pointer<Void>, Pointer<_Size>)>(symbol: 'flutter_get_window_size')
-  external static void _getWindowSize(Pointer<Void> windowHandle, Pointer<_Size> size);
+  external static void _getWindowContentSize(Pointer<Void> windowHandle, Pointer<_Size> size);
 
   @Native<Int64 Function(Pointer<Void>)>(symbol: 'flutter_get_window_state')
   external static int _getWindowState(Pointer<Void> windowHandle);
@@ -234,8 +231,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf16>)>(symbol: 'SetWindowTextW')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf16> title);
 
-  @Native<Void Function(Pointer<Void>, Double, Double)>(symbol: 'flutter_set_window_size')
-  external static void _setWindowSize(Pointer<Void> windowHandle, double width, double height);
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'flutter_set_window_size')
+  external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 }
 
 /// Request to initialize windowing system.
@@ -243,12 +240,18 @@ final class _WindowingInitRequest extends Struct {
   external Pointer<NativeFunction<Void Function(Pointer<_WindowsMessage>)>> onMessage;
 }
 
-final class _WindowCreationRequest extends Struct {
+final class _Sizing extends Struct {
+  @Bool()
+  external bool hasSize;
+
   @Double()
   external double width;
 
   @Double()
   external double height;
+
+  @Bool()
+  external bool hasConstraints;
 
   @Double()
   external double minWidth;
@@ -261,6 +264,32 @@ final class _WindowCreationRequest extends Struct {
 
   @Double()
   external double maxHeight;
+
+  void set(WindowSizing sizing) {
+    final Size? size = sizing.size;
+    if (size != null) {
+      hasSize = true;
+      width = size.width;
+      height = size.height;
+    } else {
+      hasSize = false;
+    }
+
+    final BoxConstraints? constraints = sizing.constraints;
+    if (constraints != null) {
+      hasConstraints = true;
+      minWidth = constraints.minWidth;
+      minHeight = constraints.minHeight;
+      maxWidth = constraints.maxWidth;
+      maxHeight = constraints.maxHeight;
+    } else {
+      hasConstraints = false;
+    }
+  }
+}
+
+final class _WindowCreationRequest extends Struct {
+  external _Sizing contentSize;
 }
 
 /// Windows message received for all top level windows (regardless whether

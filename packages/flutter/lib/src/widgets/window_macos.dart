@@ -133,8 +133,8 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   late final NativeCallable<Void Function()> _onResize;
 
   @override
-  Size get size {
-    final _Size size = _getWindowSize(getWindowHandle());
+  Size get contentSize {
+    final _Size size = _getWindowContentSize(getWindowHandle());
     return Size(size.width, size.height);
   }
 
@@ -154,8 +154,8 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'FlutterDestroyWindow')
   external static void _destroyWindow(int engineId, Pointer<Void> handle);
 
-  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowSize')
-  external static _Size _getWindowSize(Pointer<Void> windowHandle);
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
 
   @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
