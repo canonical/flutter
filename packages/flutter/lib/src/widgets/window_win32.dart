@@ -34,16 +34,10 @@ class WindowingOwnerWin32 extends WindowingOwner {
 
   @override
   RegularWindowController createRegularWindowController({
-    required Size size,
+    required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
   }) {
-    return RegularWindowControllerWin32(
-      owner: this,
-      delegate: delegate,
-      size: size,
-      sizeConstraints: sizeConstraints,
-    );
+    return RegularWindowControllerWin32(owner: this, delegate: delegate, contentSize: contentSize);
   }
 
   void addMessageHandler(WindowsMessageHandler handler) {
@@ -96,20 +90,19 @@ class RegularWindowControllerWin32 extends RegularWindowController
   RegularWindowControllerWin32({
     required WindowingOwnerWin32 owner,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
-    required Size size,
+    required WindowSizing contentSize,
   }) : _owner = owner,
        _delegate = delegate,
        super.empty() {
     owner.addMessageHandler(this);
     final Pointer<_WindowCreationRequest> request =
         ffi.calloc<_WindowCreationRequest>()
-          ..ref.width = size.width
-          ..ref.height = size.height
-          ..ref.minWidth = sizeConstraints?.minWidth ?? 0
-          ..ref.minHeight = sizeConstraints?.minHeight ?? 0
-          ..ref.maxWidth = sizeConstraints?.maxWidth ?? 0
-          ..ref.maxHeight = sizeConstraints?.maxHeight ?? 0;
+          ..ref.width = 0
+          ..ref.height = 0;
+          // ..ref.minWidth = sizeConstraints?.minWidth ?? 0
+          // ..ref.minHeight = sizeConstraints?.minHeight ?? 0
+          // ..ref.maxWidth = sizeConstraints?.maxWidth ?? 0
+          // ..ref.maxHeight = sizeConstraints?.maxHeight ?? 0;
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
     ffi.calloc.free(request);
     final FlutterView flutterView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
@@ -136,7 +129,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }
 
   @override
-  void modify({Size? size, String? title, WindowState? state}) {
+  void modify({WindowSizing? contentSize, String? title, WindowState? state}) {
     _ensureNotDestroyed();
     if (state != null) {
       setWindowState(state);
@@ -145,7 +138,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
       setWindowTitle(title);
     }
     if (size != null) {
-      setWindowSize(size);
+      // setWindowSize(size);
     }
   }
 
@@ -185,7 +178,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
     if (_destroyed) {
       return;
     }
-    _destroyWindow(getWindowHandle());;
+    _destroyWindow(getWindowHandle());
+    ;
     _destroyed = true;
     _delegate.onWindowDestroyed();
     _owner.removeMessageHandler(this);
