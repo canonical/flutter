@@ -9,15 +9,13 @@ import 'package:flutter/src/foundation/binding.dart';
 class WindowingOwnerMacOS extends WindowingOwner {
   @override
   RegularWindowController createRegularWindowController({
-    required Size size,
+    required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
   }) {
     final RegularWindowControllerMacOS res = RegularWindowControllerMacOS(
       owner: this,
       delegate: delegate,
-      size: size,
-      sizeConstraints: sizeConstraints,
+      contentSize: contentSize,
     );
     _activeControllers.add(res);
     return res;
@@ -48,8 +46,7 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   RegularWindowControllerMacOS({
     required WindowingOwnerMacOS owner,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
-    required Size size,
+    required WindowSizing contentSize,
     String? title,
   }) : _owner = owner,
        _delegate = delegate,
@@ -58,12 +55,7 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     _onResize = NativeCallable<Void Function()>.isolateLocal(_handleOnResize);
     final Pointer<_WindowCreationRequest> request =
         ffi.calloc<_WindowCreationRequest>()
-          ..ref.width = size.width
-          ..ref.height = size.height
-          ..ref.minWidth = sizeConstraints?.minWidth ?? 0
-          ..ref.minHeight = sizeConstraints?.minHeight ?? 0
-          ..ref.maxWidth = sizeConstraints?.maxWidth ?? 0
-          ..ref.maxHeight = sizeConstraints?.maxHeight ?? 0
+          ..ref.contentSize.set(contentSize)
           ..ref.onClose = _onClose.nativeFunction
           ..ref.onSizeChange = _onResize.nativeFunction;
 
@@ -108,8 +100,11 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   }
 
   /// Updates the window size.
-  void setSize(Size size) {
-    _setWindowSize(getWindowHandle(), size.width, size.height);
+  void setContentSize(WindowSizing size) {
+    final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();
+    sizing.ref.set(size);
+    _setWindowContentSize(getWindowHandle(), sizing);
+    ffi.calloc.free(sizing);
   }
 
   /// Updates the window title.
@@ -120,9 +115,9 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   }
 
   @override
-  void modify({Size? size, String? title, WindowState? state}) {
-    if (size != null) {
-      setSize(size);
+  void modify({WindowSizing? contentSize, String? title, WindowState? state}) {
+    if (contentSize != null) {
+      setContentSize(contentSize);
     }
     if (title != null) {
       setTitle(title);
@@ -162,8 +157,8 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowSize')
   external static _Size _getWindowSize(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Double, Double)>(symbol: 'FlutterSetWindowSize')
-  external static void _setWindowSize(Pointer<Void> windowHandle, double width, double height);
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
+  external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'FlutterSetWindowTitle')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf8> title);
@@ -175,12 +170,18 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   external static void _setWindowState(Pointer<Void> windowHandle, int state);
 }
 
-final class _WindowCreationRequest extends Struct {
+final class _Sizing extends Struct {
+  @Bool()
+  external bool hasSize;
+
   @Double()
   external double width;
 
   @Double()
   external double height;
+
+  @Bool()
+  external bool hasConstraints;
 
   @Double()
   external double minWidth;
@@ -193,6 +194,32 @@ final class _WindowCreationRequest extends Struct {
 
   @Double()
   external double maxHeight;
+
+  void set(WindowSizing sizing) {
+    final Size? size = sizing.size;
+    if (size != null) {
+      hasSize = true;
+      width = size.width;
+      height = size.height;
+    } else {
+      hasSize = false;
+    }
+
+    final BoxConstraints? constraints = sizing.constraints;
+    if (constraints != null) {
+      hasConstraints = true;
+      minWidth = constraints.minWidth;
+      minHeight = constraints.minHeight;
+      maxWidth = constraints.maxWidth;
+      maxHeight = constraints.maxHeight;
+    } else {
+      hasConstraints = false;
+    }
+  }
+}
+
+final class _WindowCreationRequest extends Struct {
+  external _Sizing contentSize;
 
   external Pointer<NativeFunction<Void Function()>> onClose;
   external Pointer<NativeFunction<Void Function()>> onSizeChange;

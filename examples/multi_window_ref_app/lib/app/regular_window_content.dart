@@ -83,8 +83,7 @@ class _RegularWindowContentState extends State<RegularWindowContent>
                 builder: (context, child) {
                   return CustomPaint(
                     size: const Size(200, 200),
-                    painter: _RotatedWireCube(
-                        angle: _animation.value, color: cubeColor),
+                    painter: _RotatedWireCube(angle: _animation.value, color: cubeColor),
                   );
                 },
               ),
@@ -100,12 +99,12 @@ class _RegularWindowContentState extends State<RegularWindowContent>
                   widget.windowManagerModel.add(KeyedWindowController(
                       key: key,
                       controller: RegularWindowController(
-                          delegate: WindowControllerDelegate(
-                            onDestroyed: () =>
-                                widget.windowManagerModel.remove(key),
-                          ),
-                          title: "Regular",
-                          size: widget.windowSettings.regularSize)));
+                        contentSize: WindowSizing(size: widget.windowSettings.regularSize),
+                        delegate: WindowControllerDelegate(
+                          onDestroyed: () => widget.windowManagerModel.remove(key),
+                        ),
+                        title: "Regular",
+                      )));
                 },
                 child: const Text('Create Regular Window'),
               ),
@@ -131,18 +130,15 @@ class _RegularWindowContentState extends State<RegularWindowContent>
             listenable: widget.windowManagerModel,
             builder: (BuildContext context, Widget? _) {
               final List<Widget> childViews = <Widget>[];
-              for (final KeyedWindowController controller
-                  in widget.windowManagerModel.windows) {
+              for (final KeyedWindowController controller in widget.windowManagerModel.windows) {
                 if (controller.parent == widget.window) {
                   childViews.add(WindowControllerRender(
                     controller: controller.controller,
                     key: controller.key,
                     windowSettings: widget.windowSettings,
                     windowManagerModel: widget.windowManagerModel,
-                    onDestroyed: () =>
-                        widget.windowManagerModel.remove(controller.key),
-                    onError: () =>
-                        widget.windowManagerModel.remove(controller.key),
+                    onDestroyed: () => widget.windowManagerModel.remove(controller.key),
+                    onError: () => widget.windowManagerModel.remove(controller.key),
                   ));
                 }
               }

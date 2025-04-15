@@ -31,6 +31,29 @@
 
 @end
 
+@interface NSWindow (FlutterWindowSizing)
+
+- (void)flutterSetContentSize:(FlutterWindowSizing)contentSize;
+
+@end
+
+@implementation NSWindow (FlutterWindowSizing)
+- (void)flutterSetContentSize:(FlutterWindowSizing)contentSize {
+  if (contentSize.hasSize) {
+    [self setContentSize:NSMakeSize(contentSize.width, contentSize.height)];
+  }
+  if (contentSize.hasConstraints) {
+    [self setContentMinSize:NSMakeSize(contentSize.min_width, contentSize.min_height)];
+    if (contentSize.max_width > 0 && contentSize.max_height > 0) {
+      [self setContentMaxSize:NSMakeSize(contentSize.max_width, contentSize.max_height)];
+    } else {
+      [self setContentMaxSize:NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX)];
+    }
+  }
+}
+
+@end
+
 @implementation FlutterWindowOwner
 
 @synthesize window = _window;
@@ -96,9 +119,9 @@
   [window setReleasedWhenClosed:NO];
 
   window.contentViewController = c;
-  [window setContentSize:NSMakeSize(request->width, request->height)];
   window.styleMask = NSWindowStyleMaskResizable | NSWindowStyleMaskTitled |
                      NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+  [window flutterSetContentSize:request->contentSize];
   [window setIsVisible:YES];
   [window makeKeyAndOrderFront:nil];
 
@@ -159,9 +182,9 @@ FlutterWindowSize FlutterGetWindowSize(void* window) {
   };
 }
 
-void FlutterSetWindowSize(void* window, double width, double height) {
+void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size) {
   NSWindow* w = (__bridge NSWindow*)window;
-  [w setContentSize:NSMakeSize(width, height)];
+  [w flutterSetContentSize:*size];
 }
 
 void FlutterSetWindowTitle(void* window, const char* title) {

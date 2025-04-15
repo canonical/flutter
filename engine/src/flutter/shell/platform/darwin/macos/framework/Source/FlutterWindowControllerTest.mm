@@ -33,8 +33,7 @@ TEST_F(FlutterWindowControllerTest, Test1) {
   }
 
   FlutterWindowCreationRequest request{
-      .width = 800,
-      .height = 600,
+      .contentSize = {.hasSize = true, .width = 800, .height = 600},
       .on_close = [] {},
       .on_size_change = [] {},
   };
