@@ -99,7 +99,7 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     notifyListeners();
   }
 
-  /// Updates the window size.
+  @override
   void setContentSize(WindowSizing size) {
     final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();
     sizing.ref.set(size);
@@ -107,24 +107,11 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     ffi.calloc.free(sizing);
   }
 
-  /// Updates the window title.
+  @override
   void setTitle(String title) {
     final Pointer<ffi.Utf8> titlePointer = title.toNativeUtf8();
     _setWindowTitle(getWindowHandle(), titlePointer);
     ffi.calloc.free(titlePointer);
-  }
-
-  @override
-  void modify({WindowSizing? contentSize, String? title, WindowState? state}) {
-    if (contentSize != null) {
-      setContentSize(contentSize);
-    }
-    if (title != null) {
-      setTitle(title);
-    }
-    if (state != null) {
-      setState(state);
-    }
   }
 
   final WindowingOwnerMacOS _owner;
@@ -141,7 +128,7 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   @override
   WindowState get state => WindowState.values[_getWindowState(getWindowHandle())];
 
-  /// Updates window state.
+  @override
   void setState(WindowState state) {
     _setWindowState(getWindowHandle(), state.index);
   }

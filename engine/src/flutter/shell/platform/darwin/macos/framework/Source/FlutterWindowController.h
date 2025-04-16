@@ -57,7 +57,7 @@ FLUTTER_DARWIN_EXPORT
 void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id);
 
 FLUTTER_DARWIN_EXPORT
-FlutterWindowSize FlutterGetWindowSize(void* window);
+FlutterWindowSize FlutterGetWindowContentSize(void* window);
 
 FLUTTER_DARWIN_EXPORT
 void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size);

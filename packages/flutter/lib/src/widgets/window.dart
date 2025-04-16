@@ -145,8 +145,11 @@ abstract class RegularWindowController extends WindowController {
       contentSize: contentSize,
       delegate: delegate ?? RegularWindowControllerDelegate(),
     );
-    if (title != null || state != null) {
-      controller.modify(title: title, state: state);
+    if (title != null) {
+      controller.setTitle(title);
+    }
+    if (state != null) {
+      controller.setState(state);
     }
     return controller;
   }
@@ -161,16 +164,23 @@ abstract class RegularWindowController extends WindowController {
   /// The current state of the window.
   WindowState get state;
 
-  /// Modify the properties of the window. The window must be ready before
-  /// calling this method. If the window is not ready, an assertion will be
-  /// thrown. The caller must provide at least one of the following parameters:
+  /// Request change for the window content size.
   ///
-  /// [size] the new size of the window
-  /// [title] the new title of the window
-  /// [state] the new state of the window
+  /// [contentSize] describes the new requested window size. The properties
+  /// of this object are applied independently of each other. For example,
+  /// setting [WindowSizing.size] does not affect the [WindowSizing.constraints]
+  /// set previously.
   ///
-  /// If no parameters are provided, then an assertion will be thrown.
-  void modify({WindowSizing? contentSize, String? title, WindowState? state});
+  /// System compositor is free to ignore the request.
+  void setContentSize(WindowSizing contentSize);
+
+  /// Request change for the window title.
+  /// [title] new title of the window.
+  void setTitle(String title);
+
+  /// Request change for the window state.
+  /// [state] new state of the window.
+  void setState(WindowState state);
 }
 
 /// [WindowingOwner] is responsible for creating and managing window controllers.
