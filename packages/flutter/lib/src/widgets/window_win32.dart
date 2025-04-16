@@ -121,31 +121,20 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }
 
   @override
-  void modify({WindowSizing? contentSize, String? title, WindowState? state}) {
-    _ensureNotDestroyed();
-    if (state != null) {
-      setWindowState(state);
-    }
-    if (title != null) {
-      setWindowTitle(title);
-    }
-    if (contentSize != null) {
-      setContentSize(contentSize);
-    }
-  }
-
-  void setWindowState(WindowState state) {
+  void setState(WindowState state) {
     _ensureNotDestroyed();
     _setWindowState(getWindowHandle(), state.index);
   }
 
-  void setWindowTitle(String title) {
+  @override
+  void setTitle(String title) {
     _ensureNotDestroyed();
     final Pointer<ffi.Utf16> titlePointer = title.toNativeUtf16();
     _setWindowTitle(getWindowHandle(), titlePointer);
     ffi.calloc.free(titlePointer);
   }
 
+  @override
   void setContentSize(WindowSizing size) {
     _ensureNotDestroyed();
     final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();

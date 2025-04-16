@@ -174,7 +174,7 @@ void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id) {
   return (__bridge void*)controller.view.window;
 }
 
-FlutterWindowSize FlutterGetWindowSize(void* window) {
+FlutterWindowSize FlutterGetWindowContentSize(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
   return {
       .width = w.frame.size.width,

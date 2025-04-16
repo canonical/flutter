@@ -168,12 +168,19 @@ class _ActiveWindowsTable extends StatelessWidget {
                                             (controller.controller as RegularWindowController)
                                                 .state, onSave: (double? width, double? height,
                                             String? title, WindowState? state) {
-                                      (controller.controller as RegularWindowController).modify(
-                                          contentSize: width != null && height != null
-                                              ? WindowSizing(size: Size(width, height))
-                                              : null,
-                                          title: title,
-                                          state: state);
+                                      final regularController =
+                                          controller.controller as RegularWindowController;
+                                      if (width != null && height != null) {
+                                        regularController.setContentSize(
+                                          WindowSizing(size: Size(width, height)),
+                                        );
+                                      }
+                                      if (title != null) {
+                                        regularController.setTitle(title);
+                                      }
+                                      if (state != null) {
+                                        regularController.setState(state);
+                                      }
                                     });
                                   }
                                 },
