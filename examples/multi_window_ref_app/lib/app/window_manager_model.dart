@@ -41,11 +41,18 @@ class WindowManagerModel extends ChangeNotifier {
 
   void remove(UniqueKey key) {
     _windows.removeWhere((KeyedWindowController window) => window.key == key);
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void select(int? viewId) {
     _selectedViewId = viewId;
+    notifyListeners();
+  }
+
+  void removeAll() {
+    _windows.clear();
     notifyListeners();
   }
 }

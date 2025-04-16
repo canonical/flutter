@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-void showRegularWindowEditDialog(BuildContext context,
+void showDialogWindowEditDialog(BuildContext context,
     {double? initialWidth,
     double? initialHeight,
     String? initialTitle,
-    WindowState? initialState,
-    Function(double?, double?, String?, WindowState)? onSave}) {
+    Function(double?, double?, String?)? onSave}) {
   final TextEditingController widthController =
       TextEditingController(text: initialWidth?.toStringAsFixed(1) ?? '');
   final TextEditingController heightController =
@@ -16,10 +15,8 @@ void showRegularWindowEditDialog(BuildContext context,
   showDialog(
     context: context,
     builder: (context) {
-      WindowState selectedState = initialState ?? WindowState.restored;
-
       return AlertDialog(
-        title: const Text("Regular Window Properties"),
+        title: const Text("Dialog Window Properties"),
         content: StatefulBuilder(
           builder: (context, setState) {
             return Column(
@@ -39,25 +36,6 @@ void showRegularWindowEditDialog(BuildContext context,
                   controller: titleController,
                   decoration: const InputDecoration(labelText: "Title"),
                 ),
-                DropdownButton<WindowState>(
-                  value: selectedState,
-                  onChanged: (WindowState? newState) {
-                    if (newState != null) {
-                      setState(() => selectedState = newState);
-                    }
-                  },
-                  items: WindowState.values.map(
-                    (WindowState state) {
-                      return DropdownMenuItem<WindowState>(
-                        value: state,
-                        child: Text(
-                          state.toString().split('.').last[0].toUpperCase() +
-                              state.toString().split('.').last.substring(1),
-                        ),
-                      );
-                    },
-                  ).toList(),
-                ),
               ],
             );
           },
@@ -74,7 +52,7 @@ void showRegularWindowEditDialog(BuildContext context,
               String? title =
                   titleController.text.isEmpty ? null : titleController.text;
 
-              onSave?.call(width, height, title, selectedState);
+              onSave?.call(width, height, title);
               Navigator.of(context).pop();
             },
             child: const Text("Save"),

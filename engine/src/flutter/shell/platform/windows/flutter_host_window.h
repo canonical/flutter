@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/geometry.h"
@@ -23,21 +24,26 @@ class FlutterWindowsViewController;
 // A Win32 window that hosts a |FlutterWindow| in its client area.
 class FlutterHostWindow {
  public:
-  // Creates a native Win32 window with a child view confined to its client
-  // area. |controller| is a pointer to the controller that manages the
-  // |FlutterHostWindow|. On success, a valid window handle can be retrieved
-  // via |FlutterHostWindow::GetWindowHandle|.
+  // Creates a native top-level Win32 window with a child root view confined to
+  // its client area. |controller| is a pointer to the controller that manages
+  // the |FlutterHostWindow|. |archetype| specifies the window type.
+  // |content_size| defines the requested content size and constraints.
+  // |owner_window| is the handle to owner window. Must be nullptr if
+  // |archetype| is |WindowArchetype::kRegular|. For |WindowArchetype::kDialog|,
+  // the dialog is modal if |owner_window| is nullptr; otherwise, it is
+  // modeless. On success, a valid window handle can be retrieved via
+  // |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
                     WindowArchetype archetype,
-                    const FlutterWindowSizing& content_size);
+                    const FlutterWindowSizing& content_size,
+                    HWND owner_window);
 
   virtual ~FlutterHostWindow();
 
   // Returns the instance pointer for |hwnd| or nullptr if invalid.
   static FlutterHostWindow* GetThisFromHandle(HWND hwnd);
 
-  // Returns the backing window handle, or nullptr if the native window is not
-  // created or has already been destroyed.
+  // Returns the backing window handle, or nullptr if not yet created.
   HWND GetWindowHandle() const;
 
   // Resizes the window to accommodate a client area of the given
@@ -47,14 +53,27 @@ class FlutterHostWindow {
  private:
   friend FlutterHostWindowController;
 
-  // Sets the focus to the child view window of |window|.
-  static void FocusViewOf(FlutterHostWindow* window);
+  // Sets the focus to the root view window of |window|.
+  static void FocusRootViewOf(FlutterHostWindow* window);
 
   // OS callback called by message pump. Handles the WM_NCCREATE message which
   // is passed when the non-client area is being created and enables automatic
   // non-client DPI scaling so that the non-client area automatically
   // responds to changes in DPI. Delegates other messages to the controller.
   static LRESULT WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+
+  // Enables or disables this window and all its descendants.
+  void EnableWindowAndDescendants(bool enable);
+
+  // Returns the first enabled descendant window. If the current window itself
+  // is enabled, returns the current window.
+  FlutterHostWindow* FindFirstEnabledDescendant() const;
+
+  // Returns windows owned by this window.
+  std::vector<FlutterHostWindow*> GetOwnedWindows() const;
+
+  // Returns the owner window, or nullptr if none.
+  FlutterHostWindow* GetOwnerWindow() const;
 
   // Processes and routes salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -64,12 +83,18 @@ class FlutterHostWindow {
   // Inserts |content| into the window tree.
   void SetChildContent(HWND content);
 
+  // Enforces modal behavior by enabling the deepest dialog in the subtree
+  // rooted at the top-level window, along with its descendants, while
+  // disabling all other windows in the subtree. This ensures that the dialog
+  // and its child windows remain active and interactive. If no dialog is found,
+  // enables all windows in the subtree.
+  void UpdateModalState();
+
   // Controller for this window.
   FlutterHostWindowController* const window_controller_ = nullptr;
 
-  // Controller for the view hosted in this window. Value-initialized if the
-  // window is created from an existing top-level native window created by the
-  // runner.
+  // Controller for the root view. Value-initialized if the window is created
+  // from an existing top-level native window created by the runner.
   std::unique_ptr<FlutterWindowsViewController> view_controller_;
 
   // The window archetype.
@@ -78,7 +103,7 @@ class FlutterHostWindow {
   // Backing handle for this window.
   HWND window_handle_ = nullptr;
 
-  // Backing handle for the hosted view window.
+  // Backing handle for the hosted root view window.
   HWND child_content_ = nullptr;
 
   // The minimum size of the window's client area, if defined.
@@ -86,6 +111,9 @@ class FlutterHostWindow {
 
   // The maximum size of the window's client area, if defined.
   std::optional<Size> max_size_;
+
+  // True while handling WM_DESTROY; used to detect in-progress destruction.
+  bool is_being_destroyed_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterHostWindow);
 };

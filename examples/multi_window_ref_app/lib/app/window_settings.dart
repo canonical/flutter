@@ -1,13 +1,32 @@
 import 'package:flutter/material.dart';
 
-class WindowSettings extends ChangeNotifier {
-  WindowSettings({Size regularSize = const Size(400, 300)})
-      : _regularSize = regularSize;
+class SettingsValueNotifier<T> extends ChangeNotifier {
+  SettingsValueNotifier({required T value}) : _value = value;
 
-  Size _regularSize;
-  Size get regularSize => _regularSize;
-  set regularSize(Size value) {
-    _regularSize = value;
+  T _value;
+  T get value => _value;
+  set value(T v) {
+    _value = v;
     notifyListeners();
+  }
+}
+
+class WindowSettings {
+  WindowSettings({
+    Size regularSize = const Size(400, 300),
+    Size dialogSize = const Size(300, 250),
+  })  : _regularSize = SettingsValueNotifier(value: regularSize),
+        _dialogSize = SettingsValueNotifier(value: dialogSize);
+
+  final SettingsValueNotifier<Size> _regularSize;
+  SettingsValueNotifier<Size> get regularSizeNotifier => _regularSize;
+  set regularSize(Size value) {
+    _regularSize.value = value;
+  }
+
+  final SettingsValueNotifier<Size> _dialogSize;
+  SettingsValueNotifier<Size> get dialogSizeNotifier => _dialogSize;
+  set dialogSize(Size value) {
+    _dialogSize.value = value;
   }
 }

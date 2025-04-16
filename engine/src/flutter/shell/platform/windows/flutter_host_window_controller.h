@@ -47,8 +47,13 @@ struct WindowingInitRequest {
   void (*on_message)(WindowsMessage*);
 };
 
-struct WindowCreationRequest {
+struct RegularWindowCreationRequest {
   FlutterWindowSizing content_size;
+};
+
+struct DialogWindowCreationRequest {
+  FlutterWindowSizing content_size;
+  HWND parent_window;
 };
 
 // A controller class for managing |FlutterHostWindow| instances.
@@ -64,7 +69,9 @@ class FlutterHostWindowController {
 
   bool HasTopLevelWindows() const;
 
-  FlutterViewId CreateRegularWindow(const WindowCreationRequest* request);
+  FlutterViewId CreateRegularWindow(
+      const RegularWindowCreationRequest* request);
+  FlutterViewId CreateDialogWindow(const DialogWindowCreationRequest* request);
 
   // Message handler called by |FlutterHostWindow::WndProc| to process window
   // messages before delegating them to the host window. This allows the
@@ -115,7 +122,12 @@ bool FlutterWindowingHasTopLevelWindows(int64_t engine_id);
 FLUTTER_EXPORT
 int64_t FlutterCreateRegularWindow(
     int64_t engine_id,
-    const flutter::WindowCreationRequest* request);
+    const flutter::RegularWindowCreationRequest* request);
+
+FLUTTER_EXPORT
+int64_t FlutterCreateDialogWindow(
+    int64_t engine_id,
+    const flutter::DialogWindowCreationRequest* request);
 
 FLUTTER_EXPORT
 HWND FlutterGetWindowHandle(int64_t engine_id, FlutterViewId view_id);

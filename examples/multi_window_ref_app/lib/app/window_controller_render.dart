@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'regular_window_content.dart';
+import 'dialog_window_content.dart';
 import 'window_manager_model.dart';
 import 'window_settings.dart';
 
@@ -23,15 +24,36 @@ class WindowControllerRender extends StatelessWidget {
     switch (controller.type) {
       case WindowArchetype.regular:
         return RegularWindow(
-            key: key,
-            controller: controller as RegularWindowController,
-            child: RegularWindowContent(
-                window: controller as RegularWindowController,
+          key: key,
+          controller: controller as RegularWindowController,
+          child: MaterialApp(
+            home: RegularWindowContent(
+              controller: controller as RegularWindowController,
+              windowSettings: windowSettings,
+              windowManagerModel: windowManagerModel,
+            ),
+          ),
+        );
+      case WindowArchetype.dialog:
+        final dialogController = controller as DialogWindowController;
+        final child = dialogController.parent != null
+            ? DialogWindowContent(
+                controller: dialogController,
                 windowSettings: windowSettings,
-                windowManagerModel: windowManagerModel));
-      default:
-        throw UnimplementedError(
-            "The provided window type does not have an implementation");
+                windowManagerModel: windowManagerModel,
+              )
+            : MaterialApp(
+                home: DialogWindowContent(
+                  controller: dialogController,
+                  windowSettings: windowSettings,
+                  windowManagerModel: windowManagerModel,
+                ),
+              );
+        return DialogWindow(
+          key: key,
+          controller: dialogController,
+          child: child,
+        );
     }
   }
 }
