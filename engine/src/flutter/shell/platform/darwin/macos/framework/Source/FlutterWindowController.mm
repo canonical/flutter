@@ -10,6 +10,7 @@
 #import "flutter/shell/platform/darwin/macos/framework/Source/FlutterViewController_Internal.h"
 
 #include "flutter/shell/platform/common/isolate_scope.h"
+#include "flutter/shell/platform/common/windowing.h"
 
 /// A delegate for a Flutter managed window.
 @interface FlutterWindowOwner : NSObject <NSWindowDelegate> {
@@ -17,7 +18,7 @@
   /// window.
   NSWindow* _window;
   FlutterViewController* _flutterViewController;
-  flutter::Isolate _isolate;
+  std::optional<flutter::Isolate> _isolate;
   FlutterWindowCreationRequest _creationRequest;
 }
 
@@ -27,6 +28,29 @@
 - (instancetype)initWithWindow:(NSWindow*)window
          flutterViewController:(FlutterViewController*)viewController
                creationRequest:(const FlutterWindowCreationRequest&)creationRequest;
+
+@end
+
+@interface NSWindow (FlutterWindowSizing)
+
+- (void)flutterSetContentSize:(FlutterWindowSizing)contentSize;
+
+@end
+
+@implementation NSWindow (FlutterWindowSizing)
+- (void)flutterSetContentSize:(FlutterWindowSizing)contentSize {
+  if (contentSize.hasSize) {
+    [self setContentSize:NSMakeSize(contentSize.width, contentSize.height)];
+  }
+  if (contentSize.hasConstraints) {
+    [self setContentMinSize:NSMakeSize(contentSize.min_width, contentSize.min_height)];
+    if (contentSize.max_width > 0 && contentSize.max_height > 0) {
+      [self setContentMaxSize:NSMakeSize(contentSize.max_width, contentSize.max_height)];
+    } else {
+      [self setContentMaxSize:NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX)];
+    }
+  }
+}
 
 @end
 
@@ -42,6 +66,7 @@
     _window = window;
     _flutterViewController = viewController;
     _creationRequest = creationRequest;
+    _isolate = flutter::Isolate::Current();
   }
   return self;
 }
@@ -55,13 +80,13 @@
 }
 
 - (BOOL)windowShouldClose:(NSWindow*)sender {
-  flutter::IsolateScope isolate_scope(_isolate);
+  flutter::IsolateScope isolate_scope(*_isolate);
   _creationRequest.on_close();
   return NO;
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
-  flutter::IsolateScope isolate_scope(_isolate);
+  flutter::IsolateScope isolate_scope(*_isolate);
   _creationRequest.on_size_change();
 }
 
@@ -94,9 +119,9 @@
   [window setReleasedWhenClosed:NO];
 
   window.contentViewController = c;
-  [window setContentSize:NSMakeSize(request->width, request->height)];
   window.styleMask = NSWindowStyleMaskResizable | NSWindowStyleMaskTitled |
                      NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+  [window flutterSetContentSize:request->contentSize];
   [window setIsVisible:YES];
   [window makeKeyAndOrderFront:nil];
 
@@ -119,6 +144,8 @@
   }
   if (owner != nil) {
     [_windows removeObject:owner];
+    // Make sure to unregister the controller from the engine and remove the FlutterView
+    // before destroying the window and Flutter NSView.
     [owner.flutterViewController dispose];
     owner.window.delegate = nil;
     [owner.window close];
@@ -147,15 +174,17 @@ void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id) {
   return (__bridge void*)controller.view.window;
 }
 
-void FlutterGetWindowSize(void* window, FlutterWindowSize* size) {
+FlutterWindowSize FlutterGetWindowContentSize(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
-  size->width = w.frame.size.width;
-  size->height = w.frame.size.height;
+  return {
+      .width = w.frame.size.width,
+      .height = w.frame.size.height,
+  };
 }
 
-void FlutterSetWindowSize(void* window, double width, double height) {
+void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size) {
   NSWindow* w = (__bridge NSWindow*)window;
-  [w setContentSize:NSMakeSize(width, height)];
+  [w flutterSetContentSize:*size];
 }
 
 void FlutterSetWindowTitle(void* window, const char* title) {
@@ -166,11 +195,11 @@ void FlutterSetWindowTitle(void* window, const char* title) {
 int64_t FlutterGetWindowState(void* window) {
   NSWindow* w = (__bridge NSWindow*)window;
   if (w.isZoomed) {
-    return 1;
+    return static_cast<int64_t>(flutter::WindowState::kMaximized);
   } else if (w.isMiniaturized) {
-    return 2;
+    return static_cast<int64_t>(flutter::WindowState::kMinimized);
   } else {
-    return 0;
+    return static_cast<int64_t>(flutter::WindowState::kRestored);
   }
 }
 

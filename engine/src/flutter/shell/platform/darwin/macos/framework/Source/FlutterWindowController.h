@@ -18,13 +18,19 @@
 
 @end
 
-struct FlutterWindowCreationRequest {
+struct FlutterWindowSizing {
+  bool hasSize;
   double width;
   double height;
+  bool hasConstraints;
   double min_width;
   double min_height;
   double max_width;
   double max_height;
+};
+
+struct FlutterWindowCreationRequest {
+  FlutterWindowSizing contentSize;
   void (*on_close)();
   void (*on_size_change)();
 };
@@ -51,10 +57,10 @@ FLUTTER_DARWIN_EXPORT
 void* FlutterGetWindowHandle(int64_t engine_id, FlutterViewIdentifier view_id);
 
 FLUTTER_DARWIN_EXPORT
-void FlutterGetWindowSize(void* window, FlutterWindowSize* size);
+FlutterWindowSize FlutterGetWindowContentSize(void* window);
 
 FLUTTER_DARWIN_EXPORT
-void FlutterSetWindowSize(void* window, double width, double height);
+void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size);
 
 FLUTTER_DARWIN_EXPORT
 void FlutterSetWindowTitle(void* window, const char* title);

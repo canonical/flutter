@@ -9,8 +9,8 @@ import 'regular_window_edit_dialog.dart';
 
 class MainWindow extends StatefulWidget {
   MainWindow({super.key, required WindowController mainController}) {
-    _windowManagerModel.add(KeyedWindowController(
-        isMainWindow: true, key: UniqueKey(), controller: mainController));
+    _windowManagerModel.add(
+        KeyedWindowController(isMainWindow: true, key: UniqueKey(), controller: mainController));
   }
 
   final WindowManagerModel _windowManagerModel = WindowManagerModel();
@@ -34,8 +34,7 @@ class _MainWindowState extends State<MainWindow> {
             flex: 60,
             child: SingleChildScrollView(
               scrollDirection: Axis.vertical,
-              child: _ActiveWindowsTable(
-                  windowManagerModel: widget._windowManagerModel),
+              child: _ActiveWindowsTable(windowManagerModel: widget._windowManagerModel),
             ),
           ),
           Expanded(
@@ -63,18 +62,15 @@ class _MainWindowState extends State<MainWindow> {
             listenable: widget._windowManagerModel,
             builder: (BuildContext context, Widget? _) {
               final List<Widget> childViews = <Widget>[];
-              for (final KeyedWindowController controller
-                  in widget._windowManagerModel.windows) {
+              for (final KeyedWindowController controller in widget._windowManagerModel.windows) {
                 if (controller.parent == null && !controller.isMainWindow) {
                   childViews.add(WindowControllerRender(
                     controller: controller.controller,
                     key: controller.key,
                     windowSettings: widget._settings,
                     windowManagerModel: widget._windowManagerModel,
-                    onDestroyed: () =>
-                        widget._windowManagerModel.remove(controller.key),
-                    onError: () =>
-                        widget._windowManagerModel.remove(controller.key),
+                    onDestroyed: () => widget._windowManagerModel.remove(controller.key),
+                    onError: () => widget._windowManagerModel.remove(controller.key),
                   ));
                 }
               }
@@ -130,8 +126,7 @@ class _ActiveWindowsTable extends StatelessWidget {
                   ),
                   numeric: true),
             ],
-            rows: (windowManagerModel.windows)
-                .map<DataRow>((KeyedWindowController controller) {
+            rows: (windowManagerModel.windows).map<DataRow>((KeyedWindowController controller) {
               return DataRow(
                 key: controller.key,
                 color: WidgetStateColor.resolveWith((states) {
@@ -143,9 +138,8 @@ class _ActiveWindowsTable extends StatelessWidget {
                 selected: controller.controller == windowManagerModel.selected,
                 onSelectChanged: (selected) {
                   if (selected != null) {
-                    windowManagerModel.select(selected
-                        ? controller.controller.rootView.viewId
-                        : null);
+                    windowManagerModel
+                        .select(selected ? controller.controller.rootView.viewId : null);
                   }
                 },
                 cells: [
@@ -153,41 +147,40 @@ class _ActiveWindowsTable extends StatelessWidget {
                   DataCell(
                     ListenableBuilder(
                         listenable: controller.controller,
-                        builder: (BuildContext context, Widget? _) => Text(
-                            controller.controller.type
-                                .toString()
-                                .replaceFirst('WindowArchetype.', ''))),
+                        builder: (BuildContext context, Widget? _) => Text(controller
+                            .controller.type
+                            .toString()
+                            .replaceFirst('WindowArchetype.', ''))),
                   ),
                   DataCell(
                     ListenableBuilder(
                         listenable: controller.controller,
-                        builder: (BuildContext context, Widget? _) =>
-                            Row(children: [
+                        builder: (BuildContext context, Widget? _) => Row(children: [
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined),
                                 onPressed: () {
-                                  if (controller.controller.type ==
-                                      WindowArchetype.regular) {
+                                  if (controller.controller.type == WindowArchetype.regular) {
                                     showRegularWindowEditDialog(context,
-                                        initialWidth:
-                                            controller.controller.size.width,
-                                        initialHeight:
-                                            controller.controller.size.height,
+                                        initialWidth: controller.controller.contentSize.width,
+                                        initialHeight: controller.controller.contentSize.height,
                                         initialTitle: "",
-                                        initialState: (controller.controller
-                                                as RegularWindowController)
-                                            .state,
-                                        onSave: (double? width, double? height,
+                                        initialState:
+                                            (controller.controller as RegularWindowController)
+                                                .state, onSave: (double? width, double? height,
                                             String? title, WindowState? state) {
-                                      (controller.controller
-                                              as RegularWindowController)
-                                          .modify(
-                                              size: width != null &&
-                                                      height != null
-                                                  ? Size(width, height)
-                                                  : null,
-                                              title: title,
-                                              state: state);
+                                      final regularController =
+                                          controller.controller as RegularWindowController;
+                                      if (width != null && height != null) {
+                                        regularController.setContentSize(
+                                          WindowSizing(size: Size(width, height)),
+                                        );
+                                      }
+                                      if (title != null) {
+                                        regularController.setTitle(title);
+                                      }
+                                      if (state != null) {
+                                        regularController.setState(state);
+                                      }
                                     });
                                   }
                                 },
@@ -246,11 +239,12 @@ class _WindowCreatorCard extends StatelessWidget {
                     windowManagerModel.add(KeyedWindowController(
                         key: key,
                         controller: RegularWindowController(
-                            delegate: WindowControllerDelegate(
-                              onDestroyed: () => windowManagerModel.remove(key),
-                            ),
-                            title: "Regular",
-                            size: windowSettings.regularSize)));
+                          delegate: WindowControllerDelegate(
+                            onDestroyed: () => windowManagerModel.remove(key),
+                          ),
+                          title: "Regular",
+                          contentSize: WindowSizing(size: windowSettings.regularSize),
+                        )));
                   },
                   child: const Text('Regular'),
                 ),

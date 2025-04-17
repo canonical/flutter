@@ -266,10 +266,9 @@ void UpdateTheme(HWND window) {
 namespace flutter {
 
 FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
-                                     WindowCreationSettings const& settings)
-    : window_controller_(controller) {
-  archetype_ = settings.archetype;
-
+                                     WindowArchetype archetype,
+                                     const FlutterWindowSizing& content_size)
+    : window_controller_(controller), archetype_(archetype) {
   // Check preconditions and set window styles based on window type.
   DWORD window_style = 0;
   DWORD extended_window_style = 0;
@@ -281,24 +280,23 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       FML_UNREACHABLE();
   }
 
-  // Validate size constraints.
-  min_size_ = settings.min_size;
-  max_size_ = settings.max_size;
-  if (min_size_ && max_size_) {
-    if (min_size_->width() > max_size_->width() ||
-        min_size_->height() > max_size_->height()) {
-      FML_LOG(ERROR) << "Invalid size constraints.";
-      return;
+  if (content_size.has_constraints) {
+    min_size_ = Size(content_size.min_width, content_size.min_height);
+    if (content_size.max_width > 0 && content_size.max_height > 0) {
+      max_size_ = Size(content_size.max_width, content_size.max_height);
     }
   }
+
+  // TODO(knopp): What about windows sized to content?
+  assert(content_size.has_size);
 
   // Calculate the screen space window rectangle for the new window.
   // Default positioning values (CW_USEDEFAULT) are used
   // if the window has no owner.
   Rect const initial_window_rect = [&]() -> Rect {
     std::optional<Size> const window_size = GetWindowSizeForClientSize(
-        settings.size, min_size_, max_size_, window_style,
-        extended_window_style, nullptr);
+        Size(content_size.width, content_size.height), min_size_, max_size_,
+        window_style, extended_window_style, nullptr);
     return {{CW_USEDEFAULT, CW_USEDEFAULT},
             window_size ? *window_size : Size{CW_USEDEFAULT, CW_USEDEFAULT}};
   }();
@@ -356,12 +354,11 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   }
 
   // Create the native window.
-  HWND hwnd = CreateWindowEx(
-      extended_window_style, kWindowClassName,
-      StringToWstring(settings.title.value_or("")).c_str(), window_style,
-      initial_window_rect.left(), initial_window_rect.top(),
-      initial_window_rect.width(), initial_window_rect.height(), nullptr,
-      nullptr, GetModuleHandle(nullptr), this);
+  HWND hwnd =
+      CreateWindowEx(extended_window_style, kWindowClassName, L"", window_style,
+                     initial_window_rect.left(), initial_window_rect.top(),
+                     initial_window_rect.width(), initial_window_rect.height(),
+                     nullptr, nullptr, GetModuleHandle(nullptr), this);
 
   if (!hwnd) {
     FML_LOG(ERROR) << "Cannot create window: " << GetLastErrorAsString();
@@ -535,17 +532,28 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
   return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
-void FlutterHostWindow::SetClientSize(Size const& client_size) const {
+void FlutterHostWindow::SetContentSize(const FlutterWindowSizing& size) {
   WINDOWINFO window_info = {.cbSize = sizeof(WINDOWINFO)};
   GetWindowInfo(window_handle_, &window_info);
 
-  std::optional<Size> const window_size = GetWindowSizeForClientSize(
-      client_size, min_size_, max_size_, window_info.dwStyle,
-      window_info.dwExStyle, nullptr);
+  if (size.has_constraints) {
+    min_size_ = Size(size.min_width, size.min_height);
+    if (size.max_width > 0 && size.max_height > 0) {
+      max_size_ = Size(size.max_width, size.max_height);
+    }
+  }
 
-  Size const size = window_size.value_or(client_size);
-  SetWindowPos(window_handle_, NULL, 0, 0, size.width(), size.height(),
-               SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+  if (size.has_size) {
+    std::optional<Size> const window_size = GetWindowSizeForClientSize(
+        Size(size.width, size.height), min_size_, max_size_,
+        window_info.dwStyle, window_info.dwExStyle, nullptr);
+
+    if (window_size) {
+      SetWindowPos(window_handle_, NULL, 0, 0, window_size->width(),
+                   window_size->height(),
+                   SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+  }
 }
 
 void FlutterHostWindow::SetChildContent(HWND content) {

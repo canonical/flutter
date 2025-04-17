@@ -27,6 +27,18 @@ enum WindowState {
   minimized,
 }
 
+/// Defines sizing request for a window.
+class WindowSizing {
+  /// Creates a new [WindowSizing] object.
+  WindowSizing({this.size, this.constraints});
+
+  /// Preferred size of the window. This may not be honored by the platform.
+  final Size? size;
+
+  /// Constraints for the window. This may not be honored by the platform.
+  final BoxConstraints? constraints;
+}
+
 /// Base class for window controllers.
 ///
 /// A window controller must provide a [future] that resolves to a
@@ -58,7 +70,7 @@ abstract class WindowController with ChangeNotifier {
   WindowArchetype get type;
 
   /// The current size of the window. This may differ from the requested size.
-  Size get size;
+  Size get contentSize;
 
   /// Destroys this window. It is permissible to call this method multiple times.
   void destroy();
@@ -117,27 +129,27 @@ abstract class RegularWindowController extends WindowController {
   /// Creates a [RegularWindowController] with the provided properties.
   /// Upon construction, the window is created for the platform.
   ///
+  /// [contentSize] Initial content size of the window.
   /// [title] the title of the window
   /// [state] the initial state of the window
-  /// [sizeConstraints] the size constraints of the window
   /// [delegate] optional delegate for the controller controller.
-  /// [size] the size of the window
   factory RegularWindowController({
+    required WindowSizing contentSize,
     String? title,
     WindowState? state,
-    BoxConstraints? sizeConstraints,
     RegularWindowControllerDelegate? delegate,
-    required Size size,
   }) {
     WidgetsFlutterBinding.ensureInitialized();
     final WindowingOwner owner = WidgetsBinding.instance.windowingOwner;
     final RegularWindowController controller = owner.createRegularWindowController(
-      size: size,
+      contentSize: contentSize,
       delegate: delegate ?? RegularWindowControllerDelegate(),
-      sizeConstraints: sizeConstraints,
     );
-    if (title != null || state != null) {
-      controller.modify(title: title, state: state);
+    if (title != null) {
+      controller.setTitle(title);
+    }
+    if (state != null) {
+      controller.setState(state);
     }
     return controller;
   }
@@ -152,16 +164,23 @@ abstract class RegularWindowController extends WindowController {
   /// The current state of the window.
   WindowState get state;
 
-  /// Modify the properties of the window. The window must be ready before
-  /// calling this method. If the window is not ready, an assertion will be
-  /// thrown. The caller must provide at least one of the following parameters:
+  /// Request change for the window content size.
   ///
-  /// [size] the new size of the window
-  /// [title] the new title of the window
-  /// [state] the new state of the window
+  /// [contentSize] describes the new requested window size. The properties
+  /// of this object are applied independently of each other. For example,
+  /// setting [WindowSizing.size] does not affect the [WindowSizing.constraints]
+  /// set previously.
   ///
-  /// If no parameters are provided, then an assertion will be thrown.
-  void modify({Size? size, String? title, WindowState? state});
+  /// System compositor is free to ignore the request.
+  void setContentSize(WindowSizing contentSize);
+
+  /// Request change for the window title.
+  /// [title] new title of the window.
+  void setTitle(String title);
+
+  /// Request change for the window state.
+  /// [state] new state of the window.
+  void setState(WindowState state);
 }
 
 /// [WindowingOwner] is responsible for creating and managing window controllers.
@@ -171,9 +190,8 @@ abstract class RegularWindowController extends WindowController {
 abstract class WindowingOwner {
   /// Creates a [RegularWindowController] with the provided properties.
   RegularWindowController createRegularWindowController({
-    required Size size,
+    required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
   });
 
   /// Returns whether application has any top level windows created by this
@@ -190,9 +208,8 @@ abstract class WindowingOwner {
 class _FallbackWindowingOwner extends WindowingOwner {
   @override
   RegularWindowController createRegularWindowController({
-    required Size size,
+    required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
-    BoxConstraints? sizeConstraints,
   }) {
     throw UnsupportedError(
       'Current platform does not support windowing.\n'
