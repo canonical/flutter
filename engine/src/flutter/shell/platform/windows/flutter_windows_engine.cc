@@ -319,7 +319,7 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
       &WindowsPlatformThreadPrioritySetter;
 
   if (project_->ui_thread_policy() !=
-      FlutterUIThreadPolicy::RunOnSeparateThread && !enable_windowing_) {
+      FlutterUIThreadPolicy::RunOnSeparateThread) {
     custom_task_runners.ui_task_runner = &platform_task_runner;
   } else {
     FML_LOG(WARNING) << "Running with unmerged platform and UI threads. This "
