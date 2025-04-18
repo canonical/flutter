@@ -177,7 +177,6 @@ class RegularWindowControllerWin32 extends RegularWindowController
       return;
     }
     _destroyWindow(getWindowHandle());
-    ;
     _destroyed = true;
     _delegate.onWindowDestroyed();
     _owner.removeMessageHandler(this);

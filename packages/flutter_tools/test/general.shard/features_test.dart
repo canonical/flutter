@@ -447,6 +447,5 @@ void main() {
         expect(featureFlags.isWindowingEnabled, true);
       });
     }
-
   });
 }

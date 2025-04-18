@@ -8,13 +8,14 @@ import 'window_manager_model.dart';
 import 'window_settings.dart';
 
 class WindowControllerRender extends StatelessWidget {
-  const WindowControllerRender(
-      {required this.controller,
-      required this.onDestroyed,
-      required this.onError,
-      required this.windowSettings,
-      required this.windowManagerModel,
-      required super.key});
+  const WindowControllerRender({
+    required this.controller,
+    required this.onDestroyed,
+    required this.onError,
+    required this.windowSettings,
+    required this.windowManagerModel,
+    required super.key,
+  });
 
   final WindowController controller;
   final VoidCallback onDestroyed;
@@ -27,14 +28,13 @@ class WindowControllerRender extends StatelessWidget {
     switch (controller.type) {
       case WindowArchetype.regular:
         return RegularWindow(
-            key: key,
-            controller: controller as RegularWindowController,
-            child: RegularWindowContent(
-                window: controller as RegularWindowController,
-                windowSettings: windowSettings,
-                windowManagerModel: windowManagerModel));
-      default:
-        throw UnimplementedError("The provided window type does not have an implementation");
+          key: key,
+          controller: controller as RegularWindowController,
+          child: RegularWindowContent(
+              window: controller as RegularWindowController,
+              windowSettings: windowSettings,
+              windowManagerModel: windowManagerModel),
+        );
     }
   }
 }

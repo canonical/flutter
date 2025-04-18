@@ -6,7 +6,10 @@ import 'package:flutter/widgets.dart';
 
 class KeyedWindowController {
   KeyedWindowController(
-      {this.parent, this.isMainWindow = false, required this.key, required this.controller});
+      {this.parent,
+      this.isMainWindow = false,
+      required this.key,
+      required this.controller});
 
   final WindowController? parent;
   final bool isMainWindow;
