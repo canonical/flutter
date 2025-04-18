@@ -1,9 +1,16 @@
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 import 'dart:ffi' hide Size;
 import 'dart:ui' show FlutterView;
 
 import 'package:ffi/ffi.dart' as ffi;
-import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/src/foundation/binding.dart';
+
+import 'binding.dart';
+import 'window.dart';
 
 /// The macOS implementation of the windowing API.
 class WindowingOwnerMacOS extends WindowingOwner {

@@ -1,8 +1,11 @@
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 import 'package:flutter/material.dart';
 import 'package:multi_window_ref_app/app/window_settings.dart';
 
-Future<void> windowSettingsDialog(
-    BuildContext context, WindowSettings settings) async {
+Future<void> windowSettingsDialog(BuildContext context, WindowSettings settings) async {
   return await showDialog(
       barrierDismissible: true,
       context: context,
@@ -31,15 +34,13 @@ Future<void> windowSettingsDialog(
                                   children: [
                                     Expanded(
                                       child: TextFormField(
-                                        initialValue: settings.regularSize.width
-                                            .toString(),
+                                        initialValue: settings.regularSize.width.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Initial width',
                                         ),
-                                        onChanged: (String value) =>
-                                            settings.regularSize = Size(
-                                                double.tryParse(value) ?? 0,
-                                                settings.regularSize.height),
+                                        onChanged: (String value) => settings.regularSize = Size(
+                                            double.tryParse(value) ?? 0,
+                                            settings.regularSize.height),
                                       ),
                                     ),
                                     const SizedBox(
@@ -47,16 +48,13 @@ Future<void> windowSettingsDialog(
                                     ),
                                     Expanded(
                                       child: TextFormField(
-                                        initialValue: settings
-                                            .regularSize.height
-                                            .toString(),
+                                        initialValue: settings.regularSize.height.toString(),
                                         decoration: const InputDecoration(
                                           labelText: 'Initial height',
                                         ),
-                                        onChanged: (String value) =>
-                                            settings.regularSize = Size(
-                                                settings.regularSize.width,
-                                                double.tryParse(value) ?? 0),
+                                        onChanged: (String value) => settings.regularSize = Size(
+                                            settings.regularSize.width,
+                                            double.tryParse(value) ?? 0),
                                       ),
                                     ),
                                   ],

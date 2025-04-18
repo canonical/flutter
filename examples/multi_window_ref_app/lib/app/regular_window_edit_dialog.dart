@@ -1,3 +1,7 @@
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 import 'package:flutter/material.dart';
 
 void showRegularWindowEditDialog(BuildContext context,
@@ -10,8 +14,7 @@ void showRegularWindowEditDialog(BuildContext context,
       TextEditingController(text: initialWidth?.toString() ?? '');
   final TextEditingController heightController =
       TextEditingController(text: initialHeight?.toString() ?? '');
-  final TextEditingController titleController =
-      TextEditingController(text: initialTitle ?? '');
+  final TextEditingController titleController = TextEditingController(text: initialTitle ?? '');
 
   showDialog(
     context: context,
@@ -71,8 +74,7 @@ void showRegularWindowEditDialog(BuildContext context,
             onPressed: () {
               double? width = double.tryParse(widthController.text);
               double? height = double.tryParse(heightController.text);
-              String? title =
-                  titleController.text.isEmpty ? null : titleController.text;
+              String? title = titleController.text.isEmpty ? null : titleController.text;
 
               onSave?.call(width, height, title, selectedState);
               Navigator.of(context).pop();
