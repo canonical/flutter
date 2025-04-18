@@ -6,8 +6,8 @@ import 'dart:ffi' hide Size;
 import 'dart:ui' show FlutterView;
 
 import 'package:ffi/ffi.dart' as ffi;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/src/foundation/binding.dart';
 
 import 'binding.dart';
 import 'window.dart';
