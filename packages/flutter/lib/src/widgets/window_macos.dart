@@ -284,7 +284,7 @@ class DialogWindowControllerMacOS extends DialogWindowController {
   FlutterView? get parent => throw UnimplementedError('TODO: implement parent getter on macOS');
 
   @Native<Int64 Function(Int64, Pointer<_DialogWindowCreationRequest>)>(
-    symbol: 'FlutterCreateRegularWindow',
+    symbol: 'FlutterCreateDialogWindow',
   )
   external static int _createWindow(int engineId, Pointer<_DialogWindowCreationRequest> request);
 
