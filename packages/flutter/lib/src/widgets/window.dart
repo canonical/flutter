@@ -4,10 +4,14 @@
 
 import 'dart:ui' show AppExitType, FlutterView;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 import '_window_ffi.dart' if (dart.library.js_util) '_window_web.dart' as window_impl;
+import 'binding.dart';
+import 'framework.dart';
+import 'view.dart';
 
 /// Defines the possible archetypes for a window.
 enum WindowArchetype {

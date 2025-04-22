@@ -495,6 +495,7 @@ void main() {
     expect(editableText.cursorWidth, 2.0);
     expect(editableText.cursorHeight, isNull);
     expect(editableText.textHeightBehavior, isNull);
+    expect(editableText.hintLocales, isNull);
   });
 
   testWidgets('when backgroundCursorColor is updated, RenderEditable should be updated', (
@@ -1271,6 +1272,39 @@ void main() {
       tester.testTextInput.setClientArgs!['enableIMEPersonalizedLearning'],
       enableIMEPersonalizedLearning,
     );
+  });
+
+  testWidgets('hintLocales is sent to the engine', (WidgetTester tester) async {
+    const List<Locale> hintLocales = <Locale>[Locale('en'), Locale('fr')];
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: FocusScope(
+            node: focusScopeNode,
+            autofocus: true,
+            child: EditableText(
+              controller: controller,
+              backgroundCursorColor: Colors.grey,
+              focusNode: focusNode,
+              hintLocales: hintLocales,
+              style: textStyle,
+              cursorColor: cursorColor,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(EditableText));
+    await tester.showKeyboard(find.byType(EditableText));
+    await tester.idle();
+
+    // hintLocales is sent to the engine as a list of language tags.
+    final List<String> localesLanguageTags =
+        hintLocales.map((Locale locale) => locale.toLanguageTag()).toList();
+    expect(tester.testTextInput.setClientArgs!['hintLocales'], localesLanguageTags);
   });
 
   group('smartDashesType and smartQuotesType', () {
@@ -3803,6 +3837,87 @@ void main() {
     },
   );
 
+  testWidgets(
+    'iOS autocorrect value is inferred from AutofillHints - username',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: EditableText(
+              controller: controller,
+              backgroundCursorColor: Colors.grey,
+              focusNode: focusNode,
+              style: textStyle,
+              cursorColor: cursorColor,
+              autofillHints: const <String>[AutofillHints.username],
+            ),
+          ),
+        ),
+      );
+
+      final EditableText editableText = tester.firstWidget(find.byType(EditableText));
+      expect(editableText.autocorrect, isFalse);
+    },
+    variant: const TargetPlatformVariant(<TargetPlatform>{TargetPlatform.iOS}),
+    skip: kIsWeb, // [intended]
+  );
+
+  testWidgets(
+    'iOS autocorrect value is inferred from AutofillHints - password',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: EditableText(
+              controller: controller,
+              backgroundCursorColor: Colors.grey,
+              focusNode: focusNode,
+              style: textStyle,
+              cursorColor: cursorColor,
+              autofillHints: const <String>[AutofillHints.password],
+            ),
+          ),
+        ),
+      );
+
+      final EditableText editableText = tester.firstWidget(find.byType(EditableText));
+      expect(editableText.autocorrect, isFalse);
+    },
+    variant: const TargetPlatformVariant(<TargetPlatform>{TargetPlatform.iOS}),
+    skip: kIsWeb, // [intended]
+  );
+
+  testWidgets(
+    'iOS autocorrect value is inferred from AutofillHints - newPassword',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: EditableText(
+              controller: controller,
+              backgroundCursorColor: Colors.grey,
+              focusNode: focusNode,
+              style: textStyle,
+              cursorColor: cursorColor,
+              autofillHints: const <String>[AutofillHints.newPassword],
+            ),
+          ),
+        ),
+      );
+
+      final EditableText editableText = tester.firstWidget(find.byType(EditableText));
+      expect(editableText.autocorrect, isFalse);
+    },
+    variant: const TargetPlatformVariant(<TargetPlatform>{TargetPlatform.iOS}),
+    skip: kIsWeb, // [intended]
+  );
+
   testWidgets('Changing controller updates EditableText', (WidgetTester tester) async {
     final TextEditingController controller1 = TextEditingController(text: 'Wibble');
     addTearDown(controller1.dispose);
@@ -4135,8 +4250,8 @@ void main() {
       ),
     );
 
-    final RenderEditable render = tester.allRenderObjects.whereType<RenderEditable>().first;
-    final int semanticsId = render.debugSemantics!.id;
+    final SemanticsNode node = find.semantics.byValue('test').evaluate().first;
+    final int semanticsId = node.id;
 
     expect(controller.selection.baseOffset, 4);
     expect(controller.selection.extentOffset, 4);
@@ -4241,8 +4356,8 @@ void main() {
       ),
     );
 
-    final RenderEditable render = tester.allRenderObjects.whereType<RenderEditable>().first;
-    final int semanticsId = render.debugSemantics!.id;
+    final SemanticsNode node = find.semantics.byValue('test for words').evaluate().first;
+    final int semanticsId = node.id;
 
     expect(controller.selection.baseOffset, 14);
     expect(controller.selection.extentOffset, 14);
@@ -4356,8 +4471,8 @@ void main() {
       ),
     );
 
-    final RenderEditable render = tester.allRenderObjects.whereType<RenderEditable>().first;
-    final int semanticsId = render.debugSemantics!.id;
+    final SemanticsNode node = find.semantics.byValue('test').evaluate().first;
+    final int semanticsId = node.id;
 
     expect(controller.selection.baseOffset, 4);
     expect(controller.selection.extentOffset, 4);
@@ -4473,8 +4588,8 @@ void main() {
       ),
     );
 
-    final RenderEditable render = tester.allRenderObjects.whereType<RenderEditable>().first;
-    final int semanticsId = render.debugSemantics!.id;
+    final SemanticsNode node = find.semantics.byValue('test for words').evaluate().first;
+    final int semanticsId = node.id;
 
     expect(controller.selection.baseOffset, 14);
     expect(controller.selection.extentOffset, 14);
@@ -4932,7 +5047,7 @@ void main() {
       await tester.pump();
 
       final SemanticsOwner owner = tester.binding.pipelineOwner.semanticsOwner!;
-      const int expectedNodeId = 5;
+      const int expectedNodeId = 4;
 
       expect(
         semantics,
@@ -5016,7 +5131,8 @@ void main() {
         await tester.pump();
 
         final SemanticsOwner owner = tester.binding.pipelineOwner.semanticsOwner!;
-        const int expectedNodeId = 5;
+        final SemanticsNode node = find.semantics.byValue('ABCDEFG').evaluate().first;
+        final int expectedNodeId = node.id;
 
         expect(controller.value.selection.isCollapsed, isTrue);
 

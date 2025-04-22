@@ -1,12 +1,17 @@
-// ignore_for_file: public_member_api_docs, avoid_unused_constructor_parameters
+// Copyright 2014 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import 'dart:ffi' hide Size;
 import 'dart:ui' show FlutterView;
 import 'package:ffi/ffi.dart' as ffi;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 
-import 'package:flutter/material.dart';
+import 'binding.dart';
+import 'window.dart';
 
+/// Handler for Win32 messages.
 abstract class WindowsMessageHandler {
   /// Handles a window message. Returned value, if not null will be
   /// returned to the system as LRESULT and will stop all other
@@ -20,7 +25,9 @@ abstract class WindowsMessageHandler {
   );
 }
 
+/// Windowing owner implementation for Windows.
 class WindowingOwnerWin32 extends WindowingOwner {
+  /// Creates a new [WindowingOwnerWin32] instance.
   WindowingOwnerWin32() {
     final Pointer<_WindowingInitRequest> request =
         ffi.calloc<_WindowingInitRequest>()
@@ -54,10 +61,13 @@ class WindowingOwnerWin32 extends WindowingOwner {
     );
   }
 
+  /// Register new message handler. The handler will be called for unhandled
+  /// messages for all top level windows.
   void addMessageHandler(WindowsMessageHandler handler) {
     _messageHandlers.add(handler);
   }
 
+  /// Unregister message handler.
   void removeMessageHandler(WindowsMessageHandler handler) {
     _messageHandlers.remove(handler);
   }
@@ -99,8 +109,11 @@ class WindowingOwnerWin32 extends WindowingOwner {
   external static void _initializeWindowing(int engineId, Pointer<_WindowingInitRequest> request);
 }
 
+/// The Win32 implementation of the regular window controller.
 class RegularWindowControllerWin32 extends RegularWindowController
     implements WindowsMessageHandler {
+  /// Creates a new regular window controller for Win32. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
   RegularWindowControllerWin32({
     required WindowingOwnerWin32 owner,
     required RegularWindowControllerDelegate delegate,
@@ -157,6 +170,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
     ffi.calloc.free(sizing);
   }
 
+  /// Returns HWND pointer to the top level window.
   Pointer<Void> getWindowHandle() {
     _ensureNotDestroyed();
     return _getWindowHandle(PlatformDispatcher.instance.engineId!, rootView.viewId);
@@ -182,8 +196,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
     _owner.removeMessageHandler(this);
   }
 
-  static const int WM_SIZE = 0x0005;
-  static const int WM_CLOSE = 0x0010;
+  static const int _WM_SIZE = 0x0005;
+  static const int _WM_CLOSE = 0x0010;
 
   @override
   int? handleWindowsMessage(
@@ -197,10 +211,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
       return null;
     }
 
-    if (message == WM_CLOSE) {
+    if (message == _WM_CLOSE) {
       _delegate.onWindowCloseRequested(this);
       return 0;
-    } else if (message == WM_SIZE) {
+    } else if (message == _WM_SIZE) {
       notifyListeners();
     }
     return null;

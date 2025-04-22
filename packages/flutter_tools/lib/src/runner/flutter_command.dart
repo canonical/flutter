@@ -1291,11 +1291,13 @@ abstract class FlutterCommand extends Command<void> {
   }
 
   void addWindowingFlag({required bool verboseHelp}) {
-    argParser.addFlag('enable-windowing',
-        hide: !verboseHelp,
-        help: 'Whether to enable support for multiple windows. '
-              'Disabled by default. Ignored on platforms other than '
-              'macOS, Linux, and Windows.',
+    argParser.addFlag(
+      'enable-windowing',
+      hide: !verboseHelp,
+      help:
+          'Whether to enable support for multiple windows. '
+          'Disabled by default. Ignored on platforms other than '
+          'macOS, Linux, and Windows.',
     );
   }
 
