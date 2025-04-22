@@ -105,7 +105,12 @@ class _RegularWindowContentState extends State<RegularWindowContent>
                       key: key,
                       controller: RegularWindowController(
                         contentSize: WindowSizing(
-                            size: widget.windowSettings.regularSize),
+                          size: widget.windowSettings.regularSize,
+                          constraints: BoxConstraints(
+                              minWidth: widget.windowSettings.regularSize.width,
+                              minHeight:
+                                  widget.windowSettings.regularSize.height),
+                        ),
                         delegate: WindowControllerDelegate(
                           onDestroyed: () =>
                               widget.windowManagerModel.remove(key),

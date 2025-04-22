@@ -105,9 +105,13 @@ FlutterWindowsView::FlutterWindowsView(
     FlutterViewId view_id,
     FlutterWindowsEngine* engine,
     std::unique_ptr<WindowBindingHandler> window_binding,
+    std::optional<Size> min_size,
+    std::optional<Size> max_size,
     std::shared_ptr<WindowsProcTable> windows_proc_table)
     : view_id_(view_id),
       engine_(engine),
+      min_size(min_size),
+      max_size(max_size),
       windows_proc_table_(std::move(windows_proc_table)) {
   if (windows_proc_table_ == nullptr) {
     windows_proc_table_ = std::make_shared<WindowsProcTable>();
@@ -375,6 +379,23 @@ void FlutterWindowsView::SendWindowMetrics(size_t width,
   event.height = height;
   event.pixel_ratio = pixel_ratio;
   event.view_id = view_id_;
+
+  if (min_size) {
+    event.min_width = min_size->width();
+    event.min_height = min_size->height();
+  } else {
+    event.min_width = event.width;
+    event.min_height = event.height;
+  }
+
+  if (max_size) {
+    event.max_width = max_size->width();
+    event.max_height = max_size->height();
+  } else {
+    event.max_width = event.width;
+    event.max_height = event.height;
+  }
+
   engine_->SendWindowMetricsEvent(event);
 }
 
@@ -388,6 +409,22 @@ FlutterWindowMetricsEvent FlutterWindowsView::CreateWindowMetricsEvent() const {
   event.height = bounds.height;
   event.pixel_ratio = pixel_ratio;
   event.view_id = view_id_;
+
+  if (min_size) {
+    event.min_width = min_size->width();
+    event.min_height = min_size->height();
+  } else {
+    event.min_width = event.width;
+    event.min_height = event.height;
+  }
+
+  if (max_size) {
+    event.max_width = max_size->width();
+    event.max_height = max_size->height();
+  } else {
+    event.max_width = event.width;
+    event.max_height = event.height;
+  }
 
   return event;
 }

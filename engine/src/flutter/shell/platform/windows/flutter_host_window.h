@@ -87,6 +87,11 @@ class FlutterHostWindow {
   // The maximum size of the window's client area, if defined.
   std::optional<Size> max_size_;
 
+  // Whether the window needs to be shown.
+  // Windows are created as hidden and shown only when the first frame is ready
+  // to be presented.
+  bool pending_show_ = true;
+
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterHostWindow);
 };
 

@@ -531,10 +531,13 @@ bool FlutterWindowsEngine::Stop() {
 }
 
 std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
-    std::unique_ptr<WindowBindingHandler> window) {
+    std::unique_ptr<WindowBindingHandler> window,
+    std::optional<Size> min_size,
+    std::optional<Size> max_size) {
   auto view_id = next_view_id_;
   auto view = std::make_unique<FlutterWindowsView>(
-      view_id, this, std::move(window), windows_proc_table_);
+      view_id, this, std::move(window), min_size, max_size,
+      windows_proc_table_);
 
   view->CreateRenderSurface();
   view->UpdateSemanticsEnabled(semantics_enabled_);
@@ -737,6 +740,9 @@ void FlutterWindowsEngine::SendKeyEvent(const FlutterKeyEvent& event,
 
 void FlutterWindowsEngine::SendViewFocusEvent(
     const FlutterViewFocusEvent& event) {
+  if (event.state == FlutterViewFocusState::kUnfocused) {
+    return;
+  }
   if (engine_) {
     embedder_api_.SendViewFocusEvent(engine_, &event);
   }
@@ -1116,6 +1122,36 @@ bool FlutterWindowsEngine::Present(const FlutterPresentViewInfo* info) {
   }
 
   FlutterWindowsView* view = iterator->second;
+
+  task_runner_->PostTask([hwnd = view->GetWindowHandle(), info]() {
+    if (HWND const host_hwnd = GetParent(hwnd)) {
+      // Show the window if it was created as hidden.
+      if (!IsWindowVisible(host_hwnd)) {
+        RECT client_rect;
+        GetClientRect(host_hwnd, &client_rect);
+        uint32_t const layer_width = info->layers[0]->size.width;
+        uint32_t const layer_height = info->layers[0]->size.height;
+        if (layer_width != client_rect.right ||
+            layer_height != client_rect.bottom) {
+          // Resize the window so its client rect matches the layer size.
+          // This is necessary when the associated root view is created with
+          // loose size constraints.
+          RECT window_rect;
+          GetWindowRect(host_hwnd, &window_rect);
+          LONG const border_width =
+              (window_rect.right - window_rect.left) - client_rect.right;
+          LONG const border_height =
+              (window_rect.bottom - window_rect.top) - client_rect.bottom;
+          SetWindowPos(
+              host_hwnd, nullptr, 0, 0, layer_width + border_width,
+              layer_height + border_height,
+              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+        }
+        // The initial window state is set when handling WM_SHOWWINDOW.
+        ShowWindow(host_hwnd, SW_SHOW);
+      }
+    }
+  });
 
   return compositor_->Present(view, info->layers, info->layers_count);
 }

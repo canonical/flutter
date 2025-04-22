@@ -280,11 +280,41 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       FML_UNREACHABLE();
   }
 
-  if (content_size.has_constraints) {
-    min_size_ = Size(content_size.min_width, content_size.min_height);
-    if (content_size.max_width > 0 && content_size.max_height > 0) {
-      max_size_ = Size(content_size.max_width, content_size.max_height);
+  std::optional<Size> min_size_logical =
+      Size(content_size.min_width, content_size.min_height);
+  std::optional<Size> max_size_logical =
+      Size(content_size.max_width, content_size.max_height);
+  if (min_size_logical && max_size_logical) {
+    if (min_size_logical->width() > max_size_logical->width() ||
+        min_size_logical->height() > max_size_logical->height()) {
+      FML_LOG(ERROR) << "Invalid size constraints.";
+      return;
     }
+  }
+  if (min_size_logical.has_value()) {
+    if (std::isinf(min_size_logical->width()) ||
+        std::isinf(min_size_logical->height())) {
+      min_size_logical = std::nullopt;
+    }
+  }
+  if (max_size_logical.has_value()) {
+    if (std::isinf(max_size_logical->width()) ||
+        std::isinf(max_size_logical->height())) {
+      max_size_logical = std::nullopt;
+    }
+  }
+
+  // Calculate physical size.
+  UINT const dpi = GetDpiForHWND(nullptr);  // owner
+  double const scale_factor =
+      static_cast<double>(dpi) / USER_DEFAULT_SCREEN_DPI;
+  if (min_size_logical.has_value()) {
+    min_size_ = {min_size_logical->width() * scale_factor,
+                 min_size_logical->height() * scale_factor};
+  }
+  if (max_size_logical.has_value()) {
+    max_size_ = {max_size_logical->width() * scale_factor,
+                 max_size_logical->height() * scale_factor};
   }
 
   // TODO(knopp): What about windows sized to content?
@@ -295,8 +325,8 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   // if the window has no owner.
   Rect const initial_window_rect = [&]() -> Rect {
     std::optional<Size> const window_size = GetWindowSizeForClientSize(
-        Size(content_size.width, content_size.height), min_size_, max_size_,
-        window_style, extended_window_style, nullptr);
+        Size(content_size.width, content_size.height), min_size_logical,
+        max_size_logical, window_style, extended_window_style, nullptr);
     return {{CW_USEDEFAULT, CW_USEDEFAULT},
             window_size ? *window_size : Size{CW_USEDEFAULT, CW_USEDEFAULT}};
   }();
@@ -308,7 +338,7 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       engine->windows_proc_table());
 
   std::unique_ptr<FlutterWindowsView> view =
-      engine->CreateView(std::move(view_window));
+      engine->CreateView(std::move(view_window), min_size_, max_size_);
   if (!view) {
     FML_LOG(ERROR) << "Failed to create view";
     return;
@@ -383,13 +413,6 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   UpdateTheme(hwnd);
 
   SetChildContent(view_controller_->view()->GetWindowHandle());
-
-  // TODO(loicsharma): Hide the window until the first frame is rendered.
-  // Single window apps use the engine's next frame callback to show the
-  // window. This doesn't work for multi window apps as the engine cannot have
-  // multiple next frame callbacks. If multiple windows are created, only the
-  // last one will be shown.
-  ShowWindow(hwnd, SW_SHOWNORMAL);
 }
 
 FlutterHostWindow::~FlutterHostWindow() {
@@ -463,6 +486,39 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       return 0;
     }
 
+    case WM_SHOWWINDOW: {
+      if (wparam == TRUE && lparam == 0 && pending_show_) {
+        pending_show_ = false;
+
+        UINT const show_cmd = [&]() {
+          if (archetype_ == WindowArchetype::kRegular) {
+            switch (static_cast<WindowState>(FlutterGetWindowState(hwnd))) {
+              case WindowState::kRestored:
+                return SW_SHOW;
+                break;
+              case WindowState::kMaximized:
+                return SW_SHOWMAXIMIZED;
+                break;
+              case WindowState::kMinimized:
+                return SW_SHOWMINIMIZED;
+                break;
+              default:
+                FML_UNREACHABLE();
+            }
+          }
+          return SW_SHOWNORMAL;
+        }();
+
+        WINDOWPLACEMENT window_placement = {
+            .length = sizeof(WINDOWPLACEMENT),
+        };
+        GetWindowPlacement(hwnd, &window_placement);
+        window_placement.showCmd = show_cmd;
+        SetWindowPlacement(hwnd, &window_placement);
+      }
+      return 0;
+    }
+
     case WM_GETMINMAXINFO: {
       RECT window_rect;
       GetWindowRect(hwnd, &window_rect);
@@ -473,23 +529,19 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
       LONG const non_client_height = (window_rect.bottom - window_rect.top) -
                                      (client_rect.bottom - client_rect.top);
 
-      UINT const dpi = flutter::GetDpiForHWND(hwnd);
-      double const scale_factor =
-          static_cast<double>(dpi) / USER_DEFAULT_SCREEN_DPI;
-
       MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
       if (min_size_) {
-        Size const min_physical_size = ClampToVirtualScreen(
-            Size(min_size_->width() * scale_factor + non_client_width,
-                 min_size_->height() * scale_factor + non_client_height));
+        Size const min_physical_size =
+            ClampToVirtualScreen(Size(min_size_->width() + non_client_width,
+                                      min_size_->height() + non_client_height));
 
         info->ptMinTrackSize.x = min_physical_size.width();
         info->ptMinTrackSize.y = min_physical_size.height();
       }
       if (max_size_) {
-        Size const max_physical_size = ClampToVirtualScreen(
-            Size(max_size_->width() * scale_factor + non_client_width,
-                 max_size_->height() * scale_factor + non_client_height));
+        Size const max_physical_size =
+            ClampToVirtualScreen(Size(max_size_->width() + non_client_width,
+                                      max_size_->height() + non_client_height));
 
         info->ptMaxTrackSize.x = max_physical_size.width();
         info->ptMaxTrackSize.y = max_physical_size.height();
@@ -510,12 +562,10 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      FocusViewOf(this);
+      if (LOWORD(wparam) != WA_INACTIVE) {
+        FocusViewOf(this);
+      }
       return 0;
-
-    case WM_MOUSEACTIVATE:
-      FocusViewOf(this);
-      return MA_ACTIVATE;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);

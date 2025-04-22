@@ -25,6 +25,10 @@ ViewportMetrics::ViewportMetrics(
     double p_device_pixel_ratio,
     double p_physical_width,
     double p_physical_height,
+    double p_physical_min_width,
+    double p_physical_min_height,
+    double p_physical_max_width,
+    double p_physical_max_height,
     double p_physical_padding_top,
     double p_physical_padding_right,
     double p_physical_padding_bottom,
@@ -45,6 +49,10 @@ ViewportMetrics::ViewportMetrics(
     : device_pixel_ratio(p_device_pixel_ratio),
       physical_width(p_physical_width),
       physical_height(p_physical_height),
+      physical_min_width(p_physical_min_width),
+      physical_min_height(p_physical_min_height),
+      physical_max_width(p_physical_max_width),
+      physical_max_height(p_physical_max_height),
       physical_padding_top(p_physical_padding_top),
       physical_padding_right(p_physical_padding_right),
       physical_padding_bottom(p_physical_padding_bottom),
@@ -69,6 +77,10 @@ bool operator==(const ViewportMetrics& a, const ViewportMetrics& b) {
   return a.device_pixel_ratio == b.device_pixel_ratio &&
          a.physical_width == b.physical_width &&
          a.physical_height == b.physical_height &&
+         a.physical_min_width == b.physical_min_width &&
+         a.physical_min_height == b.physical_min_height &&
+         a.physical_max_width == b.physical_max_width &&
+         a.physical_max_height == b.physical_max_height &&
          a.physical_padding_top == b.physical_padding_top &&
          a.physical_padding_right == b.physical_padding_right &&
          a.physical_padding_bottom == b.physical_padding_bottom &&
