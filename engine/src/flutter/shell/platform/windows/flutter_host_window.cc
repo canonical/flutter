@@ -513,10 +513,12 @@ std::vector<FlutterHostWindow*> FlutterHostWindow::GetOwnedWindows() const {
 
   EnumWindows(
       [](HWND hwnd, LPARAM lparam) -> BOOL {
-        auto* data = reinterpret_cast<EnumData*>(lparam);
-        if (GetWindow(hwnd, GW_OWNER) == data->owner_window_handle &&
-            !GetThisFromHandle(hwnd)->is_being_destroyed_) {
-          data->owned_windows->push_back(GetThisFromHandle(hwnd));
+        auto* const data = reinterpret_cast<EnumData*>(lparam);
+        if (GetWindow(hwnd, GW_OWNER) == data->owner_window_handle) {
+          FlutterHostWindow* const window = GetThisFromHandle(hwnd);
+          if (window && !window->is_being_destroyed_) {
+            data->owned_windows->push_back(window);
+          }
         }
         return TRUE;
       },
