@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:multi_window_ref_app/app/window_controller_render.dart';
 
@@ -169,6 +171,7 @@ class _ActiveWindowsTable extends StatelessWidget {
                             Row(children: [
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined),
+                                tooltip: "Edit Properties",
                                 onPressed: () {
                                   if (controller.controller.type ==
                                       WindowArchetype.regular) {
@@ -203,7 +206,17 @@ class _ActiveWindowsTable extends StatelessWidget {
                                 },
                               ),
                               IconButton(
+                                icon: const Icon(Icons.visibility),
+                                tooltip: "Focus",
+                                onPressed: () async {
+                                  if (controller.controller.type == WindowArchetype.regular) {
+                                    focusView(controller.controller.rootView);
+                                  }
+                                },
+                              ),
+                              IconButton(
                                 icon: const Icon(Icons.delete_outlined),
+                                tooltip: "Close",
                                 onPressed: () async {
                                   controller.controller.destroy();
                                 },
@@ -284,4 +297,12 @@ class _WindowCreatorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+void focusView(FlutterView view) {
+  WidgetsBinding.instance.platformDispatcher.requestViewFocusChange(
+    viewId: view.viewId,
+    direction: ViewFocusDirection.forward,
+    state: ViewFocusState.focused,
+  );
 }
