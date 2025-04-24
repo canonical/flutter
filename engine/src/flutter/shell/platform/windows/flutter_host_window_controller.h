@@ -87,6 +87,10 @@ class FlutterHostWindowController {
   void OnEngineShutdown();
 
  private:
+  // Moves |window| to the map of active windows and returns the window's
+  // root view ID.
+  FlutterViewId RegisterWindow(std::unique_ptr<FlutterHostWindow> window);
+
   // The Flutter engine that owns this controller.
   FlutterWindowsEngine* const engine_;
 

@@ -43,29 +43,23 @@ bool FlutterHostWindowController::HasTopLevelWindows() const {
 
 FlutterViewId FlutterHostWindowController::CreateRegularWindow(
     const RegularWindowCreationRequest* request) {
-  auto window = std::make_unique<FlutterHostWindow>(
-      this, WindowArchetype::kRegular, request->content_size, nullptr);
+  auto window = FlutterHostWindow::createRegular(this, request->content_size);
   if (!window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create regular window";
     return 0;
   }
-  FlutterViewId const view_id = window->view_controller_->view()->view_id();
-  active_windows_[window->GetWindowHandle()] = std::move(window);
-  return view_id;
+  return RegisterWindow(std::move(window));
 }
 
 FlutterViewId FlutterHostWindowController::CreateDialogWindow(
     const DialogWindowCreationRequest* request) {
-  auto window = std::make_unique<FlutterHostWindow>(
-      this, WindowArchetype::kDialog, request->content_size,
-      request->parent_window);
+  auto window = FlutterHostWindow::createDialog(this, request->content_size,
+                                                request->parent_window);
   if (!window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create dialog window";
     return 0;
   }
-  FlutterViewId const view_id = window->view_controller_->view()->view_id();
-  active_windows_[window->GetWindowHandle()] = std::move(window);
-  return view_id;
+  return RegisterWindow(std::move(window));
 }
 
 void FlutterHostWindowController::OnEngineShutdown() {
@@ -82,6 +76,13 @@ void FlutterHostWindowController::OnEngineShutdown() {
     // HandleMessage.
     DestroyWindow(hwnd);
   }
+}
+
+FlutterViewId FlutterHostWindowController::RegisterWindow(
+    std::unique_ptr<FlutterHostWindow> window) {
+  FlutterViewId const view_id = window->view_controller_->view()->view_id();
+  active_windows_[window->GetWindowHandle()] = std::move(window);
+  return view_id;
 }
 
 std::optional<LRESULT> FlutterHostWindowController::HandleMessage(

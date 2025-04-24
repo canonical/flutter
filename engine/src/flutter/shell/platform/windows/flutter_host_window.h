@@ -24,21 +24,24 @@ class FlutterWindowsViewController;
 // A Win32 window that hosts a |FlutterWindow| in its client area.
 class FlutterHostWindow {
  public:
-  // Creates a native top-level Win32 window with a child root view confined to
-  // its client area. |controller| is a pointer to the controller that manages
-  // the |FlutterHostWindow|. |archetype| specifies the window type.
-  // |content_size| defines the requested content size and constraints.
-  // |owner_window| is the handle to owner window. Must be nullptr if
-  // |archetype| is |WindowArchetype::kRegular|. For |WindowArchetype::kDialog|,
-  // the dialog is modal if |owner_window| is nullptr; otherwise, it is
-  // modeless. On success, a valid window handle can be retrieved via
-  // |FlutterHostWindow::GetWindowHandle|.
-  FlutterHostWindow(FlutterHostWindowController* controller,
-                    WindowArchetype archetype,
-                    const FlutterWindowSizing& content_size,
-                    HWND owner_window);
-
   virtual ~FlutterHostWindow();
+
+  // Creates a regular window. |controller| is a pointer to the controller that
+  // manages the window. |content_size| is the requested content size and
+  // constraints.
+  static std::unique_ptr<FlutterHostWindow> createRegular(
+      FlutterHostWindowController* controller,
+      FlutterWindowSizing const& content_size);
+
+  // Creates a dialog window. |controller| is a pointer to the controller that
+  // manages the window. |content_size| is the requested
+  // content size and constraints. |owner_window| is the handle to the owner
+  // window. If nullptr, the dialog is created as modeless; otherwise it is
+  // create as modal to |owner_window|.
+  static std::unique_ptr<FlutterHostWindow> createDialog(
+      FlutterHostWindowController* controller,
+      FlutterWindowSizing const& content_size,
+      HWND owner_window);
 
   // Returns the instance pointer for |hwnd| or nullptr if invalid.
   static FlutterHostWindow* GetThisFromHandle(HWND hwnd);
@@ -52,6 +55,20 @@ class FlutterHostWindow {
 
  private:
   friend FlutterHostWindowController;
+
+  // Creates a native top-level Win32 window with a child root view confined to
+  // its client area. |controller| is a pointer to the controller that manages
+  // the |FlutterHostWindow|. |archetype| specifies the window type.
+  // |content_size| defines the requested content size and constraints.
+  // |owner_window| is the handle to owner window. Must be nullptr if
+  // |archetype| is |WindowArchetype::kRegular|. For |WindowArchetype::kDialog|,
+  // the dialog is modeless if |owner_window| is nullptr; otherwise, it is
+  // modal to |owner_window|. On success, a valid window handle can be retrieved
+  // via |FlutterHostWindow::GetWindowHandle|.
+  FlutterHostWindow(FlutterHostWindowController* controller,
+                    WindowArchetype archetype,
+                    const FlutterWindowSizing& content_size,
+                    HWND owner_window);
 
   // Sets the focus to the root view window of |window|.
   static void FocusRootViewOf(FlutterHostWindow* window);

@@ -447,6 +447,21 @@ FlutterHostWindow::~FlutterHostWindow() {
   }
 }
 
+std::unique_ptr<FlutterHostWindow> FlutterHostWindow::createRegular(
+    FlutterHostWindowController* controller,
+    FlutterWindowSizing const& content_size) {
+  return std::unique_ptr<FlutterHostWindow>(new FlutterHostWindow(
+      controller, WindowArchetype::kRegular, content_size, nullptr));
+}
+
+std::unique_ptr<FlutterHostWindow> FlutterHostWindow::createDialog(
+    FlutterHostWindowController* controller,
+    FlutterWindowSizing const& content_size,
+    HWND owner_window) {
+  return std::unique_ptr<FlutterHostWindow>(new FlutterHostWindow(
+      controller, WindowArchetype::kDialog, content_size, owner_window));
+}
+
 FlutterHostWindow* FlutterHostWindow::GetThisFromHandle(HWND hwnd) {
   return reinterpret_cast<FlutterHostWindow*>(
       GetWindowLongPtr(hwnd, GWLP_USERDATA));
