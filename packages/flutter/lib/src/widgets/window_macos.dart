@@ -180,7 +180,10 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   external static void _setWindowState(Pointer<Void> windowHandle, int state);
 }
 
+/// The macOS implementation of the dialog window controller.
 class DialogWindowControllerMacOS extends DialogWindowController {
+  /// Creates a new dialog window controller for macOS. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
   DialogWindowControllerMacOS({
     required WindowingOwnerMacOS owner,
     required DialogWindowControllerDelegate delegate,
@@ -260,6 +263,7 @@ class DialogWindowControllerMacOS extends DialogWindowController {
     ffi.calloc.free(sizing);
   }
 
+  @override
   void setTitle(String title) {
     final Pointer<ffi.Utf8> titlePointer = title.toNativeUtf8();
     _setWindowTitle(getWindowHandle(rootView), titlePointer);
@@ -281,7 +285,14 @@ class DialogWindowControllerMacOS extends DialogWindowController {
   WindowState get state => WindowState.values[_getWindowState(getWindowHandle(rootView))];
 
   @override
-  FlutterView? get parent => throw UnimplementedError('TODO: implement parent getter on macOS');
+  FlutterView? get parent {
+    final int engineId = PlatformDispatcher.instance.engineId!;
+    final Pointer<Void> parentWindow = _getParentWindow(getWindowHandle(rootView));
+    return PlatformDispatcher.instance.views.cast<FlutterView?>().firstWhere(
+      (FlutterView? view) => _getWindowHandle(engineId, view!.viewId) == parentWindow,
+      orElse: () => null,
+    );
+  }
 
   @Native<Int64 Function(Int64, Pointer<_DialogWindowCreationRequest>)>(
     symbol: 'FlutterCreateDialogWindow',
@@ -308,6 +319,9 @@ class DialogWindowControllerMacOS extends DialogWindowController {
 
   @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
+
+  @Native<Pointer<Void> Function(Pointer<Void>)>(symbol: 'FlutterGetParentWindow')
+  external static Pointer<Void> _getParentWindow(Pointer<Void> windowHandle);
 }
 
 final class _Sizing extends Struct {
