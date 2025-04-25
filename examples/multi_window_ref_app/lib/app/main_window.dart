@@ -177,7 +177,8 @@ class _ActiveWindowsTable extends StatelessWidget {
                                             .controller.contentSize.width,
                                         initialHeight: controller
                                             .controller.contentSize.height,
-                                        initialTitle: "",
+                                        initialTitle: (controller
+                                            .controller as RegularWindowController).title,
                                         initialState: (controller.controller
                                                 as RegularWindowController)
                                             .state,
