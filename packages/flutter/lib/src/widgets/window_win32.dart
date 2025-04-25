@@ -249,7 +249,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 }
 
+/// The Win32 implementation of the dialog window controller.
 class DialogWindowControllerWin32 extends DialogWindowController implements WindowsMessageHandler {
+  /// Creates a new dialog window controller for Win32. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
   DialogWindowControllerWin32({
     required WindowingOwnerWin32 owner,
     required DialogWindowControllerDelegate delegate,
@@ -328,6 +331,7 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
     ffi.calloc.free(sizing);
   }
 
+  /// Returns HWND pointer to the top level window.
   Pointer<Void> getWindowHandle() {
     _ensureNotDestroyed();
     return _getWindowHandle(PlatformDispatcher.instance.engineId!, rootView.viewId);
@@ -353,8 +357,8 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
     _owner.removeMessageHandler(this);
   }
 
-  static const int WM_SIZE = 0x0005;
-  static const int WM_CLOSE = 0x0010;
+  static const int _WM_SIZE = 0x0005;
+  static const int _WM_CLOSE = 0x0010;
 
   @override
   int? handleWindowsMessage(
@@ -368,10 +372,10 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
       return null;
     }
 
-    if (message == WM_CLOSE) {
+    if (message == _WM_CLOSE) {
       _delegate.onWindowCloseRequested(this);
       return 0;
-    } else if (message == WM_SIZE) {
+    } else if (message == _WM_SIZE) {
       notifyListeners();
     }
     return null;
