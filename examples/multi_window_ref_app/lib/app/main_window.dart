@@ -208,7 +208,7 @@ class _ActiveWindowsTable extends StatelessWidget {
                               IconButton(
                                 icon: const Icon(Icons.visibility),
                                 tooltip: "Focus",
-                                onPressed: () async {
+                                onPressed: () {
                                   if (controller.controller.type == WindowArchetype.regular) {
                                     focusView(controller.controller.rootView);
                                   }
