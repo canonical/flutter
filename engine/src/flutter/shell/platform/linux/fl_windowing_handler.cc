@@ -4,6 +4,8 @@
 
 #include "flutter/shell/platform/linux/fl_windowing_handler.h"
 
+#include "flutter/shell/platform/common/isolate_scope.h"
+#include "flutter/shell/platform/linux/fl_engine_private.h"
 #include "flutter/shell/platform/linux/fl_windowing_channel.h"
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_view.h"
 
@@ -27,6 +29,8 @@ typedef struct {
   GtkWindow* window;
   FlView* view;
   guint first_frame_cb_id;
+  flutter::Isolate isolate;
+  void (*on_delete)();
 } WindowData;
 
 static WindowData* window_data_new(GtkWindow* window, FlView* view) {
@@ -46,6 +50,15 @@ static void window_data_free(WindowData* data) {
 // Called when the first frame is received.
 static void first_frame_cb(FlView* view, WindowData* data) {
   gtk_window_present(data->window);
+}
+
+static void set_window_data(FlWindowingHandler* self, WindowData* data) {
+  FlWindowingHandlerPrivate* priv =
+      reinterpret_cast<FlWindowingHandlerPrivate*>(
+          fl_windowing_handler_get_instance_private(self));
+
+  g_hash_table_insert(priv->windows_by_view_id,
+                      GINT_TO_POINTER(fl_view_get_id(data->view)), data);
 }
 
 static WindowData* get_window_data(FlWindowingHandler* self, int64_t view_id) {
@@ -136,8 +149,7 @@ static FlMethodResponse* create_regular(FlWindowingSize* size,
   // We'll show the view when we have the first frame.
   gtk_widget_realize(GTK_WIDGET(view));
 
-  g_hash_table_insert(priv->windows_by_view_id,
-                      GINT_TO_POINTER(fl_view_get_id(view)), data);
+  set_window_data(self, data);
 
   // We don't know the current size and dimensions, so just reflect back what
   // was requested.
@@ -271,4 +283,95 @@ FlWindowingHandler* fl_windowing_handler_new(FlEngine* engine) {
       fl_engine_get_binary_messenger(engine), &windowing_channel_vtable, self);
 
   return self;
+}
+
+typedef struct {
+  bool has_size;
+  double width;
+  double height;
+  bool has_constraints;
+  double min_width;
+  double min_height;
+  double max_width;
+  double max_height;
+} WindowSizing;
+
+typedef struct {
+  WindowSizing content_size;
+  void (*on_delete)();
+} WindowCreationRequest;
+
+static gboolean window_delete_event_cb(GtkWidget *widget, GdkEvent *event, WindowData *data) {
+   flutter::IsolateScope isolate_scope(data->isolate);
+   data->on_delete();
+   return TRUE;
+}
+
+extern "C"
+{
+G_MODULE_EXPORT
+int64_t FlutterCreateRegularWindow(
+    int64_t engine_id, const WindowCreationRequest* request) {
+  FlEngine* engine = fl_engine_for_id(engine_id);
+  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+
+  FlView* view = fl_view_new_for_engine(engine);
+  gtk_widget_show(GTK_WIDGET(view));
+
+  GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
+
+  gtk_window_set_default_size(GTK_WINDOW(window), request->content_size.width, request->content_size.height);
+
+  gtk_widget_show(window);
+
+  WindowData* data = window_data_new(GTK_WINDOW(window), view);
+  data->isolate = flutter::Isolate::Current();
+  data->on_delete = request->on_delete;
+  set_window_data(self, data);
+
+  g_signal_connect(window, "delete-event", G_CALLBACK(window_delete_event_cb), data);
+
+  return fl_view_get_id(view);
+}
+
+G_MODULE_EXPORT
+void FlutterSetWindowTitle(
+    int64_t engine_id, int64_t view_id, const gchar *title) {
+  FlEngine* engine = fl_engine_for_id(engine_id);
+  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+
+  WindowData *data = get_window_data(self, view_id);
+  if (data == nullptr) {
+    return;
+  }
+
+  gtk_window_set_title(data->window, title);
+}
+
+G_MODULE_EXPORT
+void FlutterSetWindowContentSize(int64_t engine_id, int64_t view_id, const WindowSizing* size) {
+  FlEngine* engine = fl_engine_for_id(engine_id);
+  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+
+  WindowData *data = get_window_data(self, view_id);
+  if (data == nullptr) {
+    return;
+  }
+
+  gtk_window_resize(data->window, size->width, size->height);
+}
+
+G_MODULE_EXPORT
+void FlutterDestroyWindow(int64_t engine_id, int64_t view_id) {
+  FlEngine* engine = fl_engine_for_id(engine_id);
+  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+
+  WindowData *data = get_window_data(self, view_id);
+  if (data == nullptr) {
+    return;
+  }
+
+  gtk_widget_destroy(GTK_WIDGET(data->window));
+}
 }
