@@ -187,6 +187,11 @@ void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size) 
   [w flutterSetContentSize:*size];
 }
 
+const char* FlutterGetWindowTitle(void* window) {
+  NSWindow* w = (__bridge NSWindow*)window;
+  return [w.title UTF8String];
+}
+
 void FlutterSetWindowTitle(void* window, const char* title) {
   NSWindow* w = (__bridge NSWindow*)window;
   w.title = [NSString stringWithUTF8String:title];

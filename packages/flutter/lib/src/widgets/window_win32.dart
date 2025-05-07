@@ -140,6 +140,21 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }
 
   @override
+  String getTitle() {
+    _ensureNotDestroyed();
+    final Pointer<Void> windowHandle = getWindowHandle();
+    final int titleLength = _getWindowTextLength(windowHandle);
+    if (titleLength <= 0) {
+      return '';
+    }
+    final Pointer<ffi.Utf16> titlePointer = ffi.calloc<Uint16>(titleLength + 1).cast<ffi.Utf16>();
+    _getWindowText(windowHandle, titlePointer, titleLength + 1);
+    final String title = titlePointer.toDartString();
+    ffi.calloc.free(titlePointer);
+    return title;
+  }
+
+  @override
   void setTitle(String title) {
     _ensureNotDestroyed();
     final Pointer<ffi.Utf16> titlePointer = title.toNativeUtf16();
@@ -233,6 +248,16 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
+
+  @Native<Int64 Function(Pointer<Void>, Pointer<ffi.Utf16>, Int64)>(symbol: 'GetWindowTextW')
+  external static int _getWindowText(
+    Pointer<Void> windowHandle,
+    Pointer<ffi.Utf16> title,
+    int maxCount,
+  );
+
+  @Native<Int64 Function(Pointer<Void>)>(symbol: 'GetWindowTextLengthW')
+  external static int _getWindowTextLength(Pointer<Void> windowHandle);
 }
 
 /// Request to initialize windowing system.

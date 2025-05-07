@@ -140,6 +140,12 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     _setWindowState(getWindowHandle(), state.index);
   }
 
+  @override
+  String getTitle() {
+    final Pointer<ffi.Utf8> titlePointer = _getWindowTitle(getWindowHandle());
+    return titlePointer.toDartString();
+  }
+
   @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
     symbol: 'FlutterCreateRegularWindow',
   )
@@ -153,6 +159,9 @@ class RegularWindowControllerMacOS extends RegularWindowController {
 
   @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
+
+  @Native<Pointer<ffi.Utf8> Function(Pointer<Void>)>(symbol: 'FlutterGetWindowTitle')
+  external static Pointer<ffi.Utf8> _getWindowTitle(Pointer<Void> windowHandle);
 
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'FlutterSetWindowTitle')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf8> title);

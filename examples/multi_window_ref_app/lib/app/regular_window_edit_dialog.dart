@@ -75,8 +75,7 @@ void showRegularWindowEditDialog(BuildContext context,
             onPressed: () {
               double? width = double.tryParse(widthController.text);
               double? height = double.tryParse(heightController.text);
-              String? title =
-                  titleController.text.isEmpty ? null : titleController.text;
+              String title = titleController.text;
 
               onSave?.call(width, height, title, selectedState);
               Navigator.of(context).pop();

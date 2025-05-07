@@ -63,6 +63,9 @@ FLUTTER_DARWIN_EXPORT
 void FlutterSetWindowContentSize(void* window, const FlutterWindowSizing* size);
 
 FLUTTER_DARWIN_EXPORT
+const char* FlutterGetWindowTitle(void* window);
+
+FLUTTER_DARWIN_EXPORT
 void FlutterSetWindowTitle(void* window, const char* title);
 
 FLUTTER_DARWIN_EXPORT

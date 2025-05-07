@@ -168,6 +168,9 @@ abstract class RegularWindowController extends WindowController {
   /// The current state of the window.
   WindowState get state;
 
+  /// The window title.
+  String get title => getTitle();
+
   /// Request change for the window content size.
   ///
   /// [contentSize] describes the new requested window size. The properties
@@ -177,6 +180,9 @@ abstract class RegularWindowController extends WindowController {
   ///
   /// System compositor is free to ignore the request.
   void setContentSize(WindowSizing contentSize);
+
+  /// Returns the window title.
+  String getTitle();
 
   /// Request change for the window title.
   /// [title] new title of the window.
