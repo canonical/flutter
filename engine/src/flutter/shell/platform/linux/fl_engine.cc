@@ -636,6 +636,7 @@ gboolean fl_engine_start(FlEngine* self, GError** error) {
   FlutterCustomTaskRunners custom_task_runners = {};
   custom_task_runners.struct_size = sizeof(FlutterCustomTaskRunners);
   custom_task_runners.platform_task_runner = &platform_task_runner;
+  custom_task_runners.ui_task_runner = &platform_task_runner;
 
   g_autoptr(GPtrArray) command_line_args =
       g_ptr_array_new_with_free_func(g_free);
@@ -771,7 +772,7 @@ FlutterViewId fl_engine_add_view(FlEngine* self,
   // will be updated in a following FlutterWindowMetricsEvent
   FlutterEngineDisplayId display_id = 0;
 
-  FlutterWindowMetricsEvent metrics;
+  FlutterWindowMetricsEvent metrics = {};
   metrics.struct_size = sizeof(FlutterWindowMetricsEvent);
   metrics.width = width;
   metrics.height = height;

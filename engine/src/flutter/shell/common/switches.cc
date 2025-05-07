@@ -529,8 +529,26 @@ Settings SettingsFromCommandLine(const fml::CommandLine& command_line) {
   settings.enable_surface_control = command_line.HasOption(
       FlagForSwitch(Switch::EnableAndroidSurfaceControl));
 
-  settings.merged_platform_ui_thread = !command_line.HasOption(
-      FlagForSwitch(Switch::DisableMergedPlatformUIThread));
+  if (command_line.HasOption(
+          FlagForSwitch(Switch::DisableMergedPlatformUIThread))) {
+    settings.merged_platform_ui_thread =
+        Settings::MergedPlatformUIThread::kDisabled;
+  } else if (command_line.HasOption(
+                 FlagForSwitch(Switch::MergedPlatformUIThread))) {
+    std::string merged_platform_ui;
+    command_line.GetOptionValue(FlagForSwitch(Switch::MergedPlatformUIThread),
+                                &merged_platform_ui);
+    if (merged_platform_ui == "enabled") {
+      settings.merged_platform_ui_thread =
+          Settings::MergedPlatformUIThread::kEnabled;
+    } else if (merged_platform_ui == "disabled") {
+      settings.merged_platform_ui_thread =
+          Settings::MergedPlatformUIThread::kDisabled;
+    } else if (merged_platform_ui == "mergeAfterLaunch") {
+      settings.merged_platform_ui_thread =
+          Settings::MergedPlatformUIThread::kMergeAfterLaunch;
+    }
+  }
 
   settings.enable_flutter_gpu =
       command_line.HasOption(FlagForSwitch(Switch::EnableFlutterGPU));
@@ -538,6 +556,17 @@ Settings SettingsFromCommandLine(const fml::CommandLine& command_line) {
       command_line.HasOption(FlagForSwitch(Switch::ImpellerLazyShaderMode));
   settings.impeller_antialiased_lines =
       command_line.HasOption(FlagForSwitch(Switch::ImpellerAntialiasLines));
+
+#if FML_OS_MACOSX || FML_OS_LINUX || FML_OS_WIN
+  // Process the EnableWindowing switch on macOS, Linux, and Windows.
+  {
+    std::string enable_windowing_value;
+    if (command_line.GetOptionValue(FlagForSwitch(Switch::EnableWindowing),
+                                    &enable_windowing_value)) {
+      settings.enable_windowing = "true" == enable_windowing_value;
+    }
+  }
+#endif  // FML_OS_MACOSX || FML_OS_LINUX || FML_OS_WIN
 
   return settings;
 }
