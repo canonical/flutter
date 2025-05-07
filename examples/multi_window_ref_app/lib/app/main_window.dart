@@ -260,8 +260,12 @@ class _WindowCreatorCard extends StatelessWidget {
                             onDestroyed: () => windowManagerModel.remove(key),
                           ),
                           title: "Regular",
-                          contentSize:
-                              WindowSizing(size: windowSettings.regularSize),
+                          contentSize: WindowSizing(
+                            size: windowSettings.regularSize,
+                            constraints: BoxConstraints(
+                                minWidth: windowSettings.regularSize.width,
+                                minHeight: windowSettings.regularSize.height),
+                          ),
                         )));
                   },
                   child: const Text('Regular'),

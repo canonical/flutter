@@ -98,8 +98,11 @@ class MockFlutterWindowsView : public FlutterWindowsView {
  public:
   MockFlutterWindowsView(FlutterWindowsEngine* engine,
                          std::unique_ptr<WindowBindingHandler> window_binding)
-      : FlutterWindowsView(kImplicitViewId, engine, std::move(window_binding)) {
-  }
+      : FlutterWindowsView(kImplicitViewId,
+                           engine,
+                           std::move(window_binding),
+                           std::nullopt,
+                           std::nullopt) {}
   ~MockFlutterWindowsView() {}
 
   MOCK_METHOD(void,
@@ -373,7 +376,7 @@ TEST_F(FlutterWindowTest, LifecycleFocusMessages) {
   EXPECT_EQ(last_event, WindowStateEvent::kShow);
 
   EXPECT_CALL(delegate, OnFocus(Eq(FlutterViewFocusState::kFocused),
-                                Eq(FlutterViewFocusDirection::kUndefined)))
+                                Eq(FlutterViewFocusDirection::kForward)))
       .Times(1);
   win32window.InjectWindowMessage(WM_SETFOCUS, 0, 0);
   EXPECT_EQ(last_event, WindowStateEvent::kFocus);
@@ -414,7 +417,7 @@ TEST_F(FlutterWindowTest, CachedLifecycleMessage) {
       });
 
   EXPECT_CALL(delegate, OnFocus(Eq(FlutterViewFocusState::kFocused),
-                                Eq(FlutterViewFocusDirection::kUndefined)))
+                                Eq(FlutterViewFocusDirection::kForward)))
       .Times(1);
   win32window.SetView(&delegate);
   EXPECT_TRUE(focused);

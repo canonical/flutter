@@ -132,7 +132,9 @@ class FlutterWindowsEngine {
   //
   // Returns null on failure.
   std::unique_ptr<FlutterWindowsView> CreateView(
-      std::unique_ptr<WindowBindingHandler> window);
+      std::unique_ptr<WindowBindingHandler> window,
+      std::optional<Size> min_size,
+      std::optional<Size> max_size);
 
   // Remove a view. The engine will no longer render into it.
   virtual void RemoveView(FlutterViewId view_id);
