@@ -29,6 +29,22 @@ class WindowingOwnerMacOS extends WindowingOwner {
   }
 
   @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    final DialogWindowControllerMacOS res = DialogWindowControllerMacOS(
+      owner: this,
+      delegate: delegate,
+      contentSize: contentSize,
+      parent: parent,
+    );
+    _activeControllers.add(res);
+    return res;
+  }
+
+  @override
   bool hasTopLevelWindows() {
     return _activeControllers.isNotEmpty;
   }
@@ -60,8 +76,8 @@ class RegularWindowControllerMacOS extends RegularWindowController {
        super.empty() {
     _onClose = NativeCallable<Void Function()>.isolateLocal(_handleOnClose);
     _onResize = NativeCallable<Void Function()>.isolateLocal(_handleOnResize);
-    final Pointer<_WindowCreationRequest> request =
-        ffi.calloc<_WindowCreationRequest>()
+    final Pointer<_RegularWindowCreationRequest> request =
+        ffi.calloc<_RegularWindowCreationRequest>()
           ..ref.contentSize.set(contentSize)
           ..ref.onClose = _onClose.nativeFunction
           ..ref.onSizeChange = _onResize.nativeFunction;
@@ -140,10 +156,10 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     _setWindowState(getWindowHandle(), state.index);
   }
 
-  @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
+  @Native<Int64 Function(Int64, Pointer<_RegularWindowCreationRequest>)>(
     symbol: 'FlutterCreateRegularWindow',
   )
-  external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
+  external static int _createWindow(int engineId, Pointer<_RegularWindowCreationRequest> request);
 
   @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'FlutterDestroyWindow')
   external static void _destroyWindow(int engineId, Pointer<Void> handle);
@@ -162,6 +178,150 @@ class RegularWindowControllerMacOS extends RegularWindowController {
 
   @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'FlutterSetWindowState')
   external static void _setWindowState(Pointer<Void> windowHandle, int state);
+}
+
+/// The macOS implementation of the dialog window controller.
+class DialogWindowControllerMacOS extends DialogWindowController {
+  /// Creates a new dialog window controller for macOS. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
+  DialogWindowControllerMacOS({
+    required WindowingOwnerMacOS owner,
+    required DialogWindowControllerDelegate delegate,
+    required WindowSizing contentSize,
+    FlutterView? parent,
+    String? title,
+  }) : _owner = owner,
+       _delegate = delegate,
+       super.empty() {
+    _onClose = NativeCallable<Void Function()>.isolateLocal(_handleOnClose);
+    _onResize = NativeCallable<Void Function()>.isolateLocal(_handleOnResize);
+    final int engineId = PlatformDispatcher.instance.engineId!;
+
+    // If the parent is minimized, restore it to prevent the modal dialog from being hidden.
+    Pointer<Void> parentWindow = nullptr;
+    if (parent != null) {
+      parentWindow = getWindowHandle(parent);
+      final int state = _getWindowState(parentWindow);
+      if (WindowState.values[state] == WindowState.minimized) {
+        _setWindowState(parentWindow, WindowState.restored.index);
+      }
+    }
+
+    final Pointer<_DialogWindowCreationRequest> request =
+        ffi.calloc<_DialogWindowCreationRequest>()
+          ..ref.contentSize.set(contentSize)
+          ..ref.parentWindow = parentWindow
+          ..ref.onClose = _onClose.nativeFunction
+          ..ref.onSizeChange = _onResize.nativeFunction;
+
+    final int viewId = _createWindow(engineId, request);
+    ffi.calloc.free(request);
+    final FlutterView flutterView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
+      (FlutterView view) => view.viewId == viewId,
+    );
+    setView(flutterView);
+    if (title != null) {
+      setTitle(title);
+    }
+  }
+
+  /// Returns the window handle for the given [view], or null is the window
+  /// handle is not available.
+  /// The window handle is a pointer to NSWindow instance.
+  Pointer<Void> getWindowHandle(FlutterView view) {
+    return _getWindowHandle(PlatformDispatcher.instance.engineId!, view.viewId);
+  }
+
+  bool _destroyed = false;
+
+  @override
+  void destroy() {
+    if (_destroyed) {
+      return;
+    }
+    _destroyed = true;
+    _owner._activeControllers.remove(this);
+    _destroyWindow(PlatformDispatcher.instance.engineId!, getWindowHandle(rootView));
+    _delegate.onWindowDestroyed();
+    _onClose.close();
+    _onResize.close();
+  }
+
+  void _handleOnClose() {
+    _delegate.onWindowCloseRequested(this);
+  }
+
+  void _handleOnResize() {
+    notifyListeners();
+  }
+
+  @override
+  void setContentSize(WindowSizing size) {
+    final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();
+    sizing.ref.set(size);
+    _setWindowContentSize(getWindowHandle(rootView), sizing);
+    ffi.calloc.free(sizing);
+  }
+
+  @override
+  void setTitle(String title) {
+    final Pointer<ffi.Utf8> titlePointer = title.toNativeUtf8();
+    _setWindowTitle(getWindowHandle(rootView), titlePointer);
+    ffi.calloc.free(titlePointer);
+  }
+
+  final WindowingOwnerMacOS _owner;
+  final DialogWindowControllerDelegate _delegate;
+  late final NativeCallable<Void Function()> _onClose;
+  late final NativeCallable<Void Function()> _onResize;
+
+  @override
+  Size get contentSize {
+    final _Size size = _getWindowContentSize(getWindowHandle(rootView));
+    return Size(size.width, size.height);
+  }
+
+  @override
+  WindowState get state => WindowState.values[_getWindowState(getWindowHandle(rootView))];
+
+  @override
+  FlutterView? get parent {
+    final int engineId = PlatformDispatcher.instance.engineId!;
+    final Pointer<Void> parentWindow = _getParentWindow(getWindowHandle(rootView));
+    return PlatformDispatcher.instance.views.cast<FlutterView?>().firstWhere(
+      (FlutterView? view) => _getWindowHandle(engineId, view!.viewId) == parentWindow,
+      orElse: () => null,
+    );
+  }
+
+  @Native<Int64 Function(Int64, Pointer<_DialogWindowCreationRequest>)>(
+    symbol: 'FlutterCreateDialogWindow',
+  )
+  external static int _createWindow(int engineId, Pointer<_DialogWindowCreationRequest> request);
+
+  @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'FlutterDestroyWindow')
+  external static void _destroyWindow(int engineId, Pointer<Void> handle);
+
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
+
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
+  external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
+
+  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'FlutterSetWindowTitle')
+  external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf8> title);
+
+  @Native<Int64 Function(Pointer<Void>)>(symbol: 'FlutterGetWindowState')
+  external static int _getWindowState(Pointer<Void> windowHandle);
+
+  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'FlutterSetWindowState')
+  external static void _setWindowState(Pointer<Void> windowHandle, int state);
+
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
+  external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
+
+  @Native<Pointer<Void> Function(Pointer<Void>)>(symbol: 'FlutterGetParentWindow')
+  external static Pointer<Void> _getParentWindow(Pointer<Void> windowHandle);
 }
 
 final class _Sizing extends Struct {
@@ -212,8 +372,16 @@ final class _Sizing extends Struct {
   }
 }
 
-final class _WindowCreationRequest extends Struct {
+final class _RegularWindowCreationRequest extends Struct {
   external _Sizing contentSize;
+
+  external Pointer<NativeFunction<Void Function()>> onClose;
+  external Pointer<NativeFunction<Void Function()>> onSizeChange;
+}
+
+final class _DialogWindowCreationRequest extends Struct {
+  external _Sizing contentSize;
+  external Pointer<Void> parentWindow;
 
   external Pointer<NativeFunction<Void Function()>> onClose;
   external Pointer<NativeFunction<Void Function()>> onSizeChange;

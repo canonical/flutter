@@ -19,7 +19,7 @@
   NSWindow* _window;
   FlutterViewController* _flutterViewController;
   std::optional<flutter::Isolate> _isolate;
-  FlutterWindowCreationRequest _creationRequest;
+  FlutterRegularWindowCreationRequest _creationRequest;
 }
 
 @property(readonly, nonatomic) NSWindow* window;
@@ -27,7 +27,7 @@
 
 - (instancetype)initWithWindow:(NSWindow*)window
          flutterViewController:(FlutterViewController*)viewController
-               creationRequest:(const FlutterWindowCreationRequest&)creationRequest;
+               creationRequest:(const FlutterRegularWindowCreationRequest&)creationRequest;
 
 @end
 
@@ -61,7 +61,7 @@
 
 - (instancetype)initWithWindow:(NSWindow*)window
          flutterViewController:(FlutterViewController*)viewController
-               creationRequest:(const FlutterWindowCreationRequest&)creationRequest {
+               creationRequest:(const FlutterRegularWindowCreationRequest&)creationRequest {
   if (self = [super init]) {
     _window = window;
     _flutterViewController = viewController;
@@ -108,7 +108,7 @@
   return self;
 }
 
-- (FlutterViewIdentifier)createRegularWindow:(const FlutterWindowCreationRequest*)request {
+- (FlutterViewIdentifier)createRegularWindow:(const FlutterRegularWindowCreationRequest*)request {
   FlutterViewController* c = [[FlutterViewController alloc] initWithEngine:_engine
                                                                    nibName:nil
                                                                     bundle:nil];
@@ -134,6 +134,13 @@
   return c.viewIdentifier;
 }
 
+- (FlutterViewIdentifier)createDialogWindow:(const FlutterDialogWindowCreationRequest*)request {
+  // TODO
+  FML_LOG(ERROR) << "Unimplemented: createDialogWindow";
+  FML_DCHECK(false) << "Unimplemented: createDialogWindow";
+  return -1;
+}
+
 - (void)destroyWindow:(NSWindow*)window {
   FlutterWindowOwner* owner = nil;
   for (FlutterWindowOwner* o in _windows) {
@@ -156,10 +163,18 @@
 
 // NOLINTBEGIN(google-objc-function-naming)
 
-int64_t FlutterCreateRegularWindow(int64_t engine_id, const FlutterWindowCreationRequest* request) {
+int64_t FlutterCreateRegularWindow(int64_t engine_id,
+                                   const FlutterRegularWindowCreationRequest* request) {
   FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
   [engine enableMultiView];
   return [engine.windowController createRegularWindow:request];
+}
+
+int64_t FlutterCreateDialogWindow(int64_t engine_id,
+                                  const FlutterDialogWindowCreationRequest* request) {
+  FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
+  [engine enableMultiView];
+  return [engine.windowController createDialogWindow:request];
 }
 
 void FlutterDestroyWindow(int64_t engine_id, void* window) {
@@ -221,6 +236,11 @@ void FlutterSetWindowState(void* window, int64_t state) {
       }
     }
   }
+}
+
+void* FlutterGetParentWindow(void* window) {
+  NSWindow* w = (__bridge NSWindow*)window;
+  return (__bridge void*)w.parentWindow;
 }
 
 // NOLINTEND(google-objc-function-naming)

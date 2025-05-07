@@ -29,8 +29,15 @@ struct FlutterWindowSizing {
   double max_height;
 };
 
-struct FlutterWindowCreationRequest {
+struct FlutterRegularWindowCreationRequest {
   FlutterWindowSizing contentSize;
+  void (*on_close)();
+  void (*on_size_change)();
+};
+
+struct FlutterDialogWindowCreationRequest {
+  FlutterWindowSizing contentSize;
+  void* parentWindow;
   void (*on_close)();
   void (*on_size_change)();
 };
@@ -45,7 +52,12 @@ extern "C" {
 // NOLINTBEGIN(google-objc-function-naming)
 
 FLUTTER_DARWIN_EXPORT
-int64_t FlutterCreateRegularWindow(int64_t engine_id, const FlutterWindowCreationRequest* request);
+int64_t FlutterCreateRegularWindow(int64_t engine_id,
+                                   const FlutterRegularWindowCreationRequest* request);
+
+FLUTTER_DARWIN_EXPORT
+int64_t FlutterCreateDialogWindow(int64_t engine_id,
+                                  const FlutterDialogWindowCreationRequest* request);
 
 FLUTTER_DARWIN_EXPORT
 void FlutterDestroyWindow(int64_t engine_id, void* window);
@@ -70,6 +82,9 @@ int64_t FlutterGetWindowState(void* window);
 
 FLUTTER_DARWIN_EXPORT
 void FlutterSetWindowState(void* window, int64_t state);
+
+FLUTTER_DARWIN_EXPORT
+void* FlutterGetParentWindow(void* window);
 
 // NOLINTEND(google-objc-function-naming)
 }

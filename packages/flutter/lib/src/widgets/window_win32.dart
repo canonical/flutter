@@ -47,6 +47,20 @@ class WindowingOwnerWin32 extends WindowingOwner {
     return RegularWindowControllerWin32(owner: this, delegate: delegate, contentSize: contentSize);
   }
 
+  @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    return DialogWindowControllerWin32(
+      owner: this,
+      delegate: delegate,
+      contentSize: contentSize,
+      parent: parent,
+    );
+  }
+
   /// Register new message handler. The handler will be called for unhandled
   /// messages for all top level windows.
   void addMessageHandler(WindowsMessageHandler handler) {
@@ -107,8 +121,8 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }) : _owner = owner,
        _delegate = delegate,
        super.empty() {
-    final Pointer<_WindowCreationRequest> request =
-        ffi.calloc<_WindowCreationRequest>()..ref.contentSize.set(contentSize);
+    final Pointer<_RegularWindowCreationRequest> request =
+        ffi.calloc<_RegularWindowCreationRequest>()..ref.contentSize.set(contentSize);
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
     ffi.calloc.free(request);
     final FlutterView flutterView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
@@ -208,10 +222,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   final WindowingOwnerWin32 _owner;
 
-  @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
+  @Native<Int64 Function(Int64, Pointer<_RegularWindowCreationRequest>)>(
     symbol: 'FlutterCreateRegularWindow',
   )
-  external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
+  external static int _createWindow(int engineId, Pointer<_RegularWindowCreationRequest> request);
 
   @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
@@ -233,6 +247,170 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
+}
+
+/// The Win32 implementation of the dialog window controller.
+class DialogWindowControllerWin32 extends DialogWindowController implements WindowsMessageHandler {
+  /// Creates a new dialog window controller for Win32. When this constructor
+  /// completes the FlutterView is created and framework is aware of it.
+  DialogWindowControllerWin32({
+    required WindowingOwnerWin32 owner,
+    required DialogWindowControllerDelegate delegate,
+    required WindowSizing contentSize,
+    FlutterView? parent,
+  }) : _owner = owner,
+       _delegate = delegate,
+       super.empty() {
+    final int engineId = PlatformDispatcher.instance.engineId!;
+
+    // If the parent is minimized, restore it to prevent the modal dialog from being hidden.
+    Pointer<Void> parentWindow = nullptr;
+    if (parent != null) {
+      parentWindow = _getWindowHandle(engineId, parent.viewId);
+      final int state = _getWindowState(parentWindow);
+      if (WindowState.values[state] == WindowState.minimized) {
+        _setWindowState(parentWindow, WindowState.restored.index);
+      }
+    }
+
+    final Pointer<_DialogWindowCreationRequest> request =
+        ffi.calloc<_DialogWindowCreationRequest>()
+          ..ref.contentSize.set(contentSize)
+          ..ref.parentWindow = parentWindow;
+    final int viewId = _createWindow(engineId, request);
+    ffi.calloc.free(request);
+    final FlutterView flutterView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
+      (FlutterView view) => view.viewId == viewId,
+    );
+    setView(flutterView);
+    owner.addMessageHandler(this);
+  }
+
+  @override
+  Size get contentSize {
+    _ensureNotDestroyed();
+    final _Size size = _getWindowContentSize(getWindowHandle());
+    final Size result = Size(size.width, size.height);
+    return result;
+  }
+
+  @override
+  WindowState get state {
+    _ensureNotDestroyed();
+    final int state = _getWindowState(getWindowHandle());
+    return WindowState.values[state];
+  }
+
+  static const int _GW_OWNER = 4;
+
+  @override
+  FlutterView? get parent {
+    _ensureNotDestroyed();
+    final int engineId = PlatformDispatcher.instance.engineId!;
+    final Pointer<Void> parentWindow = _getWindow(getWindowHandle(), _GW_OWNER);
+    return PlatformDispatcher.instance.views.cast<FlutterView?>().firstWhere(
+      (FlutterView? view) => _getWindowHandle(engineId, view!.viewId) == parentWindow,
+      orElse: () => null,
+    );
+  }
+
+  @override
+  void setTitle(String title) {
+    _ensureNotDestroyed();
+    final Pointer<ffi.Utf16> titlePointer = title.toNativeUtf16();
+    _setWindowTitle(getWindowHandle(), titlePointer);
+    ffi.calloc.free(titlePointer);
+  }
+
+  @override
+  void setContentSize(WindowSizing size) {
+    _ensureNotDestroyed();
+    final Pointer<_Sizing> sizing = ffi.calloc<_Sizing>();
+    sizing.ref.set(size);
+    _setWindowContentSize(getWindowHandle(), sizing);
+    ffi.calloc.free(sizing);
+  }
+
+  /// Returns HWND pointer to the top level window.
+  Pointer<Void> getWindowHandle() {
+    _ensureNotDestroyed();
+    return _getWindowHandle(PlatformDispatcher.instance.engineId!, rootView.viewId);
+  }
+
+  void _ensureNotDestroyed() {
+    if (_destroyed) {
+      throw StateError('Window has been destroyed.');
+    }
+  }
+
+  final DialogWindowControllerDelegate _delegate;
+  bool _destroyed = false;
+
+  @override
+  void destroy() {
+    if (_destroyed) {
+      return;
+    }
+    _destroyWindow(getWindowHandle());
+    _destroyed = true;
+    _delegate.onWindowDestroyed();
+    _owner.removeMessageHandler(this);
+  }
+
+  static const int _WM_SIZE = 0x0005;
+  static const int _WM_CLOSE = 0x0010;
+
+  @override
+  int? handleWindowsMessage(
+    FlutterView view,
+    Pointer<Void> windowHandle,
+    int message,
+    int wParam,
+    int lParam,
+  ) {
+    if (view.viewId != rootView.viewId) {
+      return null;
+    }
+
+    if (message == _WM_CLOSE) {
+      _delegate.onWindowCloseRequested(this);
+      return 0;
+    } else if (message == _WM_SIZE) {
+      notifyListeners();
+    }
+    return null;
+  }
+
+  final WindowingOwnerWin32 _owner;
+
+  @Native<Int64 Function(Int64, Pointer<_DialogWindowCreationRequest>)>(
+    symbol: 'FlutterCreateDialogWindow',
+  )
+  external static int _createWindow(int engineId, Pointer<_DialogWindowCreationRequest> request);
+
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
+  external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
+
+  @Native<Void Function(Pointer<Void>)>(symbol: 'DestroyWindow')
+  external static void _destroyWindow(Pointer<Void> windowHandle);
+
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
+
+  @Native<Int64 Function(Pointer<Void>)>(symbol: 'FlutterGetWindowState')
+  external static int _getWindowState(Pointer<Void> windowHandle);
+
+  @Native<Void Function(Pointer<Void>, Int64)>(symbol: 'FlutterSetWindowState')
+  external static void _setWindowState(Pointer<Void> windowHandle, int state);
+
+  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf16>)>(symbol: 'SetWindowTextW')
+  external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf16> title);
+
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
+  external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
+
+  @Native<Pointer<Void> Function(Pointer<Void>, Uint32)>(symbol: 'GetWindow')
+  external static Pointer<Void> _getWindow(Pointer<Void> windowHandle, int cmd);
 }
 
 /// Request to initialize windowing system.
@@ -288,8 +466,13 @@ final class _Sizing extends Struct {
   }
 }
 
-final class _WindowCreationRequest extends Struct {
+final class _RegularWindowCreationRequest extends Struct {
   external _Sizing contentSize;
+}
+
+final class _DialogWindowCreationRequest extends Struct {
+  external _Sizing contentSize;
+  external Pointer<Void> parentWindow;
 }
 
 /// Windows message received for all top level windows (regardless whether

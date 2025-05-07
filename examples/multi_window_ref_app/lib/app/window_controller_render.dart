@@ -4,18 +4,18 @@
 
 import 'package:flutter/material.dart';
 import 'regular_window_content.dart';
+import 'dialog_window_content.dart';
 import 'window_manager_model.dart';
 import 'window_settings.dart';
 
 class WindowControllerRender extends StatelessWidget {
-  const WindowControllerRender({
-    required this.controller,
-    required this.onDestroyed,
-    required this.onError,
-    required this.windowSettings,
-    required this.windowManagerModel,
-    required super.key,
-  });
+  const WindowControllerRender(
+      {required this.controller,
+      required this.onDestroyed,
+      required this.onError,
+      required this.windowSettings,
+      required this.windowManagerModel,
+      required super.key});
 
   final WindowController controller;
   final VoidCallback onDestroyed;
@@ -30,10 +30,33 @@ class WindowControllerRender extends StatelessWidget {
         return RegularWindow(
           key: key,
           controller: controller as RegularWindowController,
-          child: RegularWindowContent(
-              window: controller as RegularWindowController,
+          child: MaterialApp(
+            home: RegularWindowContent(
+              controller: controller as RegularWindowController,
               windowSettings: windowSettings,
-              windowManagerModel: windowManagerModel),
+              windowManagerModel: windowManagerModel,
+            ),
+          ),
+        );
+      case WindowArchetype.dialog:
+        final dialogController = controller as DialogWindowController;
+        final child = dialogController.parent != null
+            ? DialogWindowContent(
+                controller: dialogController,
+                windowSettings: windowSettings,
+                windowManagerModel: windowManagerModel,
+              )
+            : MaterialApp(
+                home: DialogWindowContent(
+                  controller: dialogController,
+                  windowSettings: windowSettings,
+                  windowManagerModel: windowManagerModel,
+                ),
+              );
+        return DialogWindow(
+          key: key,
+          controller: dialogController,
+          child: child,
         );
     }
   }
