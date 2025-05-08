@@ -301,19 +301,20 @@ typedef struct {
   void (*on_delete)();
 } WindowCreationRequest;
 
-static gboolean window_delete_event_cb(GtkWidget *widget, GdkEvent *event, WindowData *data) {
-   flutter::IsolateScope isolate_scope(data->isolate);
-   data->on_delete();
-   return TRUE;
+static gboolean window_delete_event_cb(GtkWidget* widget,
+                                       GdkEvent* event,
+                                       WindowData* data) {
+  flutter::IsolateScope isolate_scope(data->isolate);
+  data->on_delete();
+  return TRUE;
 }
 
-extern "C"
-{
+extern "C" {
 G_MODULE_EXPORT
-int64_t FlutterCreateRegularWindow(
-    int64_t engine_id, const WindowCreationRequest* request) {
+int64_t FlutterCreateRegularWindow(int64_t engine_id,
+                                   const WindowCreationRequest* request) {
   FlEngine* engine = fl_engine_for_id(engine_id);
-  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+  FlWindowingHandler* self = fl_engine_get_windowing_handler(engine);
 
   FlView* view = fl_view_new_for_engine(engine);
   gtk_widget_show(GTK_WIDGET(view));
@@ -321,7 +322,8 @@ int64_t FlutterCreateRegularWindow(
   GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
-  gtk_window_set_default_size(GTK_WINDOW(window), request->content_size.width, request->content_size.height);
+  gtk_window_set_default_size(GTK_WINDOW(window), request->content_size.width,
+                              request->content_size.height);
 
   gtk_widget_show(window);
 
@@ -330,18 +332,20 @@ int64_t FlutterCreateRegularWindow(
   data->on_delete = request->on_delete;
   set_window_data(self, data);
 
-  g_signal_connect(window, "delete-event", G_CALLBACK(window_delete_event_cb), data);
+  g_signal_connect(window, "delete-event", G_CALLBACK(window_delete_event_cb),
+                   data);
 
   return fl_view_get_id(view);
 }
 
 G_MODULE_EXPORT
-void FlutterSetWindowTitle(
-    int64_t engine_id, int64_t view_id, const gchar *title) {
+void FlutterSetWindowTitle(int64_t engine_id,
+                           int64_t view_id,
+                           const gchar* title) {
   FlEngine* engine = fl_engine_for_id(engine_id);
-  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+  FlWindowingHandler* self = fl_engine_get_windowing_handler(engine);
 
-  WindowData *data = get_window_data(self, view_id);
+  WindowData* data = get_window_data(self, view_id);
   if (data == nullptr) {
     return;
   }
@@ -350,11 +354,13 @@ void FlutterSetWindowTitle(
 }
 
 G_MODULE_EXPORT
-void FlutterSetWindowContentSize(int64_t engine_id, int64_t view_id, const WindowSizing* size) {
+void FlutterSetWindowContentSize(int64_t engine_id,
+                                 int64_t view_id,
+                                 const WindowSizing* size) {
   FlEngine* engine = fl_engine_for_id(engine_id);
-  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+  FlWindowingHandler* self = fl_engine_get_windowing_handler(engine);
 
-  WindowData *data = get_window_data(self, view_id);
+  WindowData* data = get_window_data(self, view_id);
   if (data == nullptr) {
     return;
   }
@@ -365,9 +371,9 @@ void FlutterSetWindowContentSize(int64_t engine_id, int64_t view_id, const Windo
 G_MODULE_EXPORT
 void FlutterDestroyWindow(int64_t engine_id, int64_t view_id) {
   FlEngine* engine = fl_engine_for_id(engine_id);
-  FlWindowingHandler *self = fl_engine_get_windowing_handler(engine);
+  FlWindowingHandler* self = fl_engine_get_windowing_handler(engine);
 
-  WindowData *data = get_window_data(self, view_id);
+  WindowData* data = get_window_data(self, view_id);
   if (data == nullptr) {
     return;
   }
