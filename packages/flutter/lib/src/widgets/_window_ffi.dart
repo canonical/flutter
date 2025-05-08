@@ -5,6 +5,7 @@
 import 'dart:io';
 
 import 'window.dart';
+import 'window_linux.dart';
 import 'window_macos.dart';
 import 'window_win32.dart';
 
@@ -15,6 +16,8 @@ WindowingOwner? createDefaultOwner() {
     return WindowingOwnerMacOS();
   } else if (Platform.isWindows) {
     return WindowingOwnerWin32();
+  } else if (Platform.isLinux) {
+    return WindowingOwnerLinux();
   } else {
     return null;
   }
