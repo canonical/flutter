@@ -4,12 +4,42 @@
 
 import 'dart:ffi' hide Size;
 import 'dart:ui' show FlutterView;
+import 'dart:math';
 import 'package:ffi/ffi.dart' as ffi;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import 'binding.dart';
 import 'window.dart';
+
+enum _WindowStyle {
+  overlapped(0x00000000),
+  popup(0x80000000),
+  child(0x40000000),
+  minimized(0x20000000),
+  visible(0x10000000),
+  disabled(0x08000000),
+  clipSiblings(0x04000000),
+  clipChildren(0x02000000),
+  maximize(0x01000000),
+  caption(0x00C00000),
+  border(0x00800000),
+  dlgFrame(0x00400000),
+  vScroll(0x00200000),
+  hScroll(0x00100000),
+  sysMenu(0x00080000),
+  thickFrame(0x00040000),
+  group(0x00020000),
+  tabStop(0x00010000),
+  minimizeBox(0x00020000),
+  maximizeBox(0x00010000),
+  overlappedWindow(0x00CF0000),
+  popupWindow(0x80880000),
+  childWindow(0x40000000);
+
+  final int value;
+  const _WindowStyle(this.value);
+}
 
 /// Handler for Win32 messages.
 abstract class WindowsMessageHandler {
@@ -95,6 +125,24 @@ class WindowingOwnerWin32 extends WindowingOwner {
   external static void _initializeWindowing(int engineId, Pointer<_WindowingInitRequest> request);
 }
 
+// Define RECT
+final class RECT extends Struct {
+  @Int32()
+  external int left;
+  @Int32()
+  external int top;
+  @Int32()
+  external int right;
+  @Int32()
+  external int bottom;
+}
+
+// Signature of AdjustWindowRectExForDpi
+typedef AdjustWindowRectExForDpiC =
+    Int32 Function(Pointer<RECT> rect, Uint32 dwStyle, Int32 bMenu, Uint32 dwExStyle, Uint32 dpi);
+typedef AdjustWindowRectExForDpiDart =
+    int Function(Pointer<RECT> rect, int dwStyle, int bMenu, int dwExStyle, int dpi);
+
 /// The Win32 implementation of the regular window controller.
 class RegularWindowControllerWin32 extends RegularWindowController
     implements WindowsMessageHandler {
@@ -108,6 +156,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
        _delegate = delegate,
        super.empty() {
     owner.addMessageHandler(this);
+    // Create the native window
+    _createHwnd(contentSize);
+
+    // Create the corresponding view
     final Pointer<_WindowCreationRequest> request =
         ffi.calloc<_WindowCreationRequest>()..ref.contentSize.set(contentSize);
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
@@ -116,6 +168,88 @@ class RegularWindowControllerWin32 extends RegularWindowController
       (FlutterView view) => view.viewId == viewId,
     );
     setView(flutterView);
+
+    // Adjust the window position
+
+    // Display the window
+  }
+
+  Size? getWindowSizeForClientSize({
+    required Size clientSize,
+    Size? minSize,
+    Size? maxSize,
+    required int windowStyle,
+    required int extendedWindowStyle,
+    required int hwnd,
+  }) {
+    Size clampToVirtualScreen(Size size) {
+      return size;
+    }
+
+    final _user32 = DynamicLibrary.open('user32.dll');
+
+    final _adjustWindowRectExForDpi = _user32
+        .lookupFunction<AdjustWindowRectExForDpiC, AdjustWindowRectExForDpiDart>(
+          'AdjustWindowRectExForDpi',
+        );
+
+    final dpi = 96; // TODO: Get this
+    final scaleFactor = 1.0; // TODO: Get this
+
+    final rectPtr = ffi.calloc<RECT>();
+    rectPtr.ref.left = 0;
+    rectPtr.ref.top = 0;
+    rectPtr.ref.right = (clientSize.width * scaleFactor).toInt();
+    rectPtr.ref.bottom = (clientSize.height * scaleFactor).toInt();
+
+    final success = _adjustWindowRectExForDpi(rectPtr, windowStyle, 0, extendedWindowStyle, dpi);
+    if (success == 0) {
+      ffi.calloc.free(rectPtr);
+      return null;
+    }
+
+    final width = (rectPtr.ref.right - rectPtr.ref.left).toDouble();
+    final height = (rectPtr.ref.bottom - rectPtr.ref.top).toDouble();
+    ffi.calloc.free(rectPtr);
+
+    final nonClientWidth = width - (clientSize.width * scaleFactor);
+    final nonClientHeight = height - (clientSize.height * scaleFactor);
+
+    double resultWidth = width;
+    double resultHeight = height;
+
+    if (minSize != null) {
+      final minPhysicalSize = clampToVirtualScreen(
+        Size(
+          minSize.width * scaleFactor + nonClientWidth,
+          minSize.height * scaleFactor + nonClientHeight,
+        ),
+      );
+      resultWidth = max(resultWidth, minPhysicalSize.width);
+      resultHeight = max(resultHeight, minPhysicalSize.height);
+    }
+
+    if (maxSize != null) {
+      final maxPhysicalSize = clampToVirtualScreen(
+        Size(
+          maxSize.width * scaleFactor + nonClientWidth,
+          maxSize.height * scaleFactor + nonClientHeight,
+        ),
+      );
+      resultWidth = min(resultWidth, maxPhysicalSize.width);
+      resultHeight = min(resultHeight, maxPhysicalSize.height);
+    }
+
+    return Size(resultWidth, resultHeight);
+  }
+
+  void _createHwnd(WindowSizing contentSize) {
+    getWindowSizeForClientSize(
+      clientSize: contentSize.preferredSize ?? Size(640, 480),
+      windowStyle: _WindowStyle.overlappedWindow.value,
+      extendedWindowStyle: 0,
+      hwnd: 0,
+    );
   }
 
   @override
