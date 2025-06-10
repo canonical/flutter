@@ -28,7 +28,7 @@ class FlutterHostWindow {
   // |FlutterHostWindow|. On success, a valid window handle can be retrieved
   // via |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
-                    WindowArchetype archetype,
+                    int hwnd,
                     const FlutterWindowSizing& content_size);
 
   virtual ~FlutterHostWindow();

@@ -266,41 +266,9 @@ void UpdateTheme(HWND window) {
 namespace flutter {
 
 FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
-                                     WindowArchetype archetype,
+                                     int hwnd,
                                      const FlutterWindowSizing& content_size)
     : window_controller_(controller), archetype_(archetype) {
-  // Check preconditions and set window styles based on window type.
-  DWORD window_style = 0;
-  DWORD extended_window_style = 0;
-  switch (archetype_) {
-    case WindowArchetype::kRegular:
-      window_style |= WS_OVERLAPPEDWINDOW;
-      break;
-    default:
-      FML_UNREACHABLE();
-  }
-
-  if (content_size.has_constraints) {
-    min_size_ = Size(content_size.min_width, content_size.min_height);
-    if (content_size.max_width > 0 && content_size.max_height > 0) {
-      max_size_ = Size(content_size.max_width, content_size.max_height);
-    }
-  }
-
-  // TODO(knopp): What about windows sized to content?
-  assert(content_size.has_size);
-
-  // Calculate the screen space window rectangle for the new window.
-  // Default positioning values (CW_USEDEFAULT) are used
-  // if the window has no owner.
-  Rect const initial_window_rect = [&]() -> Rect {
-    std::optional<Size> const window_size = GetWindowSizeForClientSize(
-        Size(content_size.width, content_size.height), min_size_, max_size_,
-        window_style, extended_window_style, nullptr);
-    return {{CW_USEDEFAULT, CW_USEDEFAULT},
-            window_size ? *window_size : Size{CW_USEDEFAULT, CW_USEDEFAULT}};
-  }();
-
   // Set up the view.
   FlutterWindowsEngine* const engine = window_controller_->engine();
   auto view_window = std::make_unique<FlutterWindow>(
@@ -327,41 +295,6 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   // Ensure that basic setup of the view controller was successful.
   if (!view_controller_->view()) {
     FML_LOG(ERROR) << "Failed to set up the view controller";
-    return;
-  }
-
-  // Register the window class.
-  if (!IsClassRegistered(kWindowClassName)) {
-    auto const idi_app_icon = 101;
-    WNDCLASSEX window_class = {};
-    window_class.cbSize = sizeof(WNDCLASSEX);
-    window_class.style = CS_HREDRAW | CS_VREDRAW;
-    window_class.lpfnWndProc = FlutterHostWindow::WndProc;
-    window_class.hInstance = GetModuleHandle(nullptr);
-    window_class.hIcon =
-        LoadIcon(window_class.hInstance, MAKEINTRESOURCE(idi_app_icon));
-    if (!window_class.hIcon) {
-      window_class.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-    }
-    window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    window_class.lpszClassName = kWindowClassName;
-
-    if (!RegisterClassEx(&window_class)) {
-      FML_LOG(ERROR) << "Cannot register window class " << kWindowClassName
-                     << ": " << GetLastErrorAsString();
-      return;
-    }
-  }
-
-  // Create the native window.
-  HWND hwnd =
-      CreateWindowEx(extended_window_style, kWindowClassName, L"", window_style,
-                     initial_window_rect.left(), initial_window_rect.top(),
-                     initial_window_rect.width(), initial_window_rect.height(),
-                     nullptr, nullptr, GetModuleHandle(nullptr), this);
-
-  if (!hwnd) {
-    FML_LOG(ERROR) << "Cannot create window: " << GetLastErrorAsString();
     return;
   }
 

@@ -49,6 +49,7 @@ struct WindowingInitRequest {
 
 struct WindowCreationRequest {
   FlutterWindowSizing content_size;
+  int hwnd;
 };
 
 // A controller class for managing |FlutterHostWindow| instances.
