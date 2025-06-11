@@ -116,7 +116,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
     final Pointer<_WindowCreationRequest> request = ffi.calloc<_WindowCreationRequest>();
     request.ref
       ..contentSize.set(contentSize)
-      ..hwnd = hwnd.address;
+      ..hwnd = hwnd;
 
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
     ffi.calloc.free(request);
@@ -201,106 +201,90 @@ class RegularWindowControllerWin32 extends RegularWindowController
     return Size(resultWidth, resultHeight);
   }
 
-  Pointer<void> _createHwnd(WindowSizing contentSize) {
-    final Size? size = getWindowSizeForClientSize(
-      clientSize: contentSize.preferredSize,
-      windowStyle: _WindowStyle.overlappedWindow.value,
-      extendedWindowStyle: 0,
-      hwnd: 0,
-    );
-
+  int _createHwnd(WindowSizing contentSize) {
+    // First, declare all of the functions that we'll need access to
     final _CreateWindowExWDart createWindowExW = user32
         .lookupFunction<_CreateWindowExWNative, _CreateWindowExWDart>('CreateWindowExW');
-
-    final Pointer<ffi.Utf16> className = 'FLUTTER_HOST_WINDOW'.toNativeUtf16();
-    _registerWindowClass(className, IDI_APPLICATION);
-
-    final GetModuleHandleWDart GetModuleHandle = _kernel32
-      .lookupFunction<GetModuleHandleWNative, GetModuleHandleWDart>('GetModuleHandleW');
-
-    final hInstance = GetModuleHandle(nullptr);
-    final Pointer<ffi.Utf16> windowName = 'Hello Window'.toNativeUtf16();
-    final Pointer<Void> hwnd = createWindowExW(
-      0, // dwExStyle
-      className, // lpClassName
-      windowName, // lpWindowName
-      _WindowStyle.overlappedWindow.value, // dwStyle (e.g. WS_OVERLAPPEDWINDOW)
-      _CW_USEDEFAULT, // x
-      _CW_USEDEFAULT, // y
-      size?.width.toInt() ?? _CW_USEDEFAULT, // nWidth
-      size?.height.toInt() ?? _CW_USEDEFAULT, // nHeight
-      nullptr, // hWndParent
-      0, // hMenu
-      hInstance, // hInstance
-      nullptr, // lpParam
-    );
-    print(hwnd.address);
-
-    ffi.calloc.free(className);
-    ffi.calloc.free(windowName);
-    return hwnd;
-  }
-
-  bool _isClassRegistered(Pointer<ffi.Utf16> className) {
-    final GetModuleHandleWDart GetModuleHandle = _kernel32
-      .lookupFunction<GetModuleHandleWNative, GetModuleHandleWDart>('GetModuleHandleW');
-
-    final GetClassInfoExW = user32.lookupFunction<GetClassInfoExWNative, GetClassInfoExWDart>('GetClassInfoExW');
-
-    final Pointer<_WNDCLASSEX> wndClass = ffi.calloc<_WNDCLASSEX>();
-    wndClass.ref.cbSize = sizeOf<_WNDCLASSEX>();
-    final hInstance = GetModuleHandle(nullptr);
-    final int result = GetClassInfoExW(hInstance, className, wndClass);
-    ffi.calloc.free(wndClass);
-    return result != 0;
-  }
-
-  void _registerWindowClass(Pointer<ffi.Utf16> className, int idiAppIcon) {
-    if (_isClassRegistered(className)) {
-      return;
-    }
-
-    final LoadIconW = user32
-      .lookupFunction<LoadIconWNative, LoadIconWDart>('LoadIconW');
-
-    final loadCursorW = user32
-      .lookupFunction<LoadCursorWNative, LoadCursorWDart>('LoadCursorW');
+    final LoadIconW = user32.lookupFunction<LoadIconWNative, LoadIconWDart>('LoadIconW');
+    final loadCursorW = user32.lookupFunction<LoadCursorWNative, LoadCursorWDart>('LoadCursorW');
 
     final int Function(Pointer<_WNDCLASSEX>) RegisterClassEx = user32
         .lookupFunction<Uint16 Function(Pointer<_WNDCLASSEX>), int Function(Pointer<_WNDCLASSEX>)>(
           'RegisterClassExW',
         );
-
     final GetModuleHandleWDart GetModuleHandle = _kernel32
-      .lookupFunction<GetModuleHandleWNative, GetModuleHandleWDart>('GetModuleHandleW');
+        .lookupFunction<GetModuleHandleWNative, GetModuleHandleWDart>('GetModuleHandleW');
+    final GetClassInfoExW = user32.lookupFunction<GetClassInfoExWNative, GetClassInfoExWDart>(
+      'GetClassInfoExW',
+    );
 
-    final Pointer<_WNDCLASSEX> wndClass = ffi.calloc<_WNDCLASSEX>();
+    // Next, get the size that we'll need and declare other constant
+    final windowStyle = WS_OVERLAPPEDWINDOW;
+    final Pointer<ffi.Utf16> className = 'FLUTTER_HOST_WINDOW'.toNativeUtf16();
+    final Size? size = getWindowSizeForClientSize(
+      clientSize: contentSize.preferredSize,
+      windowStyle: windowStyle,
+      extendedWindowStyle: 0,
+      hwnd: 0,
+    );
+
+    // Next, see if our class name is already declared. If not, we'll have to make it
     final hInstance = GetModuleHandle(nullptr);
-    final Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>> wndProcPointer =
-        Pointer.fromFunction<_WndProcNative>(wndProc, 0);
 
-    final icon = LoadIconW(hInstance, MAKEINTRESOURCE(idiAppIcon));
-    final cursor = loadCursorW(nullptr, MAKEINTRESOURCE(IDC_HAND));
+    Pointer<_WNDCLASSEX> wndClass = ffi.calloc<_WNDCLASSEX>();
+    wndClass.ref.cbSize = sizeOf<_WNDCLASSEX>();
+    final int result = GetClassInfoExW(hInstance, className, wndClass);
 
-    wndClass.ref
-      ..cbSize = sizeOf<_WNDCLASSEX>()
-      ..style = CS_HREDRAW | CS_VREDRAW
-      ..lpfnWndProc = wndProcPointer.cast()
-      ..hInstance = hInstance
-      ..hIcon = icon
-      ..hCursor = cursor
-      ..lpszClassName = className;
+    if (result == 0) {
+      // Our class name has not been declared so we need to create one
+      ffi.calloc.free(wndClass);
+      wndClass = ffi.calloc<_WNDCLASSEX>();
+      final Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>>
+      wndProcPointer = Pointer.fromFunction<_WndProcNative>(wndProc, 0);
 
-    if (wndClass.ref.hIcon == 0) {
-      wndClass.ref.hIcon = LoadIconW(nullptr, MAKEINTRESOURCE(0x7F00)); // IDI_APPLICATION
+      final icon = LoadIconW(hInstance, MAKEINTRESOURCE(101));
+      final cursor = loadCursorW(0, MAKEINTRESOURCE(IDC_HAND));
+
+      wndClass.ref
+        ..cbSize = sizeOf<_WNDCLASSEX>()
+        ..style = CS_HREDRAW | CS_VREDRAW
+        ..lpfnWndProc = wndProcPointer.cast()
+        ..hInstance = hInstance
+        ..hIcon = icon
+        ..hCursor = cursor
+        ..lpszClassName = className;
+
+      if (wndClass.ref.hIcon == 0) {
+        wndClass.ref.hIcon = LoadIconW(0, MAKEINTRESOURCE(0x7F00)); // IDI_APPLICATION
+      }
+
+      final int atom = RegisterClassEx(wndClass);
+      if (atom == 0) {
+        print('RegisterClassEx failed with error: ${getLastErrorAsString()}');
+      }
     }
 
-    final atom = RegisterClassEx(wndClass);
-    if (atom == 0) {
-      print('RegisterClassEx failed with error: ${getLastErrorAsString()}');
-    }
+    // Finally, we can create our HWND
+    final Pointer<ffi.Utf16> windowName = 'Hello Window'.toNativeUtf16();
+    final int hwnd = createWindowExW(
+      0, // dwExStyle
+      className, // lpClassName
+      windowName, // lpWindowName
+      WS_OVERLAPPEDWINDOW, // dwStyle (e.g. WS_OVERLAPPEDWINDOW)
+      0, // x
+      0, // y
+      800, // nWidth
+      600, // nHeight
+      0, // hWndParent
+      0, // hMenu
+      hInstance, // hInstance
+      nullptr, // lpParam
+    );
 
+    ffi.calloc.free(className);
+    ffi.calloc.free(windowName);
     ffi.calloc.free(wndClass);
+    return hwnd;
   }
 
   @override
@@ -423,37 +407,36 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   // Callback function
   static int wndProc(int hwnd, int msg, int wParam, int lParam) {
-    final DefWindowProc = user32.lookupFunction<
-      IntPtr Function(IntPtr hwnd, Uint32 msg, IntPtr wParam, IntPtr lParam),
-      int Function(int hwnd, int msg, int wParam, int lParam)
-    >('Def_WindowProcW');
+    final _DefWindowProc = user32.lookupFunction<
+      IntPtr Function(IntPtr hWnd, Uint32 Msg, IntPtr wParam, IntPtr lParam),
+      int Function(int hWnd, int Msg, int wParam, int lParam)
+    >('DefWindowProcW');
 
-    return DefWindowProc(hwnd, msg, wParam, lParam);
+    return _DefWindowProc(hwnd, msg, wParam, lParam);
   }
 
   String getLastErrorAsString() {
     final GetLastErrorDart _GetLastError = _kernel32
-      .lookupFunction<GetLastErrorC, GetLastErrorDart>('GetLastError');
+        .lookupFunction<GetLastErrorC, GetLastErrorDart>('GetLastError');
 
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagew
-    final _FormatMessageW = _kernel32
-        .lookupFunction<FormatMessageW_C, FormatMessageW_Dart>('FormatMessageW');
+    final _FormatMessageW = _kernel32.lookupFunction<FormatMessageW_C, FormatMessageW_Dart>(
+      'FormatMessageW',
+    );
 
     // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
     final _WideCharToMultiByte = _kernel32
-        .lookupFunction<WideCharToMultiByteC, WideCharToMultiByteDart>(
-      'WideCharToMultiByte',
-    );
+        .lookupFunction<WideCharToMultiByteC, WideCharToMultiByteDart>('WideCharToMultiByte');
 
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-localfree
-    final _LocalFree = _kernel32
-      .lookupFunction<_LocalFreeC, LocalFreeDart>('LocalFree');
-            
+    final _LocalFree = _kernel32.lookupFunction<_LocalFreeC, LocalFreeDart>('LocalFree');
+
     final errorCode = _GetLastError();
 
     final lpBuffer = ffi.calloc<Pointer<ffi.Utf16>>();
 
-    const formatFlags = 0x00000100 | // FORMAT_MESSAGE_ALLOCATE_BUFFER
+    const formatFlags =
+        0x00000100 | // FORMAT_MESSAGE_ALLOCATE_BUFFER
         0x00001000 | // FORMAT_MESSAGE_FROM_SYSTEM
         0x00000200; // FORMAT_MESSAGE_IGNORE_INSERTS
 
@@ -472,13 +455,20 @@ class RegularWindowControllerWin32 extends RegularWindowController
       final wideStr = messagePtr.cast<ffi.Utf16>();
 
       // First, get required UTF-8 buffer size
-      final utf8Len = _WideCharToMultiByte(65001, 0, wideStr, -1, nullptr, 0,
-          nullptr, nullptr); // 65001 = CP_UTF8
+      final utf8Len = _WideCharToMultiByte(
+        65001,
+        0,
+        wideStr,
+        -1,
+        nullptr,
+        0,
+        nullptr,
+        nullptr,
+      ); // 65001 = CP_UTF8
 
       if (utf8Len > 0) {
         final utf8Buffer = ffi.calloc<Uint8>(utf8Len);
-        _WideCharToMultiByte(65001, 0, wideStr, -1, utf8Buffer.cast(), utf8Len,
-            nullptr, nullptr);
+        _WideCharToMultiByte(65001, 0, wideStr, -1, utf8Buffer.cast(), utf8Len, nullptr, nullptr);
 
         final dartString = utf8Buffer.cast<ffi.Utf8>().toDartString();
         ffi.calloc.free(utf8Buffer);
@@ -634,34 +624,14 @@ final class _Size extends Struct {
 }
 
 /// https://learn.microsoft.com/en-us/windows/win32/winmsg/window-styles
-enum _WindowStyle {
-  overlapped(0x00000000),
-  popup(0x80000000),
-  child(0x40000000),
-  minimized(0x20000000),
-  visible(0x10000000),
-  disabled(0x08000000),
-  clipSiblings(0x04000000),
-  clipChildren(0x02000000),
-  maximize(0x01000000),
-  caption(0x00C00000),
-  border(0x00800000),
-  dlgFrame(0x00400000),
-  vScroll(0x00200000),
-  hScroll(0x00100000),
-  sysMenu(0x00080000),
-  thickFrame(0x00040000),
-  group(0x00020000),
-  tabStop(0x00010000),
-  minimizeBox(0x00020000),
-  maximizeBox(0x00010000),
-  overlappedWindow(0x00CF0000),
-  popupWindow(0x80880000),
-  childWindow(0x40000000);
-
-  final int value;
-  const _WindowStyle(this.value);
-}
+const WS_OVERLAPPED = 0x00000000;
+const WS_CAPTION = 0x00C00000;
+const WS_SYSMENU = 0x00080000;
+const WS_THICKFRAME = 0x00040000;
+const WS_MINIMIZEBOX = 0x00020000;
+const WS_MAXIMIZEBOX = 0x00010000;
+const int WS_OVERLAPPEDWINDOW =
+    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 
 // Signature of AdjustWindowRectExForDpi
 typedef _AdjustWindowRectExForDpiC =
@@ -671,7 +641,7 @@ typedef _AdjustWindowRectExForDpiDart =
 
 /// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
 typedef _CreateWindowExWNative =
-    Pointer<Void> Function(
+    IntPtr Function(
       Uint32 dwExStyle,
       Pointer<ffi.Utf16> lpClassName,
       Pointer<ffi.Utf16> lpWindowName,
@@ -680,15 +650,15 @@ typedef _CreateWindowExWNative =
       Int32 y,
       Int32 nWidth,
       Int32 nHeight,
-      Pointer<Void> hWndParent,
+      IntPtr hWndParent,
       IntPtr hMenu,
-      Pointer<Void> hInstance,
+      IntPtr hInstance,
       Pointer<Void> lpParam,
     );
 
 /// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
 typedef _CreateWindowExWDart =
-    Pointer<Void> Function(
+    int Function(
       int dwExStyle,
       Pointer<ffi.Utf16> lpClassName,
       Pointer<ffi.Utf16> lpWindowName,
@@ -697,9 +667,9 @@ typedef _CreateWindowExWDart =
       int y,
       int nWidth,
       int nHeight,
-      Pointer<Void> hWndParent,
+      int hWndParent,
       int hMenu,
-      Pointer<Void> hInstance,
+      int hInstance,
       Pointer<Void> lpParam,
     );
 
@@ -746,6 +716,7 @@ Pointer<ffi.Utf16> MAKEINTRESOURCE(int id) {
   // According to Windows API docs, MAKEINTRESOURCE macro just casts the integer
   return Pointer<ffi.Utf16>.fromAddress(id);
 }
+
 // Define _RECT
 final class _RECT extends Struct {
   @Int32()
@@ -758,47 +729,51 @@ final class _RECT extends Struct {
   external int bottom;
 }
 
- typedef FormatMessageW_C = Uint32 Function(
-    Uint32 dwFlags,
-    Pointer<Void> lpSource,
-    Uint32 dwMessageId,
-    Uint32 dwLanguageId,
-    Pointer<Pointer<ffi.Utf16>> lpBuffer,
-    Uint32 nSize,
-    Pointer<Void> Arguments,
-  );
+typedef FormatMessageW_C =
+    Uint32 Function(
+      Uint32 dwFlags,
+      Pointer<Void> lpSource,
+      Uint32 dwMessageId,
+      Uint32 dwLanguageId,
+      Pointer<Pointer<ffi.Utf16>> lpBuffer,
+      Uint32 nSize,
+      Pointer<Void> Arguments,
+    );
 
-  typedef FormatMessageW_Dart = int Function(
-    int dwFlags,
-    Pointer<Void> lpSource,
-    int dwMessageId,
-    int dwLanguageId,
-    Pointer<Pointer<ffi.Utf16>> lpBuffer,
-    int nSize,
-    Pointer<Void> Arguments,
-  );
+typedef FormatMessageW_Dart =
+    int Function(
+      int dwFlags,
+      Pointer<Void> lpSource,
+      int dwMessageId,
+      int dwLanguageId,
+      Pointer<Pointer<ffi.Utf16>> lpBuffer,
+      int nSize,
+      Pointer<Void> Arguments,
+    );
 
-typedef WideCharToMultiByteC = Int32 Function(
-  Uint32 codePage,
-  Uint32 dwFlags,
-  Pointer<ffi.Utf16> lpWideCharStr,
-  Int32 cchWideChar,
-  Pointer<ffi.Utf8> lpMultiByteStr,
-  Int32 cbMultiByte,
-  Pointer<ffi.Utf8> lpDefaultChar,
-  Pointer<Bool> lpUsedDefaultChar,
-);
+typedef WideCharToMultiByteC =
+    Int32 Function(
+      Uint32 codePage,
+      Uint32 dwFlags,
+      Pointer<ffi.Utf16> lpWideCharStr,
+      Int32 cchWideChar,
+      Pointer<ffi.Utf8> lpMultiByteStr,
+      Int32 cbMultiByte,
+      Pointer<ffi.Utf8> lpDefaultChar,
+      Pointer<Bool> lpUsedDefaultChar,
+    );
 
-typedef WideCharToMultiByteDart = int Function(
-  int codePage,
-  int dwFlags,
-  Pointer<ffi.Utf16> lpWideCharStr,
-  int cchWideChar,
-  Pointer<ffi.Utf8> lpMultiByteStr,
-  int cbMultiByte,
-  Pointer<ffi.Utf8> lpDefaultChar,
-  Pointer<Bool> lpUsedDefaultChar,
-);
+typedef WideCharToMultiByteDart =
+    int Function(
+      int codePage,
+      int dwFlags,
+      Pointer<ffi.Utf16> lpWideCharStr,
+      int cchWideChar,
+      Pointer<ffi.Utf8> lpMultiByteStr,
+      int cbMultiByte,
+      Pointer<ffi.Utf8> lpDefaultChar,
+      Pointer<Bool> lpUsedDefaultChar,
+    );
 
 /// C function signature: HLOCAL LocalFree(HLOCAL hMem);
 typedef _LocalFreeC = Pointer<Void> Function(Pointer<Void> hMem);
@@ -808,16 +783,22 @@ typedef LocalFreeDart = Pointer<Void> Function(Pointer<Void> hMem);
 
 typedef GetLastErrorC = Uint32 Function();
 typedef GetLastErrorDart = int Function();
-typedef GetModuleHandleWNative = Pointer<Void> Function(Pointer<ffi.Utf16> lpModuleName);
-typedef GetModuleHandleWDart = Pointer<Void> Function(Pointer<ffi.Utf16> lpModuleName);
+typedef GetModuleHandleWNative = IntPtr Function(Pointer<ffi.Utf16> lpModuleName);
+typedef GetModuleHandleWDart = int Function(Pointer<ffi.Utf16> lpModuleName);
 
 typedef UINT = Uint32;
+typedef LONG_PTR = IntPtr;
+typedef UINT_PTR = IntPtr;
 typedef HWND = IntPtr;
 typedef HINSTANCE = IntPtr;
 typedef HICON = IntPtr;
 typedef HCURSOR = IntPtr;
 typedef HBRUSH = IntPtr;
-typedef WNDPROC = Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>>;
+typedef WPARAM = UINT_PTR;
+typedef LPARAM = LONG_PTR;
+typedef LRESULT = LONG_PTR;
+
+typedef WNDPROC = LRESULT Function(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 final class _WNDCLASSEX extends Struct {
   @Uint32()
@@ -826,7 +807,7 @@ final class _WNDCLASSEX extends Struct {
   @Uint32()
   external int style;
 
-  external Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>> lpfnWndProc;
+  external Pointer<NativeFunction<WNDPROC>> lpfnWndProc;
 
   @Int32()
   external int cbClsExtra;
@@ -834,39 +815,34 @@ final class _WNDCLASSEX extends Struct {
   @Int32()
   external int cbWndExtra;
 
-  external Pointer<Void> hInstance;
+  @IntPtr()
+  external int hInstance;
 
-  external Pointer<Void> hIcon;
+  @IntPtr()
+  external int hIcon;
 
-  external Pointer<Void> hCursor;
+  @IntPtr()
+  external int hCursor;
 
-  external Pointer<Void> hbrBackground;
+  @IntPtr()
+  external int hbrBackground;
 
   external Pointer<ffi.Utf16> lpszMenuName;
 
   external Pointer<ffi.Utf16> lpszClassName;
 
-  external Pointer<Void> hIconSm;
+  @IntPtr()
+  external int hIconSm;
 }
 
-typedef GetClassInfoExWNative = Int32 Function(
-    Pointer<Void> hInstance,
-    Pointer<ffi.Utf16> lpszClass,
-    Pointer<_WNDCLASSEX> lpwcx);
+typedef GetClassInfoExWNative =
+    Int32 Function(IntPtr hInstance, Pointer<ffi.Utf16> lpszClass, Pointer<_WNDCLASSEX> lpwcx);
 
-typedef GetClassInfoExWDart = int Function(
-    Pointer<Void> hInstance,
-    Pointer<ffi.Utf16> lpszClass,
-    Pointer<_WNDCLASSEX> lpwcx);
+typedef GetClassInfoExWDart =
+    int Function(int hInstance, Pointer<ffi.Utf16> lpszClass, Pointer<_WNDCLASSEX> lpwcx);
 
-typedef LoadIconWNative = Pointer<Void> Function(
-  Pointer<Void> hInstance,
-  Pointer<ffi.Utf16> lpIconName,
-);
-typedef LoadIconWDart = Pointer<Void> Function(
-  Pointer<Void> hInstance,
-  Pointer<ffi.Utf16> lpIconName,
-);
+typedef LoadIconWNative = IntPtr Function(IntPtr hInstance, Pointer<ffi.Utf16> lpIconName);
+typedef LoadIconWDart = int Function(int hInstance, Pointer<ffi.Utf16> lpIconName);
 
 const int IDC_ARROW = 32512;
 const int IDC_IBEAM = 32513;
@@ -885,6 +861,5 @@ const int IDC_HAND = 32649;
 const int IDC_APPSTARTING = 32650;
 const int IDC_HELP = 32651;
 
-typedef LoadCursorWNative = Pointer<Void> Function(Pointer<Void> hInstance, Pointer<ffi.Utf16> lpCursorName);
-typedef LoadCursorWDart = Pointer<Void> Function(Pointer<Void> hInstance, Pointer<ffi.Utf16> lpCursorName);
-
+typedef LoadCursorWNative = IntPtr Function(IntPtr hInstance, Pointer<ffi.Utf16> lpCursorName);
+typedef LoadCursorWDart = int Function(int hInstance, Pointer<ffi.Utf16> lpCursorName);
