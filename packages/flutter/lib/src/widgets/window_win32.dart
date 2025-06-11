@@ -26,6 +26,17 @@ abstract class WindowsMessageHandler {
   );
 }
 
+ int wndProc(int hwnd, int msg, int wParam, int lParam) {
+  DynamicLibrary user32 = DynamicLibrary.open('user32.dll');
+    final _DefWindowProc = user32
+      .lookupFunction<
+        IntPtr Function(IntPtr hWnd, Uint32 Msg, IntPtr wParam, IntPtr lParam),
+        int Function(int hWnd, int Msg, int wParam, int lParam)
+      >('DefWindowProcW');
+
+    return _DefWindowProc(hwnd, msg, wParam, lParam);
+  }
+
 /// Windowing owner implementation for Windows.
 class WindowingOwnerWin32 extends WindowingOwner {
   /// Creates a new [WindowingOwnerWin32] instance.
@@ -217,6 +228,10 @@ class RegularWindowControllerWin32 extends RegularWindowController
     final GetClassInfoExW = user32.lookupFunction<GetClassInfoExWNative, GetClassInfoExWDart>(
       'GetClassInfoExW',
     );
+    final _DefWindowProc = user32.lookupFunction<
+      IntPtr Function(IntPtr hWnd, Uint32 Msg, IntPtr wParam, IntPtr lParam),
+      int Function(int hWnd, int Msg, int wParam, int lParam)
+    >('DefWindowProcW');
 
     // Next, get the size that we'll need and declare other constant
     final windowStyle = WS_OVERLAPPEDWINDOW;
@@ -239,8 +254,6 @@ class RegularWindowControllerWin32 extends RegularWindowController
       // Our class name has not been declared so we need to create one
       ffi.calloc.free(wndClass);
       wndClass = ffi.calloc<_WNDCLASSEX>();
-      final Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>>
-      wndProcPointer = Pointer.fromFunction<_WndProcNative>(wndProc, 0);
 
       final icon = LoadIconW(hInstance, MAKEINTRESOURCE(101));
       final cursor = loadCursorW(0, MAKEINTRESOURCE(IDC_HAND));
@@ -248,7 +261,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
       wndClass.ref
         ..cbSize = sizeOf<_WNDCLASSEX>()
         ..style = CS_HREDRAW | CS_VREDRAW
-        ..lpfnWndProc = wndProcPointer.cast()
+        ..lpfnWndProc = Pointer.fromFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>(wndProc, 0)
         ..hInstance = hInstance
         ..hIcon = icon
         ..hCursor = cursor
@@ -405,16 +418,6 @@ class RegularWindowControllerWin32 extends RegularWindowController
     return null;
   }
 
-  // Callback function
-  static int wndProc(int hwnd, int msg, int wParam, int lParam) {
-    final _DefWindowProc = user32.lookupFunction<
-      IntPtr Function(IntPtr hWnd, Uint32 Msg, IntPtr wParam, IntPtr lParam),
-      int Function(int hWnd, int Msg, int wParam, int lParam)
-    >('DefWindowProcW');
-
-    return _DefWindowProc(hwnd, msg, wParam, lParam);
-  }
-
   String getLastErrorAsString() {
     final GetLastErrorDart _GetLastError = _kernel32
         .lookupFunction<GetLastErrorC, GetLastErrorDart>('GetLastError');
@@ -508,6 +511,9 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
+
+  @Native<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>(symbol: 'FlutterWndProcHandler')
+  external static int _wndProcHandler(int hwnd, int msg, int wParam, int lParam);
 
   @Native<Void Function(Pointer<Void>)>(symbol: 'DestroyWindow')
   external static void _destroyWindow(Pointer<Void> windowHandle);
@@ -673,10 +679,6 @@ typedef _CreateWindowExWDart =
       Pointer<Void> lpParam,
     );
 
-typedef _WndProcNative = IntPtr Function(IntPtr hwnd, Uint32 msg, IntPtr wParam, IntPtr lParam);
-
-typedef _WindowProc = int Function(int hwnd, int msg, int wParam, int lParam);
-
 final class _CREATESTRUCT extends Struct {
   @IntPtr()
   external int lpCreateParams;
@@ -799,7 +801,6 @@ typedef LPARAM = LONG_PTR;
 typedef LRESULT = LONG_PTR;
 
 typedef WNDPROC = LRESULT Function(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-
 final class _WNDCLASSEX extends Struct {
   @Uint32()
   external int cbSize;
@@ -863,3 +864,4 @@ const int IDC_HELP = 32651;
 
 typedef LoadCursorWNative = IntPtr Function(IntPtr hInstance, Pointer<ffi.Utf16> lpCursorName);
 typedef LoadCursorWDart = int Function(int hInstance, Pointer<ffi.Utf16> lpCursorName);
+typedef WindowProc = int Function(int hwnd, int msg, int wParam, int lParam);

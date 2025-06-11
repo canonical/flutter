@@ -28,7 +28,7 @@ class FlutterHostWindow {
   // |FlutterHostWindow|. On success, a valid window handle can be retrieved
   // via |FlutterHostWindow::GetWindowHandle|.
   FlutterHostWindow(FlutterHostWindowController* controller,
-                    int hwnd,
+                    HWND hwnd,
                     const FlutterWindowSizing& content_size);
 
   virtual ~FlutterHostWindow();
@@ -44,22 +44,16 @@ class FlutterHostWindow {
   // |size|.
   void SetContentSize(const FlutterWindowSizing& size);
 
+  // Processes and routes salient window messages for mouse handling,
+  // size change and DPI. Delegates handling of these to member overloads that
+  // inheriting classes can handle.
+  LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+
  private:
   friend FlutterHostWindowController;
 
   // Sets the focus to the child view window of |window|.
   static void FocusViewOf(FlutterHostWindow* window);
-
-  // OS callback called by message pump. Handles the WM_NCCREATE message which
-  // is passed when the non-client area is being created and enables automatic
-  // non-client DPI scaling so that the non-client area automatically
-  // responds to changes in DPI. Delegates other messages to the controller.
-  static LRESULT WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-
-  // Processes and routes salient window messages for mouse handling,
-  // size change and DPI. Delegates handling of these to member overloads that
-  // inheriting classes can handle.
-  LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   // Inserts |content| into the window tree.
   void SetChildContent(HWND content);

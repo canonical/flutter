@@ -266,14 +266,13 @@ void UpdateTheme(HWND window) {
 namespace flutter {
 
 FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
-                                     int hwnd,
+                                     HWND hwnd,
                                      const FlutterWindowSizing& content_size)
-    : window_controller_(controller), archetype_(archetype) {
+    : window_controller_(controller), window_handle_(hwnd) {
   // Set up the view.
   FlutterWindowsEngine* const engine = window_controller_->engine();
-  auto view_window = std::make_unique<FlutterWindow>(
-      initial_window_rect.width(), initial_window_rect.height(),
-      engine->windows_proc_table());
+  auto view_window =
+      std::make_unique<FlutterWindow>(640, 480, engine->windows_proc_table());
 
   std::unique_ptr<FlutterWindowsView> view =
       engine->CreateView(std::move(view_window));
@@ -351,30 +350,20 @@ void FlutterHostWindow::FocusViewOf(FlutterHostWindow* window) {
   }
 };
 
-LRESULT FlutterHostWindow::WndProc(HWND hwnd,
-                                   UINT message,
-                                   WPARAM wparam,
-                                   LPARAM lparam) {
-  if (message == WM_NCCREATE) {
-    auto* const create_struct = reinterpret_cast<CREATESTRUCT*>(lparam);
-    auto* const window =
-        static_cast<FlutterHostWindow*>(create_struct->lpCreateParams);
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
-    window->window_handle_ = hwnd;
-
-    EnableFullDpiSupportIfAvailable(hwnd);
-    EnableTransparentWindowBackground(hwnd);
-  } else if (FlutterHostWindow* const window = GetThisFromHandle(hwnd)) {
-    return window->HandleMessage(hwnd, message, wparam, lparam);
-  }
-
-  return DefWindowProc(hwnd, message, wparam, lparam);
-}
-
 LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
                                          UINT message,
                                          WPARAM wparam,
                                          LPARAM lparam) {
+  if (message == WM_NCCREATE) {
+    flutter::FlutterHostWindow* const window =
+        flutter::FlutterHostWindow::GetThisFromHandle(hwnd);
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
+
+    EnableFullDpiSupportIfAvailable(hwnd);
+    EnableTransparentWindowBackground(hwnd);
+    return DefWindowProc(hwnd, message, wparam, lparam);
+  }
+
   auto result =
       view_controller_->engine()
           ->window_proc_delegate_manager()

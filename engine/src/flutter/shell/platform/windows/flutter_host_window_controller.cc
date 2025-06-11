@@ -44,7 +44,7 @@ bool FlutterHostWindowController::HasTopLevelWindows() const {
 FlutterViewId FlutterHostWindowController::CreateRegularWindow(
     const WindowCreationRequest* request) {
   auto window = std::make_unique<FlutterHostWindow>(
-      this, WindowArchetype::kRegular, request->content_size);
+      this, reinterpret_cast<HWND>(request->hwnd), request->content_size);
   if (!window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create host window";
     return 0;
@@ -144,6 +144,22 @@ HWND FlutterGetWindowHandle(int64_t engine_id, FlutterViewId view_id) {
   } else {
     return GetAncestor(view->GetWindowHandle(), GA_ROOT);
   }
+}
+
+LRESULT FlutterWndProcHandler(HWND hwnd,
+                              UINT message,
+                              WPARAM wparam,
+                              LPARAM lparam) {
+  // TODO: Pass the engine id in lparam on creation
+  //  Then, get the controller and resolve the view
+  //  based on the hwnd.
+  //  Then set the userdata on the hwnd as the window.
+  if (flutter::FlutterHostWindow* const window =
+          flutter::FlutterHostWindow::GetThisFromHandle(hwnd)) {
+    return window->HandleMessage(hwnd, message, wparam, lparam);
+  }
+
+  return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
 FlutterWindowSize FlutterGetWindowContentSize(HWND hwnd) {
