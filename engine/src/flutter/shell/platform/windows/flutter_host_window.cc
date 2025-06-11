@@ -267,14 +267,33 @@ namespace flutter {
 
 FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
                                      WindowArchetype archetype,
-                                     const FlutterWindowSizing& content_size)
+                                     const FlutterWindowSizing& content_size,
+                                     HWND owner_window)
     : window_controller_(controller), archetype_(archetype) {
   // Check preconditions and set window styles based on window type.
   DWORD window_style = 0;
   DWORD extended_window_style = 0;
   switch (archetype_) {
     case WindowArchetype::kRegular:
+      if (owner_window != nullptr) {
+        FML_LOG(ERROR) << "A regular window cannot have an owner window.";
+        return;
+      }
       window_style |= WS_OVERLAPPEDWINDOW;
+      break;
+    case WindowArchetype::kDialog:
+      window_style |= WS_OVERLAPPED | WS_CAPTION | WS_THICKFRAME;
+      extended_window_style |= WS_EX_DLGMODALFRAME;
+      if (owner_window == nullptr) {
+        // If the dialog has no owner, add a minimize box and a system menu.
+        window_style |= WS_MINIMIZEBOX | WS_SYSMENU;
+      } else {
+        // If the owner window has WS_EX_TOOLWINDOW style, apply the same
+        // style to the dialog.
+        if (GetWindowLongPtr(owner_window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) {
+          extended_window_style |= WS_EX_TOOLWINDOW;
+        }
+      }
       break;
     default:
       FML_UNREACHABLE();
@@ -296,8 +315,21 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
   Rect const initial_window_rect = [&]() -> Rect {
     std::optional<Size> const window_size = GetWindowSizeForClientSize(
         Size(content_size.width, content_size.height), min_size_, max_size_,
-        window_style, extended_window_style, nullptr);
-    return {{CW_USEDEFAULT, CW_USEDEFAULT},
+        window_style, extended_window_style, owner_window);
+    Point window_origin = {CW_USEDEFAULT, CW_USEDEFAULT};
+    if (owner_window != nullptr && window_size.has_value()) {
+      if (archetype_ == WindowArchetype::kDialog) {
+        // Center dialog in the owner's frame.
+        RECT frame;
+        DwmGetWindowAttribute(owner_window, DWMWA_EXTENDED_FRAME_BOUNDS, &frame,
+                              sizeof(frame));
+        window_origin = {
+            (frame.left + frame.right - window_size->width()) * 0.5,
+            (frame.top + frame.bottom - window_size->height()) * 0.5};
+      }
+    }
+
+    return {window_origin,
             window_size ? *window_size : Size{CW_USEDEFAULT, CW_USEDEFAULT}};
   }();
 
@@ -358,11 +390,19 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
       CreateWindowEx(extended_window_style, kWindowClassName, L"", window_style,
                      initial_window_rect.left(), initial_window_rect.top(),
                      initial_window_rect.width(), initial_window_rect.height(),
-                     nullptr, nullptr, GetModuleHandle(nullptr), this);
+                     owner_window, nullptr, GetModuleHandle(nullptr), this);
 
   if (!hwnd) {
     FML_LOG(ERROR) << "Cannot create window: " << GetLastErrorAsString();
     return;
+  }
+
+  // If this is a modeless dialog, disable the close button in the system
+  // menu.
+  if (archetype_ == WindowArchetype::kDialog && owner_window == nullptr) {
+    if (HMENU hMenu = GetSystemMenu(hwnd, FALSE)) {
+      EnableMenuItem(hMenu, SC_CLOSE, MF_BYCOMMAND | MF_GRAYED);
+    }
   }
 
   // Adjust the window position so its origin aligns with the top-left corner
@@ -381,6 +421,10 @@ FlutterHostWindow::FlutterHostWindow(FlutterHostWindowController* controller,
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
   UpdateTheme(hwnd);
+
+  if (archetype_ == WindowArchetype::kDialog && owner_window != nullptr) {
+    UpdateModalState();
+  }
 
   SetChildContent(view_controller_->view()->GetWindowHandle());
 
@@ -403,6 +447,21 @@ FlutterHostWindow::~FlutterHostWindow() {
   }
 }
 
+std::unique_ptr<FlutterHostWindow> FlutterHostWindow::createRegular(
+    FlutterHostWindowController* controller,
+    FlutterWindowSizing const& content_size) {
+  return std::unique_ptr<FlutterHostWindow>(new FlutterHostWindow(
+      controller, WindowArchetype::kRegular, content_size, nullptr));
+}
+
+std::unique_ptr<FlutterHostWindow> FlutterHostWindow::createDialog(
+    FlutterHostWindowController* controller,
+    FlutterWindowSizing const& content_size,
+    HWND owner_window) {
+  return std::unique_ptr<FlutterHostWindow>(new FlutterHostWindow(
+      controller, WindowArchetype::kDialog, content_size, owner_window));
+}
+
 FlutterHostWindow* FlutterHostWindow::GetThisFromHandle(HWND hwnd) {
   return reinterpret_cast<FlutterHostWindow*>(
       GetWindowLongPtr(hwnd, GWLP_USERDATA));
@@ -412,7 +471,7 @@ HWND FlutterHostWindow::GetWindowHandle() const {
   return window_handle_;
 }
 
-void FlutterHostWindow::FocusViewOf(FlutterHostWindow* window) {
+void FlutterHostWindow::FocusRootViewOf(FlutterHostWindow* window) {
   if (window != nullptr && window->child_content_ != nullptr) {
     SetFocus(window->child_content_);
   }
@@ -438,6 +497,58 @@ LRESULT FlutterHostWindow::WndProc(HWND hwnd,
   return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
+void FlutterHostWindow::EnableWindowAndDescendants(bool enable) {
+  EnableWindow(window_handle_, enable);
+
+  for (FlutterHostWindow* const owned : GetOwnedWindows()) {
+    owned->EnableWindowAndDescendants(enable);
+  }
+}
+
+FlutterHostWindow* FlutterHostWindow::FindFirstEnabledDescendant() const {
+  if (IsWindowEnabled(window_handle_)) {
+    return const_cast<FlutterHostWindow*>(this);
+  }
+
+  for (FlutterHostWindow* const owned : GetOwnedWindows()) {
+    if (FlutterHostWindow* const result = owned->FindFirstEnabledDescendant()) {
+      return result;
+    }
+  }
+
+  return nullptr;
+}
+
+std::vector<FlutterHostWindow*> FlutterHostWindow::GetOwnedWindows() const {
+  std::vector<FlutterHostWindow*> owned_windows;
+  struct EnumData {
+    HWND owner_window_handle;
+    std::vector<FlutterHostWindow*>* owned_windows;
+  } data{window_handle_, &owned_windows};
+
+  EnumWindows(
+      [](HWND hwnd, LPARAM lparam) -> BOOL {
+        auto* const data = reinterpret_cast<EnumData*>(lparam);
+        if (GetWindow(hwnd, GW_OWNER) == data->owner_window_handle) {
+          FlutterHostWindow* const window = GetThisFromHandle(hwnd);
+          if (window && !window->is_being_destroyed_) {
+            data->owned_windows->push_back(window);
+          }
+        }
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&data));
+
+  return owned_windows;
+}
+
+FlutterHostWindow* FlutterHostWindow::GetOwnerWindow() const {
+  if (HWND const owner_window_handle = GetWindow(GetWindowHandle(), GW_OWNER)) {
+    return GetThisFromHandle(owner_window_handle);
+  }
+  return nullptr;
+};
+
 LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
                                          UINT message,
                                          WPARAM wparam,
@@ -451,6 +562,22 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
   }
 
   switch (message) {
+    case WM_DESTROY:
+      is_being_destroyed_ = true;
+      switch (archetype_) {
+        case WindowArchetype::kRegular:
+          break;
+        case WindowArchetype::kDialog:
+          if (FlutterHostWindow* const owner_window = GetOwnerWindow()) {
+            UpdateModalState();
+            FocusRootViewOf(owner_window);
+          }
+          break;
+        default:
+          FML_UNREACHABLE();
+      }
+      return 0;
+
     case WM_DPICHANGED: {
       auto* const new_scaled_window_rect = reinterpret_cast<RECT*>(lparam);
       LONG const width =
@@ -510,12 +637,21 @@ LRESULT FlutterHostWindow::HandleMessage(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      FocusViewOf(this);
+      if (LOWORD(wparam) != WA_INACTIVE) {
+        // Prevent disabled window from being activated using the task
+        // switcher
+        if (!IsWindowEnabled(hwnd)) {
+          // Redirect focus and activation to the first enabled descendant
+          if (FlutterHostWindow* enabled_descendant =
+                  FindFirstEnabledDescendant()) {
+            SetActiveWindow(enabled_descendant->GetWindowHandle());
+            FocusRootViewOf(this);
+          }
+          return 0;
+        }
+        FocusRootViewOf(this);
+      }
       return 0;
-
-    case WM_MOUSEACTIVATE:
-      FocusViewOf(this);
-      return MA_ACTIVATE;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
@@ -564,6 +700,37 @@ void FlutterHostWindow::SetChildContent(HWND content) {
   MoveWindow(content, client_rect.left, client_rect.top,
              client_rect.right - client_rect.left,
              client_rect.bottom - client_rect.top, true);
+}
+
+void FlutterHostWindow::UpdateModalState() {
+  auto const find_deepest_dialog = [this](FlutterHostWindow* window,
+                                          auto&& self) -> FlutterHostWindow* {
+    FlutterHostWindow* deepest_dialog = nullptr;
+    if (window->archetype_ == WindowArchetype::kDialog) {
+      deepest_dialog = window;
+    }
+    for (FlutterHostWindow* const owned : window->GetOwnedWindows()) {
+      if (FlutterHostWindow* const owned_deepest_dialog = self(owned, self)) {
+        deepest_dialog = owned_deepest_dialog;
+      }
+    }
+    return deepest_dialog;
+  };
+
+  HWND root_ancestor_handle = window_handle_;
+  while (HWND next = GetWindow(root_ancestor_handle, GW_OWNER)) {
+    root_ancestor_handle = next;
+  }
+  if (FlutterHostWindow* const root_ancestor =
+          GetThisFromHandle(root_ancestor_handle)) {
+    if (FlutterHostWindow* const deepest_dialog =
+            find_deepest_dialog(root_ancestor, find_deepest_dialog)) {
+      root_ancestor->EnableWindowAndDescendants(false);
+      deepest_dialog->EnableWindowAndDescendants(true);
+    } else {
+      root_ancestor->EnableWindowAndDescendants(true);
+    }
+  }
 }
 
 }  // namespace flutter
