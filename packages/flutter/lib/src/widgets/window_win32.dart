@@ -110,13 +110,13 @@ class RegularWindowControllerWin32 extends RegularWindowController
        super.empty() {
     owner.addMessageHandler(this);
     // Create the native window
-    final int hwnd = _createHwnd(contentSize);
+    final hwnd = _createHwnd(contentSize);
 
     // Create the corresponding view
     final Pointer<_WindowCreationRequest> request = ffi.calloc<_WindowCreationRequest>();
     request.ref
       ..contentSize.set(contentSize)
-      ..hwnd = hwnd;
+      ..hwnd = hwnd.address;
 
     final int viewId = _createWindow(PlatformDispatcher.instance.engineId!, request);
     ffi.calloc.free(request);
@@ -201,7 +201,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
     return Size(resultWidth, resultHeight);
   }
 
-  int _createHwnd(WindowSizing contentSize) {
+  Pointer<void> _createHwnd(WindowSizing contentSize) {
     final Size? size = getWindowSizeForClientSize(
       clientSize: contentSize.preferredSize,
       windowStyle: _WindowStyle.overlappedWindow.value,
@@ -214,8 +214,13 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
     final Pointer<ffi.Utf16> className = 'FLUTTER_HOST_WINDOW'.toNativeUtf16();
     _registerWindowClass(className, IDI_APPLICATION);
-    final Pointer<ffi.Utf16> windowName = ''.toNativeUtf16();
-    final int hwnd = createWindowExW(
+
+    final GetModuleHandleWDart GetModuleHandle = _kernel32
+      .lookupFunction<GetModuleHandleWNative, GetModuleHandleWDart>('GetModuleHandleW');
+
+    final hInstance = GetModuleHandle(nullptr);
+    final Pointer<ffi.Utf16> windowName = 'Hello Window'.toNativeUtf16();
+    final Pointer<Void> hwnd = createWindowExW(
       0, // dwExStyle
       className, // lpClassName
       windowName, // lpWindowName
@@ -224,11 +229,12 @@ class RegularWindowControllerWin32 extends RegularWindowController
       _CW_USEDEFAULT, // y
       size?.width.toInt() ?? _CW_USEDEFAULT, // nWidth
       size?.height.toInt() ?? _CW_USEDEFAULT, // nHeight
-      0, // hWndParent
+      nullptr, // hWndParent
       0, // hMenu
-      0, // hInstance
+      hInstance, // hInstance
       nullptr, // lpParam
     );
+    print(hwnd.address);
 
     ffi.calloc.free(className);
     ffi.calloc.free(windowName);
@@ -495,7 +501,7 @@ class RegularWindowControllerWin32 extends RegularWindowController
   static const int _SW_MAXIMIZE = 3;
   static const int _SW_MINIMIZE = 6;
 
-  static const int _CW_USEDEFAULT = -2147483648;
+  static const _CW_USEDEFAULT = 0x80000000;
   static int CS_HREDRAW = 0x0002;
   static int CS_VREDRAW = 0x0001;
 
@@ -665,7 +671,7 @@ typedef _AdjustWindowRectExForDpiDart =
 
 /// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
 typedef _CreateWindowExWNative =
-    IntPtr Function(
+    Pointer<Void> Function(
       Uint32 dwExStyle,
       Pointer<ffi.Utf16> lpClassName,
       Pointer<ffi.Utf16> lpWindowName,
@@ -674,15 +680,15 @@ typedef _CreateWindowExWNative =
       Int32 y,
       Int32 nWidth,
       Int32 nHeight,
-      IntPtr hWndParent,
+      Pointer<Void> hWndParent,
       IntPtr hMenu,
-      IntPtr hInstance,
+      Pointer<Void> hInstance,
       Pointer<Void> lpParam,
     );
 
 /// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
 typedef _CreateWindowExWDart =
-    int Function(
+    Pointer<Void> Function(
       int dwExStyle,
       Pointer<ffi.Utf16> lpClassName,
       Pointer<ffi.Utf16> lpWindowName,
@@ -691,9 +697,9 @@ typedef _CreateWindowExWDart =
       int y,
       int nWidth,
       int nHeight,
-      int hWndParent,
+      Pointer<Void> hWndParent,
       int hMenu,
-      int hInstance,
+      Pointer<Void> hInstance,
       Pointer<Void> lpParam,
     );
 
