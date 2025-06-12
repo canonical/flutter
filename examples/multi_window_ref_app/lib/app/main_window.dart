@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
+import 'package:multi_window_ref_app/app/dialog_window_edit_dialog.dart';
 import 'package:multi_window_ref_app/app/window_controller_render.dart';
 
 import 'regular_window_content.dart';
@@ -188,13 +189,18 @@ class _ActiveWindowsTable extends StatelessWidget {
 
   void _showWindowEditDialog(
       KeyedWindowController controller, BuildContext context) {
-    if (controller.controller.type != WindowArchetype.regular) {
-      return;
+    switch (controller.controller.type) {
+      case WindowArchetype.regular:
+        showRegularWindowEditDialog(
+            context: context,
+            controller: controller.controller as RegularWindowController);
+        break;
+      case WindowArchetype.dialog:
+        showDialogWindowEditDialog(
+            context: context,
+            controller: controller.controller as DialogWindowController);
+        break;
     }
-
-    showRegularWindowEditDialog(
-        context: context,
-        controller: controller.controller as RegularWindowController);
   }
 }
 
@@ -236,7 +242,7 @@ class _WindowCreatorCard extends StatelessWidget {
                     windowManagerModel.add(KeyedWindowController(
                         key: key,
                         controller: RegularWindowController(
-                          delegate: WindowControllerDelegate(
+                          delegate: _RegularWindowControllerDelegate(
                             onDestroyed: () => windowManagerModel.remove(key),
                           ),
                           title: "Regular",
@@ -245,6 +251,26 @@ class _WindowCreatorCard extends StatelessWidget {
                         )));
                   },
                   child: const Text('Regular'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    final UniqueKey key = UniqueKey();
+                    windowManagerModel.add(KeyedWindowController(
+                        key: key,
+                        controller: DialogWindowController(
+                          delegate: _DialogWindowControllerDelegate(
+                            onDestroyed: () => windowManagerModel.remove(key),
+                          ),
+                          title: "Dialog",
+                          parent: windowManagerModel.selected?.rootView,
+                          contentSize: WindowSizing(
+                              preferredSize: windowSettings.regularSize),
+                        )));
+                  },
+                  child: Text(windowManagerModel.selected != null
+                      ? 'Dialog of ID ${windowManagerModel.selected?.rootView.viewId}'
+                      : 'Dialog'),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -264,4 +290,28 @@ class _WindowCreatorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RegularWindowControllerDelegate extends RegularWindowControllerDelegate {
+  _RegularWindowControllerDelegate({required this.onDestroyed});
+
+  @override
+  void onWindowDestroyed() {
+    onDestroyed();
+    super.onWindowDestroyed();
+  }
+
+  final VoidCallback onDestroyed;
+}
+
+class _DialogWindowControllerDelegate extends DialogWindowControllerDelegate {
+  _DialogWindowControllerDelegate({required this.onDestroyed});
+
+  @override
+  void onWindowDestroyed() {
+    onDestroyed();
+    super.onWindowDestroyed();
+  }
+
+  final VoidCallback onDestroyed;
 }
