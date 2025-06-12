@@ -29,6 +29,18 @@ class WindowingOwnerMacOS extends WindowingOwner {
   }
 
   @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
+  }
+
+  @override
   bool hasTopLevelWindows() {
     return _activeControllers.isNotEmpty;
   }

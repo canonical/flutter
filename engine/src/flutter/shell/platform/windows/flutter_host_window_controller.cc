@@ -42,9 +42,21 @@ bool FlutterHostWindowController::HasTopLevelWindows() const {
 }
 
 FlutterViewId FlutterHostWindowController::CreateRegularWindow(
-    const WindowCreationRequest* request) {
-  auto window = std::make_unique<FlutterHostWindow>(
-      this, WindowArchetype::kRegular, request->content_size);
+    const RegularWindowCreationRequest* request) {
+  auto window = FlutterHostWindow::createRegular(this, request->content_size);
+  if (!window->GetWindowHandle()) {
+    FML_LOG(ERROR) << "Failed to create host window";
+    return 0;
+  }
+  FlutterViewId const view_id = window->view_controller_->view()->view_id();
+  active_windows_[window->GetWindowHandle()] = std::move(window);
+  return view_id;
+}
+
+FlutterViewId FlutterHostWindowController::CreateDialogWindow(
+    const DialogWindowCreationRequest* request) {
+  auto window = FlutterHostWindow::createDialog(this, request->content_size,
+                                                request->parent_window);
   if (!window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create host window";
     return 0;
@@ -129,10 +141,18 @@ bool FlutterWindowingHasTopLevelWindows(int64_t engine_id) {
 
 int64_t FlutterCreateRegularWindow(
     int64_t engine_id,
-    const flutter::WindowCreationRequest* request) {
+    const flutter::RegularWindowCreationRequest* request) {
   flutter::FlutterWindowsEngine* engine =
       flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
   return engine->get_host_window_controller()->CreateRegularWindow(request);
+}
+
+int64_t FlutterCreateDialogWindow(
+    int64_t engine_id,
+    const flutter::DialogWindowCreationRequest* request) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  return engine->get_host_window_controller()->CreateDialogWindow(request);
 }
 
 HWND FlutterGetWindowHandle(int64_t engine_id, FlutterViewId view_id) {
