@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:multi_window_ref_app/app/window_controller_render.dart';
-import 'package:multi_window_ref_app/app/window_manager_model.dart';
-import 'package:multi_window_ref_app/app/window_settings.dart';
+import 'child_window_renderer.dart';
+import 'window_manager_model.dart';
+import 'window_settings.dart';
 import 'dart:math';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -133,28 +133,10 @@ class _RegularWindowContentState extends State<RegularWindowContent>
     );
 
     return ViewAnchor(
-        view: ListenableBuilder(
-            listenable: widget.windowManagerModel,
-            builder: (BuildContext context, Widget? _) {
-              final List<Widget> childViews = <Widget>[];
-              for (final KeyedWindowController controller
-                  in widget.windowManagerModel.windows) {
-                if (controller.parent == widget.window) {
-                  childViews.add(WindowControllerRender(
-                    controller: controller.controller,
-                    key: controller.key,
-                    windowSettings: widget.windowSettings,
-                    windowManagerModel: widget.windowManagerModel,
-                    onDestroyed: () =>
-                        widget.windowManagerModel.remove(controller.key),
-                    onError: () =>
-                        widget.windowManagerModel.remove(controller.key),
-                  ));
-                }
-              }
-
-              return ViewCollection(views: childViews);
-            }),
+        view: ChildWindowRenderer(
+            windowManagerModel: widget.windowManagerModel,
+            windowSettings: widget.windowSettings,
+            controller: widget.window),
         child: child);
   }
 }
