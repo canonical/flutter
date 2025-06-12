@@ -35,6 +35,8 @@ class WindowControllerRender extends StatelessWidget {
               windowSettings: windowSettings,
               windowManagerModel: windowManagerModel),
         );
+      case WindowArchetype.dialog:
+        return Container();
     }
   }
 }
