@@ -86,11 +86,11 @@ class WindowingOwnerWin32 extends WindowingOwner {
     return _hasTopLevelWindows(PlatformDispatcher.instance.engineId!);
   }
 
-  @Native<Bool Function(Int64)>(symbol: 'FlutterWindowingHasTopLevelWindows')
+  @Native<Bool Function(Int64)>(symbol: 'InternalFlutterWindows_WindowManager_HasTopLevelWindows')
   external static bool _hasTopLevelWindows(int engineId);
 
   @Native<Void Function(Int64, Pointer<_WindowingInitRequest>)>(
-    symbol: 'FlutterWindowingInitialize',
+    symbol: 'InternalFlutterWindows_WindowManager_Initialize',
   )
   external static void _initializeWindowing(int engineId, Pointer<_WindowingInitRequest> request);
 }
@@ -246,23 +246,23 @@ class RegularWindowControllerWin32 extends RegularWindowController
   final WindowingOwnerWin32 _owner;
 
   @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
-    symbol: 'FlutterCreateRegularWindow',
+    symbol: 'InternalFlutterWindows_WindowManager_CreateRegularWindow',
   )
   external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
 
-  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
 
   @Native<Void Function(Pointer<Void>)>(symbol: 'DestroyWindow')
   external static void _destroyWindow(Pointer<Void> windowHandle);
 
-  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'InternalFlutterWindows_WindowManager_GetWindowContentSize')
   external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
 
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf16>)>(symbol: 'SetWindowTextW')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf16> title);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'InternalFlutterWindows_WindowManager_SetWindowContentSize')
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 
   @Native<Void Function(Pointer<Void>, Int32)>(symbol: 'ShowWindow')
