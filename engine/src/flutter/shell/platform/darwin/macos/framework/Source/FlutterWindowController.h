@@ -37,6 +37,7 @@ struct FlutterWindowSizing {
 
 struct FlutterWindowCreationRequest {
   FlutterWindowSizing contentSize;
+  int64_t parent_id;
   void (*on_close)();
   void (*on_size_change)();
 };
@@ -52,6 +53,9 @@ extern "C" {
 
 FLUTTER_DARWIN_EXPORT
 int64_t FlutterCreateRegularWindow(int64_t engine_id, const FlutterWindowCreationRequest* request);
+
+FLUTTER_DARWIN_EXPORT
+int64_t FlutterCreateDialogWindow(int64_t engine_id, const FlutterWindowCreationRequest* request);
 
 FLUTTER_DARWIN_EXPORT
 void FlutterDestroyWindow(int64_t engine_id, void* window);

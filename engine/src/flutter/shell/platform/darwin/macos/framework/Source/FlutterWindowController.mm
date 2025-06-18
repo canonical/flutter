@@ -122,6 +122,50 @@
   return self;
 }
 
+- (FlutterViewIdentifier)createDialogWindow:(const FlutterWindowCreationRequest*)request {
+  FlutterViewController* c = [[FlutterViewController alloc] initWithEngine:_engine
+                                                                   nibName:nil
+                                                                    bundle:nil];
+
+  NSWindow* window = [[NSWindow alloc] init];
+  // If this is not set there will be double free on window close when
+  // using ARC.
+  [window setReleasedWhenClosed:NO];
+
+  window.contentViewController = c;
+  window.styleMask = NSWindowStyleMaskResizable | NSWindowStyleMaskTitled |
+                     NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+  [window flutterSetContentSize:request->contentSize];
+
+  FlutterWindowOwner* w = [[FlutterWindowOwner alloc] initWithWindow:window
+                                               flutterViewController:c
+                                                     creationRequest:*request];
+  window.delegate = w;
+  [_windows addObject:w];
+
+  NSWindow* parent = nil;
+
+  if (request->parent_id != 0) {
+    for (FlutterWindowOwner* owner in _windows) {
+      if (owner.flutterViewController.viewIdentifier == request->parent_id) {
+        parent = owner.window;
+        break;
+      }
+    }
+  }
+
+  if (parent != nil) {
+    [parent beginCriticalSheet:window
+             completionHandler:^(NSModalResponse response){
+             }];
+  } else {
+    [window setIsVisible:YES];
+    [window makeKeyAndOrderFront:nil];
+  }
+
+  return c.viewIdentifier;
+}
+
 - (FlutterViewIdentifier)createRegularWindow:(const FlutterWindowCreationRequest*)request {
   FlutterViewController* c = [[FlutterViewController alloc] initWithEngine:_engine
                                                                    nibName:nil
@@ -157,6 +201,14 @@
     }
   }
   if (owner != nil) {
+    for (NSWindow* win in owner.window.sheets) {
+      [win.delegate windowShouldClose:win];
+    }
+    if (owner.window.sheets.count > 0) {
+      // If there are still sheets open, we cannot close the window yet.
+      return;
+    }
+
     [_windows removeObject:owner];
     // Make sure to unregister the controller from the engine and remove the FlutterView
     // before destroying the window and Flutter NSView.
@@ -182,6 +234,12 @@ int64_t FlutterCreateRegularWindow(int64_t engine_id, const FlutterWindowCreatio
   FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
   [engine enableMultiView];
   return [engine.windowController createRegularWindow:request];
+}
+
+int64_t FlutterCreateDialogWindow(int64_t engine_id, const FlutterWindowCreationRequest* request) {
+  FlutterEngine* engine = [FlutterEngine engineForIdentifier:engine_id];
+  [engine enableMultiView];
+  return [engine.windowController createDialogWindow:request];
 }
 
 void FlutterDestroyWindow(int64_t engine_id, void* window) {
