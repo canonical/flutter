@@ -100,12 +100,15 @@ class FlutterHostWindow {
   // Inserts |content| into the window tree.
   void SetChildContent(HWND content);
 
-  // Enforces modal behavior by enabling the deepest dialog in the subtree
-  // rooted at the top-level window, along with its descendants, while
-  // disabling all other windows in the subtree. This ensures that the dialog
-  // and its child windows remain active and interactive. If no dialog is found,
-  // enables all windows in the subtree.
+  // Enforces modal behavior. This favors enabling most recently created
+  // modal window higest up in the window hierarchy.
   void UpdateModalState();
+
+  // Disables the window and all its descendants.
+  void DisableRecursively();
+
+  // Processes modal state update for single layer of window hierarchy.
+  void UpdateModalStateLayer();
 
   // Controller for this window.
   FlutterHostWindowController* const window_controller_ = nullptr;

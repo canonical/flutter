@@ -463,6 +463,16 @@ std::unique_ptr<FlutterHostWindow> FlutterHostWindow::createDialog(
 }
 
 FlutterHostWindow* FlutterHostWindow::GetThisFromHandle(HWND hwnd) {
+  wchar_t class_name[256];
+  if (!GetClassName(hwnd, class_name, sizeof(class_name) / sizeof(wchar_t))) {
+    FML_LOG(ERROR) << "Failed to get class name for window handle " << hwnd
+                   << ": " << GetLastErrorAsString();
+    return nullptr;
+  }
+  // Ignore window handles that do not match the expected class name.
+  if (wcscmp(class_name, kWindowClassName) != 0) {
+    return nullptr;
+  }
   return reinterpret_cast<FlutterHostWindow*>(
       GetWindowLongPtr(hwnd, GWLP_USERDATA));
 }
@@ -702,35 +712,51 @@ void FlutterHostWindow::SetChildContent(HWND content) {
              client_rect.bottom - client_rect.top, true);
 }
 
-void FlutterHostWindow::UpdateModalState() {
-  auto const find_deepest_dialog = [this](FlutterHostWindow* window,
-                                          auto&& self) -> FlutterHostWindow* {
-    FlutterHostWindow* deepest_dialog = nullptr;
-    if (window->archetype_ == WindowArchetype::kDialog) {
-      deepest_dialog = window;
-    }
-    for (FlutterHostWindow* const owned : window->GetOwnedWindows()) {
-      if (FlutterHostWindow* const owned_deepest_dialog = self(owned, self)) {
-        deepest_dialog = owned_deepest_dialog;
+void FlutterHostWindow::DisableRecursively() {
+  // Disable the window itself.
+  EnableWindow(window_handle_, false);
+
+  for (FlutterHostWindow* const owned : GetOwnedWindows()) {
+    owned->DisableRecursively();
+  }
+}
+
+void FlutterHostWindow::UpdateModalStateLayer() {
+  auto children = GetOwnedWindows();
+  if (children.empty()) {
+    // Leaf window in the active path, enable it.
+    EnableWindow(window_handle_, true);
+  } else {
+    // Non-leaf window in the active path, disable it and process children.
+    EnableWindow(window_handle_, false);
+
+    // On same level of window hierarchy the most recently created window
+    // will remain enabled.
+    auto latest_child =
+        *std::max_element(children.begin(), children.end(),
+                          [](FlutterHostWindow* a, FlutterHostWindow* b) {
+                            return a->view_controller_->view()->view_id() <
+                                   b->view_controller_->view()->view_id();
+                          });
+
+    for (FlutterHostWindow* const child : children) {
+      if (child == latest_child) {
+        child->UpdateModalStateLayer();
+      } else {
+        child->DisableRecursively();
       }
     }
-    return deepest_dialog;
-  };
+  }
+}
 
-  HWND root_ancestor_handle = window_handle_;
-  while (HWND next = GetWindow(root_ancestor_handle, GW_OWNER)) {
-    root_ancestor_handle = next;
+void FlutterHostWindow::UpdateModalState() {
+  // Find the root window of the window hierarchy and process
+  // modal state update for the entire branch.
+  FlutterHostWindow* root = this;
+  while (FlutterHostWindow* const owner = root->GetOwnerWindow()) {
+    root = owner;
   }
-  if (FlutterHostWindow* const root_ancestor =
-          GetThisFromHandle(root_ancestor_handle)) {
-    if (FlutterHostWindow* const deepest_dialog =
-            find_deepest_dialog(root_ancestor, find_deepest_dialog)) {
-      root_ancestor->EnableWindowAndDescendants(false);
-      deepest_dialog->EnableWindowAndDescendants(true);
-    } else {
-      root_ancestor->EnableWindowAndDescendants(true);
-    }
-  }
+  root->UpdateModalStateLayer();
 }
 
 }  // namespace flutter
