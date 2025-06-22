@@ -222,10 +222,22 @@ class _HwndWrapper {
     return true;
   }
 
+  /// Marks the HWND as destroyed. This is used when destruction is driven by the
+  /// native side, for example when the owner is destroyed.
+  /// Returns true if the window was not destroyed before, false otherwise.
+  bool markDestroyed() {
+    if (_destroyed) {
+      return false;
+    }
+    _destroyed = true;
+    return true;
+  }
+
   final HWND hwnd;
   bool _destroyed = false;
   static const int _WM_SIZE = 0x0005;
   static const int _WM_CLOSE = 0x0010;
+  static const int _WM_DESTROY = 0x0002;
 
   static const int SW_RESTORE = 9;
   static const int SW_MAXIMIZE = 3;
@@ -335,7 +347,9 @@ class RegularWindowControllerWin32 extends RegularWindowController
       return null;
     }
 
-    if (message == _HwndWrapper._WM_CLOSE) {
+    if (message == _HwndWrapper._WM_DESTROY && _hwnd.markDestroyed()) {
+      _delegate.onWindowDestroyed();
+    } else if (message == _HwndWrapper._WM_CLOSE) {
       _delegate.onWindowCloseRequested(this);
       return 0;
     } else if (message == _HwndWrapper._WM_SIZE) {
@@ -440,7 +454,6 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
     if (_hwnd.destroy()) {
       _delegate.onWindowDestroyed();
       _owner.removeMessageHandler(this);
-      return;
     }
   }
 
@@ -456,7 +469,10 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
       return null;
     }
 
-    if (message == _HwndWrapper._WM_CLOSE) {
+    // Window will be destroyed from native side when owner is destroyed.
+    if (message == _HwndWrapper._WM_DESTROY && _hwnd.markDestroyed()) {
+      _delegate.onWindowDestroyed();
+    } else if (message == _HwndWrapper._WM_CLOSE) {
       _delegate.onWindowCloseRequested(this);
       return 0;
     } else if (message == _HwndWrapper._WM_SIZE) {
