@@ -32,6 +32,9 @@ class DialogWindowContent extends StatelessWidget {
                 ListenableBuilder(
                   listenable: controller,
                   builder: (BuildContext context, Widget? _) {
+                    if (controller.destroyed) {
+                      return SizedBox.shrink();
+                    }
                     return Text(
                       'View ID: ${controller.rootView.viewId}\n'
                       'Parent View ID: ${controller.parent?.viewId}\n'
