@@ -96,6 +96,9 @@ class RegularWindowControllerMacOS extends RegularWindowController {
     return WindowingOwnerMacOS.getWindowHandle(rootView);
   }
 
+  @override
+  bool get destroyed => _destroyed;
+
   bool _destroyed = false;
 
   @override
@@ -237,6 +240,9 @@ class DialogWindowControllerMacOS extends DialogWindowController {
     _ensureNotDestroyed();
     return WindowingOwnerMacOS.getWindowHandle(rootView);
   }
+
+  @override
+  bool get destroyed => _destroyed;
 
   bool _destroyed = false;
 

@@ -70,6 +70,9 @@ abstract class WindowController with ChangeNotifier {
   /// Destroys this window. It is permissible to call this method multiple times.
   void destroy();
 
+  /// Whether this window has been destroyed.
+  bool get destroyed;
+
   /// The root view associated to this window, which is unique to each window.
   FlutterView get rootView => _view;
   late final FlutterView _view;

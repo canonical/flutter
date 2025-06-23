@@ -316,6 +316,9 @@ class RegularWindowControllerWin32 extends RegularWindowController
   }
 
   @override
+  bool get destroyed => _hwnd._destroyed;
+
+  @override
   void destroy() {
     if (_hwnd.destroy()) {
       _delegate.onWindowDestroyed();
@@ -434,6 +437,9 @@ class DialogWindowControllerWin32 extends DialogWindowController implements Wind
   Pointer<Void> getWindowHandle() {
     return _hwnd.hwnd;
   }
+
+  @override
+  bool get destroyed => _hwnd._destroyed;
 
   @override
   void destroy() {
