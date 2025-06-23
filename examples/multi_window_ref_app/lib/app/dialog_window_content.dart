@@ -20,7 +20,8 @@ class DialogWindowContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child = FocusScope(
+    final child = MaterialApp(
+        home: FocusScope(
       autofocus: true,
       child: Scaffold(
         appBar: AppBar(title: Text('${controller.type}')),
@@ -53,7 +54,7 @@ class DialogWindowContent extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
 
     return ViewAnchor(
         view: ChildWindowRenderer(

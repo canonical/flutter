@@ -39,23 +39,14 @@ class WindowControllerRender extends StatelessWidget {
         );
       case WindowArchetype.dialog:
         final dialogController = controller as DialogWindowController;
-        final child = dialogController.parent != null
-            ? DialogWindowContent(
-                controller: dialogController,
-                windowSettings: windowSettings,
-                windowManagerModel: windowManagerModel,
-              )
-            : MaterialApp(
-                home: DialogWindowContent(
-                  controller: dialogController,
-                  windowSettings: windowSettings,
-                  windowManagerModel: windowManagerModel,
-                ),
-              );
         return DialogWindow(
           key: key,
           controller: dialogController,
-          child: child,
+          child: DialogWindowContent(
+            controller: dialogController,
+            windowSettings: windowSettings,
+            windowManagerModel: windowManagerModel,
+          ),
         );
       case WindowArchetype.tooltip:
         return TooltipWindow(

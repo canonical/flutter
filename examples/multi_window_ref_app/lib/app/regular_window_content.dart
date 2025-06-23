@@ -73,7 +73,8 @@ class _RegularWindowContentState extends State<RegularWindowContent>
   Widget build(BuildContext context) {
     final dpr = MediaQuery.of(context).devicePixelRatio;
 
-    final child = Scaffold(
+    final child = MaterialApp(
+        home: Scaffold(
       appBar: AppBar(title: Text('${widget.window.type}')),
       body: Center(
           child: Row(
@@ -130,7 +131,7 @@ class _RegularWindowContentState extends State<RegularWindowContent>
           ),
         ],
       )),
-    );
+    ));
 
     return ViewAnchor(
         view: ChildWindowRenderer(
