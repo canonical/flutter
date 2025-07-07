@@ -62,9 +62,6 @@ FLUTTER_DARWIN_EXPORT
 void* InternalFlutter_Window_GetHandle(int64_t engine_id, FlutterViewIdentifier view_id);
 
 FLUTTER_DARWIN_EXPORT
-void* InternalFlutter_Window_GetHandle(int64_t engine_id, FlutterViewIdentifier view_id);
-
-FLUTTER_DARWIN_EXPORT
 FlutterWindowSize InternalFlutter_Window_GetContentSize(void* window);
 
 FLUTTER_DARWIN_EXPORT

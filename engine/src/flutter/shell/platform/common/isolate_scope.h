@@ -40,6 +40,8 @@ class IsolateScope {
   Dart_Isolate previous_;
   IsolateScope() = delete;
   IsolateScope(IsolateScope const&) = delete;
+
+  FML_DISALLOW_COPY_AND_ASSIGN(IsolateScope);
 };
 
 }  // namespace flutter

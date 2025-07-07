@@ -452,7 +452,7 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
   // factories. Lifecycle is tied to the engine.
   FlutterPlatformViewController* _platformViewController;
 
-  // Used to manage Flutter windows.
+  // Used to manage Flutter windows created by the Dart application
   FlutterWindowController* _windowController;
 
   // A message channel for sending user settings to the flutter engine.
@@ -490,7 +490,7 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
   // Whether the engine is running in multi-window mode. This affects behavior
   // when adding view controller (it will fail when calling multiple times without
   // _multiviewEnabled).
-  BOOL _multiviewEnabled;
+  BOOL _multiViewEnabled;
 
   // View identifier for the next view to be created.
   // Only used when multiview is enabled.
@@ -542,7 +542,7 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
   [_isResponseValid addObject:@YES];
   _keyboardManager = [[FlutterKeyboardManager alloc] initWithDelegate:self];
   _textInputPlugin = [[FlutterTextInputPlugin alloc] initWithDelegate:self];
-  _multiviewEnabled = NO;
+  _multiViewEnabled = NO;
   _nextViewIdentifier = 1;
 
   _embedderAPI.struct_size = sizeof(FlutterEngineProcTable);
@@ -673,6 +673,11 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
   if (_project.enableImpeller ||
       std::find(switches.begin(), switches.end(), "--enable-impeller=true") != switches.end()) {
     switches.push_back("--enable-impeller=true");
+  }
+
+  if (_project.enableFlutterGPU ||
+      std::find(switches.begin(), switches.end(), "--enable-flutter-gpu=true") != switches.end()) {
+    switches.push_back("--enable-flutter-gpu=true");
   }
 
   std::transform(switches.begin(), switches.end(), std::back_inserter(argv),
@@ -828,7 +833,7 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
                  forIdentifier:(FlutterViewIdentifier)viewIdentifier {
   _macOSCompositor->AddView(viewIdentifier);
   NSAssert(controller != nil, @"The controller must not be nil.");
-  if (!_multiviewEnabled) {
+  if (!_multiViewEnabled) {
     NSAssert(controller.engine == nil,
              @"The FlutterViewController is unexpectedly attached to "
              @"engine %@ before initialization.",
@@ -1028,7 +1033,7 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
 #pragma mark - Framework-internal methods
 
 - (void)addViewController:(FlutterViewController*)controller {
-  if (!_multiviewEnabled) {
+  if (!_multiViewEnabled) {
     // When multiview is disabled, the engine will only assign views to the implicit view ID.
     // The implicit view ID can be reused if and only if the implicit view is unassigned.
     NSAssert(self.viewController == nil,
@@ -1043,10 +1048,10 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
 }
 
 - (void)enableMultiView {
-  if (!_multiviewEnabled) {
+  if (!_multiViewEnabled) {
     NSAssert(self.viewController == nil,
              @"Multiview can only be enabled before adding any view controllers.");
-    _multiviewEnabled = YES;
+    _multiViewEnabled = YES;
   }
 }
 
