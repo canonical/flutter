@@ -42,7 +42,7 @@ class WindowingOwnerMacOS extends WindowingOwner {
     return _getWindowHandle(PlatformDispatcher.instance.engineId!, view.viewId);
   }
 
-  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'FlutterGetWindowHandle')
+  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'InternalFlutter_Window_GetHandle')
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
 }
 
@@ -190,44 +190,48 @@ class RegularWindowControllerMacOS extends RegularWindowController {
   }
 
   @Native<Int64 Function(Int64, Pointer<_WindowCreationRequest>)>(
-    symbol: 'FlutterCreateRegularWindow',
+    symbol: 'InternalFlutter_WindowController_CreateRegularWindow',
   )
   external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
 
-  @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'FlutterDestroyWindow')
+  @Native<Void Function(Int64, Pointer<Void>)>(symbol: 'InternalFlutter_Window_Destroy')
   external static void _destroyWindow(int engineId, Pointer<Void> handle);
 
-  @Native<_Size Function(Pointer<Void>)>(symbol: 'FlutterGetWindowContentSize')
+  @Native<_Size Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_GetContentSize')
   external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'FlutterSetWindowContentSize')
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(
+    symbol: 'InternalFlutter_Window_SetContentSize',
+  )
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 
-  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(symbol: 'FlutterSetWindowTitle')
+  @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf8>)>(
+    symbol: 'InternalFlutter_Window_SetTitle',
+  )
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf8> title);
 
-  @Native<Void Function(Pointer<Void>, Bool)>(symbol: 'FlutterWindowSetMaximized')
+  @Native<Void Function(Pointer<Void>, Bool)>(symbol: 'InternalFlutter_Window_SetMaximized')
   external static void _setMaximized(Pointer<Void> windowHandle, bool maximized);
 
-  @Native<Bool Function(Pointer<Void>)>(symbol: 'FlutterWindowIsMaximized')
+  @Native<Bool Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_IsMaximized')
   external static bool _isMaximized(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>)>(symbol: 'FlutterWindowMinimize')
+  @Native<Void Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_Minimize')
   external static void _minimize(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>)>(symbol: 'FlutterWindowUnminimize')
+  @Native<Void Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_Unminimize')
   external static void _unminimize(Pointer<Void> windowHandle);
 
-  @Native<Bool Function(Pointer<Void>)>(symbol: 'FlutterWindowIsMinimized')
+  @Native<Bool Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_IsMinimized')
   external static bool _isMinimized(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>, Bool)>(symbol: 'FlutterWindowSetFullScreen')
+  @Native<Void Function(Pointer<Void>, Bool)>(symbol: 'InternalFlutter_Window_SetFullScreen')
   external static void _setFullscreen(Pointer<Void> windowHandle, bool fullscreen);
 
-  @Native<Bool Function(Pointer<Void>)>(symbol: 'FlutterWindowIsFullScreen')
+  @Native<Bool Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_IsFullScreen')
   external static bool _isFullscreen(Pointer<Void> windowHandle);
 
-  @Native<Void Function(Pointer<Void>)>(symbol: 'FlutterWindowActivate')
+  @Native<Void Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_Activate')
   external static void _activate(Pointer<Void> windowHandle);
 }
 
