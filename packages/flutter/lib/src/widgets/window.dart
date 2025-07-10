@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui' show AppExitType, FlutterView, Display;
+import 'dart:ui' show AppExitType, Display, FlutterView;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -12,11 +12,18 @@ import '_window_ffi.dart' if (dart.library.js_util) '_window_web.dart' as window
 import 'binding.dart';
 import 'framework.dart';
 import 'view.dart';
+import 'window_positioner.dart';
 
 /// Defines the possible archetypes for a window.
 enum WindowArchetype {
   /// Defines a traditional window
   regular,
+
+  /// Defines a dialog window
+  dialog,
+
+  /// Defines a tooltip window
+  tooltip,
 }
 
 /// Defines sizing request for a window.
@@ -67,9 +74,51 @@ abstract class WindowController with ChangeNotifier {
   /// Destroys this window. It is permissible to call this method multiple times.
   void destroy();
 
+  /// Whether this window has been destroyed.
+  bool get destroyed;
+
   /// The root view associated to this window, which is unique to each window.
   FlutterView get rootView => _view;
   late final FlutterView _view;
+}
+
+abstract class TooltipWindowController extends WindowController {
+  factory TooltipWindowController({
+    required FlutterView parent,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+    BoxConstraints? contentSizeConstraints,
+    TooltipWindowControllerDelegate? delegate,
+  }) {
+    WidgetsFlutterBinding.ensureInitialized();
+    final WindowingOwner owner = WidgetsBinding.instance.windowingOwner;
+    final TooltipWindowController controller = owner.createTooltipWindowController(
+      parent: parent,
+      contentSizeConstraints: contentSizeConstraints ?? const BoxConstraints(),
+      delegate: delegate ?? TooltipWindowControllerDelegate(),
+      anchorRect: anchorRect,
+      positioner: positioner,
+    );
+    return controller;
+  }
+
+  @protected
+  /// Creates an empty [TooltipWindowController].
+  TooltipWindowController.empty();
+
+  @override
+  WindowArchetype get type => WindowArchetype.tooltip;
+}
+
+mixin class TooltipWindowControllerDelegate {
+  /// Invoked when user attempts to close the window. Default implementation
+  /// destroys the window. Subclass can override the behavior to delay
+  /// or prevent the window from closing.
+  void onWindowCloseRequested(TooltipWindowController controller) {
+    controller.destroy();
+  }
+
+  void onWindowDestroyed() {}
 }
 
 /// Delegate class for regular window controller.
@@ -78,6 +127,26 @@ mixin class RegularWindowControllerDelegate {
   /// destroys the window. Subclass can override the behavior to delay
   /// or prevent the window from closing.
   void onWindowCloseRequested(RegularWindowController controller) {
+    controller.destroy();
+  }
+
+  /// Invoked when the window is closed. Default implementation exits the
+  /// application if this was the last top-level window.
+  void onWindowDestroyed() {
+    final WindowingOwner owner = WidgetsBinding.instance.windowingOwner;
+    if (!owner.hasTopLevelWindows()) {
+      // No more top-level windows, exit the application.
+      ServicesBinding.instance.exitApplication(AppExitType.cancelable);
+    }
+  }
+}
+
+/// Delegate class for dialog window controller.
+mixin class DialogWindowControllerDelegate {
+  /// Invoked when user attempts to close the window. Default implementation
+  /// destroys the window. Subclass can override the behavior to delay
+  /// or prevent the window from closing.
+  void onWindowCloseRequested(DialogWindowController controller) {
     controller.destroy();
   }
 
@@ -195,6 +264,83 @@ abstract class RegularWindowController extends WindowController {
   bool isFullscreen();
 }
 
+/// A controller for a dialog window.
+///
+/// Two types of dialogs are supported:
+///  * Modal dialogs: created with a non-null [parent]. These dialogs are modal
+///    to [parent], do not have a system menu and are not selectable from the
+///    window switcher.
+///  * Modeless dialogs: created with a null [parent]. These dialogs can be
+///    minimized (but not maximized), and have a disabled close button.
+///
+/// This class does not interact with the widget tree. Instead, it is typically
+/// provided to the [DialogWindow] widget, which renders the content inside the
+/// dialog window.
+///
+/// When provided to a [DialogWindow] widget, widgets inside of the [child]
+/// parameter will have access to the [DialogWindowController] via the
+/// [WindowControllerContext] widget.
+abstract class DialogWindowController extends WindowController {
+  /// Creates a [DialogWindowController] with the provided properties.
+  /// Upon construction, the dialog is created for the platform.
+  ///
+  /// If [parent] is non-null, the dialog is created as modal.
+  ///
+  /// [contentSize] Initial content size of the window.
+  /// [parent] root view of the parent window.
+  /// [title] the title of the window.
+  /// [state] the initial state of the window.
+  /// [delegate] optional delegate for the controller controller.
+  factory DialogWindowController({
+    required WindowSizing contentSize,
+    FlutterView? parent,
+    String? title,
+    DialogWindowControllerDelegate? delegate,
+  }) {
+    WidgetsFlutterBinding.ensureInitialized();
+    final WindowingOwner owner = WidgetsBinding.instance.windowingOwner;
+    final DialogWindowController controller = owner.createDialogWindowController(
+      contentSize: contentSize,
+      delegate: delegate ?? DialogWindowControllerDelegate(),
+      parent: parent,
+    );
+    if (title != null) {
+      controller.setTitle(title);
+    }
+    return controller;
+  }
+
+  @protected
+  /// Creates an empty [DialogWindowController].
+  DialogWindowController.empty();
+
+  @override
+  WindowArchetype get type => WindowArchetype.dialog;
+
+  /// The parent view.
+  FlutterView? get parent;
+
+  /// Request change for the window content size.
+  ///
+  /// [contentSize] describes the new requested window size. The properties
+  /// of this object are applied independently of each other. For example,
+  /// setting [WindowSizing.size] does not affect the [WindowSizing.constraints]
+  /// set previously.
+  ///
+  /// System compositor is free to ignore the request.
+  void updateContentSize(WindowSizing contentSize);
+
+  /// Request change for the window title.
+  /// [title] new title of the window.
+  void setTitle(String title);
+
+  /// Requests window to be minimized.
+  void setMinimized(bool minimized);
+
+  /// Returns whether window is currently minimized.
+  bool isMinimized();
+}
+
 /// [WindowingOwner] is responsible for creating and managing window controllers.
 ///
 /// Custom subclass can be provided by subclassing [WidgetsBinding] and
@@ -204,6 +350,22 @@ abstract class WindowingOwner {
   RegularWindowController createRegularWindowController({
     required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
+  });
+
+  /// Creates a [DialogWindowController] with the provided properties.
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  });
+
+  /// Creates a [TooltipWindowController] with the provided properties.
+  TooltipWindowController createTooltipWindowController({
+    required BoxConstraints contentSizeConstraints,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+    required TooltipWindowControllerDelegate delegate,
+    required FlutterView parent,
   });
 
   /// Returns whether application has any top level windows created by this
@@ -222,6 +384,32 @@ class _FallbackWindowingOwner extends WindowingOwner {
   RegularWindowController createRegularWindowController({
     required WindowSizing contentSize,
     required RegularWindowControllerDelegate delegate,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
+  }
+
+  @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
+  }
+
+  @override
+  TooltipWindowController createTooltipWindowController({
+    required BoxConstraints contentSizeConstraints,
+    required TooltipWindowControllerDelegate delegate,
+    required FlutterView parent,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
   }) {
     throw UnsupportedError(
       'Current platform does not support windowing.\n'
@@ -280,6 +468,98 @@ class RegularWindow extends StatefulWidget {
 }
 
 class _RegularWindowState extends State<RegularWindow> {
+  @override
+  void dispose() {
+    super.dispose();
+    widget.controller.destroy();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return View(
+      view: widget.controller.rootView,
+      child: WindowControllerContext(controller: widget.controller, child: widget.child),
+    );
+  }
+}
+
+/// The [DialogWindow] widget provides a way to render a dialog window in the
+/// widget tree. The provided [controller] creates the native window that backs
+/// the widget. The [child] widget is rendered into this newly created window.
+///
+/// While the window is being created, the [DialogWindow] widget will render
+/// an empty [ViewCollection] widget. Once the window is created, the [child]
+/// widget will be rendered into the window inside of a [View].
+///
+/// When a [DialogWindow] widget is removed from the tree, the window that was created
+/// by the [controller] is automatically destroyed if it has not yet been destroyed.
+///
+/// Widgets in the same tree as the [child] widget will have access to the
+/// [DialogWindowController] via the [WindowControllerContext] widget.
+class DialogWindow extends StatefulWidget {
+  /// Creates a dialog window widget.
+  /// [controller] the controller for this window
+  /// [child] the content to render into this window
+  /// [key] the key for this widget
+  const DialogWindow({super.key, required this.controller, required this.child});
+
+  /// Controller for this widget.
+  final DialogWindowController controller;
+
+  /// The content rendered into this window.
+  final Widget child;
+
+  @override
+  State<DialogWindow> createState() => _DialogWindowState();
+}
+
+class _DialogWindowState extends State<DialogWindow> {
+  @override
+  void dispose() {
+    super.dispose();
+    widget.controller.destroy();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return View(
+      view: widget.controller.rootView,
+      child: WindowControllerContext(controller: widget.controller, child: widget.child),
+    );
+  }
+}
+
+/// The [TooltipWindow] widget provides a way to render a tooltip window in the
+/// widget tree. The provided [controller] creates the native window that backs
+/// the widget. The [child] widget is rendered into this newly created window.
+///
+/// While the window is being created, the [TooltipWindow] widget will render
+/// an empty [ViewCollection] widget. Once the window is created, the [child]
+/// widget will be rendered into the window inside of a [View].
+///
+/// When a [TooltipWindow] widget is removed from the tree, the window that was created
+/// by the [controller] is automatically destroyed if it has not yet been destroyed.
+///
+/// Widgets in the same tree as the [child] widget will have access to the
+/// [TooltipWindowController] via the [WindowControllerContext] widget.
+class TooltipWindow extends StatefulWidget {
+  /// Creates a dialog window widget.
+  /// [controller] the controller for this window
+  /// [child] the content to render into this window
+  /// [key] the key for this widget
+  const TooltipWindow({super.key, required this.controller, required this.child});
+
+  /// Controller for this widget.
+  final TooltipWindowController controller;
+
+  /// The content rendered into this window.
+  final Widget child;
+
+  @override
+  State<TooltipWindow> createState() => _TooltipWindowState();
+}
+
+class _TooltipWindowState extends State<TooltipWindow> {
   @override
   void dispose() {
     super.dispose();

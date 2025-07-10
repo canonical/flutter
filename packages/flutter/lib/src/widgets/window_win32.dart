@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart';
 
 import 'binding.dart';
 import 'window.dart';
+import 'window_positioner.dart';
 
 /// Handler for Win32 messages.
 abstract class WindowsMessageHandler {
@@ -45,6 +46,32 @@ class WindowingOwnerWin32 extends WindowingOwner {
     required RegularWindowControllerDelegate delegate,
   }) {
     return RegularWindowControllerWin32(owner: this, delegate: delegate, contentSize: contentSize);
+  }
+
+  @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
+  }
+
+  @override
+  TooltipWindowController createTooltipWindowController({
+    required BoxConstraints contentSizeConstraints,
+    required TooltipWindowControllerDelegate delegate,
+    required FlutterView parent,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
   }
 
   /// Register new message handler. The handler will be called for unhandled
@@ -250,19 +277,25 @@ class RegularWindowControllerWin32 extends RegularWindowController
   )
   external static int _createWindow(int engineId, Pointer<_WindowCreationRequest> request);
 
-  @Native<Pointer<Void> Function(Int64, Int64)>(symbol: 'InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle')
+  @Native<Pointer<Void> Function(Int64, Int64)>(
+    symbol: 'InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle',
+  )
   external static Pointer<Void> _getWindowHandle(int engineId, int viewId);
 
   @Native<Void Function(Pointer<Void>)>(symbol: 'DestroyWindow')
   external static void _destroyWindow(Pointer<Void> windowHandle);
 
-  @Native<_Size Function(Pointer<Void>)>(symbol: 'InternalFlutterWindows_WindowManager_GetWindowContentSize')
+  @Native<_Size Function(Pointer<Void>)>(
+    symbol: 'InternalFlutterWindows_WindowManager_GetWindowContentSize',
+  )
   external static _Size _getWindowContentSize(Pointer<Void> windowHandle);
 
   @Native<Void Function(Pointer<Void>, Pointer<ffi.Utf16>)>(symbol: 'SetWindowTextW')
   external static void _setWindowTitle(Pointer<Void> windowHandle, Pointer<ffi.Utf16> title);
 
-  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(symbol: 'InternalFlutterWindows_WindowManager_SetWindowContentSize')
+  @Native<Void Function(Pointer<Void>, Pointer<_Sizing>)>(
+    symbol: 'InternalFlutterWindows_WindowManager_SetWindowContentSize',
+  )
   external static void _setWindowContentSize(Pointer<Void> windowHandle, Pointer<_Sizing> size);
 
   @Native<Void Function(Pointer<Void>, Int32)>(symbol: 'ShowWindow')
@@ -273,6 +306,9 @@ class RegularWindowControllerWin32 extends RegularWindowController
 
   @Native<Int32 Function(Pointer<Void>)>(symbol: 'IsZoomed')
   external static int _isZoomed(Pointer<Void> windowHandle);
+
+  @override
+  bool get destroyed => _destroyed;
 }
 
 /// Request to initialize windowing system.

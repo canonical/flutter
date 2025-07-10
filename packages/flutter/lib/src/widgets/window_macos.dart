@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 
 import 'binding.dart';
 import 'window.dart';
+import 'window_positioner.dart';
 
 /// The macOS implementation of the windowing API.
 class WindowingOwnerMacOS extends WindowingOwner {
@@ -26,6 +27,32 @@ class WindowingOwnerMacOS extends WindowingOwner {
     );
     _activeControllers.add(res);
     return res;
+  }
+
+  @override
+  DialogWindowController createDialogWindowController({
+    required WindowSizing contentSize,
+    required DialogWindowControllerDelegate delegate,
+    FlutterView? parent,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
+  }
+
+  @override
+  TooltipWindowController createTooltipWindowController({
+    required BoxConstraints contentSizeConstraints,
+    required TooltipWindowControllerDelegate delegate,
+    required FlutterView parent,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+  }) {
+    throw UnsupportedError(
+      'Current platform does not support windowing.\n'
+      'Implement a WindowingDelegate for this platform.',
+    );
   }
 
   @override
@@ -233,6 +260,9 @@ class RegularWindowControllerMacOS extends RegularWindowController {
 
   @Native<Void Function(Pointer<Void>)>(symbol: 'InternalFlutter_Window_Activate')
   external static void _activate(Pointer<Void> windowHandle);
+
+  @override
+  bool get destroyed => _destroyed;
 }
 
 final class _Sizing extends Struct {
