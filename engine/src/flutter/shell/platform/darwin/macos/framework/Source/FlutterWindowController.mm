@@ -253,9 +253,13 @@ static void FlipRect(NSRect& rect, const NSRect& globalScreenFrame) {
   }
 
   if (parent != nil) {
-    [parent beginCriticalSheet:window
-             completionHandler:^(NSModalResponse response){
-             }];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      // beginCriticalSheet blocks with nested run loop until the
+      // sheet animation is finished.
+      [parent beginCriticalSheet:window
+               completionHandler:^(NSModalResponse response){
+               }];
+    });
   } else {
     [window setIsVisible:YES];
     [window makeKeyAndOrderFront:nil];
@@ -353,6 +357,7 @@ static void FlipRect(NSRect& rect, const NSRect& globalScreenFrame) {
     [owner.flutterViewController dispose];
     owner.window.delegate = nil;
     [owner.window close];
+    [owner windowWillClose];
   }
 }
 
