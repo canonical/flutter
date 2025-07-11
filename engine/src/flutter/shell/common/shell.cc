@@ -1069,8 +1069,10 @@ void Shell::OnPlatformViewSetViewportMetrics(int64_t view_id,
   FML_DCHECK(is_set_up_);
   FML_DCHECK(task_runners_.GetPlatformTaskRunner()->RunsTasksOnCurrentThread());
 
-  if (metrics.device_pixel_ratio <= 0 || metrics.physical_width <= 0 ||
-      metrics.physical_height <= 0) {
+  bool has_size = (metrics.physical_width > 0 && metrics.physical_height > 0);
+  bool has_constraints =
+      (metrics.physical_max_width > 0 && metrics.physical_max_height > 0);
+  if (metrics.device_pixel_ratio <= 0 || (!has_size && !has_constraints)) {
     // Ignore invalid view-port metrics.
     return;
   }

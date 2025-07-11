@@ -1859,6 +1859,8 @@ class _ViewConfiguration {
   const _ViewConfiguration({
     this.devicePixelRatio = 1.0,
     this.size = Size.zero,
+    this.minSize = Size.zero,
+    this.maxSize = Size.zero,
     this.viewInsets = ViewPadding.zero,
     this.viewPadding = ViewPadding.zero,
     this.systemGestureInsets = ViewPadding.zero,
@@ -1877,6 +1879,12 @@ class _ViewConfiguration {
 
   /// The size requested for the view in physical pixels.
   final Size size;
+
+  /// The minimum size requested for the view in physical pixels.
+  final Size minSize;
+
+  /// The maximum size requested for the view in physical pixels.
+  final Size maxSize;
 
   /// The number of physical pixels on each side of the display rectangle into
   /// which the view can render, but over which the operating system will likely

@@ -165,6 +165,10 @@ void ShellTest::SetViewportMetrics(Shell* shell, double width, double height) {
       1,                      // device pixel ratio
       width,                  // physical width
       height,                 // physical height
+      0,                      // min width
+      0,                      // min height
+      0,                      // max width
+      0,                      // max height
       0,                      // padding top
       0,                      // padding right
       0,                      // padding bottom
