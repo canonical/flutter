@@ -200,6 +200,7 @@ class _ActiveWindowsTable extends StatelessWidget {
             context: context,
             controller: controller.controller as DialogWindowController);
         break;
+      case WindowArchetype.tooltip:
     }
   }
 }

@@ -56,6 +56,9 @@ class WindowControllerRender extends StatelessWidget {
           controller: dialogController,
           child: child,
         );
+      case WindowArchetype.tooltip:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 }
