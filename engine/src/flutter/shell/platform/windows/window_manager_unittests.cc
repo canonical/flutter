@@ -43,12 +43,14 @@ class WindowManagerTest : public WindowsTest {
 
   int64_t engine_id() { return reinterpret_cast<int64_t>(engine_.get()); }
   flutter::Isolate& isolate() { return *isolate_; }
-  WindowCreationRequest* creation_request() { return &creation_request_; }
+  RegularWindowCreationRequest* creation_request() {
+    return &creation_request_;
+  }
 
  private:
   std::unique_ptr<FlutterWindowsEngine> engine_;
   std::optional<flutter::Isolate> isolate_;
-  WindowCreationRequest creation_request_{
+  RegularWindowCreationRequest creation_request_{
       .content_size =
           {
               .has_preferred_view_size = true,
