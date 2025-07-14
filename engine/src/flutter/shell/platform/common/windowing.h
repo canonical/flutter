@@ -13,6 +13,12 @@ namespace flutter {
 enum class WindowArchetype {
   // Regular top-level window.
   kRegular,
+
+  // Dialog window.
+  kDialog,
+
+  // Tooltip window.
+  kTooltip
 };
 
 }  // namespace flutter
