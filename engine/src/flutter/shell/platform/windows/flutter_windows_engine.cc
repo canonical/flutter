@@ -154,7 +154,8 @@ FlutterWindowsEngine::FlutterWindowsEngine(
     : project_(std::make_unique<FlutterProjectBundle>(project)),
       windows_proc_table_(std::move(windows_proc_table)),
       aot_data_(nullptr, nullptr),
-      lifecycle_manager_(std::make_unique<WindowsLifecycleManager>(this)) {
+      lifecycle_manager_(std::make_unique<WindowsLifecycleManager>(this)),
+      display_manager_(std::make_shared<DisplayManager>(this)) {
   if (windows_proc_table_ == nullptr) {
     windows_proc_table_ = std::make_shared<WindowsProcTable>();
   }
@@ -873,6 +874,13 @@ FlutterWindowsView* FlutterWindowsEngine::GetViewFromTopLevelWindow(
     return iterator->second;
   }
   return nullptr;
+}
+
+void FlutterWindowsEngine::OnDisplaysChanged(
+    std::vector<FlutterEngineDisplay> const& displays) const {
+  embedder_api_.NotifyDisplayUpdate(engine_,
+                                    kFlutterEngineDisplaysUpdateTypeStartup,
+                                    displays.data(), displays.size());
 }
 
 void FlutterWindowsEngine::SendSystemLocales() {
