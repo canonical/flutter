@@ -49,7 +49,7 @@ class WindowManagerTest : public WindowsTest {
   std::unique_ptr<FlutterWindowsEngine> engine_;
   std::optional<flutter::Isolate> isolate_;
   WindowCreationRequest creation_request_{
-      .content_size =
+      .preferred_size =
           {
               .has_preferred_view_size = true,
               .preferred_view_width = 800,
@@ -124,12 +124,13 @@ TEST_F(WindowManagerTest, GetWindowSize) {
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
 
-  FlutterWindowSize size =
+  ActualWindowSize size =
       InternalFlutterWindows_WindowManager_GetWindowContentSize(window_handle);
 
-  EXPECT_EQ(size.width, creation_request()->content_size.preferred_view_width);
+  EXPECT_EQ(size.width,
+            creation_request()->preferred_size.preferred_view_width);
   EXPECT_EQ(size.height,
-            creation_request()->content_size.preferred_view_height);
+            creation_request()->preferred_size.preferred_view_height);
 }
 
 TEST_F(WindowManagerTest, SetWindowSize) {
@@ -142,15 +143,16 @@ TEST_F(WindowManagerTest, SetWindowSize) {
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
 
-  WindowSizing requestedSize{
+  WindowSizeRequest requestedSize{
+
       .has_preferred_view_size = true,
       .preferred_view_width = 640,
       .preferred_view_height = 480,
   };
-  InternalFlutterWindows_WindowManager_SetWindowContentSize(window_handle,
-                                                            &requestedSize);
+  InternalFlutterWindows_WindowManager_SetWindowSize(window_handle,
+                                                     &requestedSize);
 
-  FlutterWindowSize actual_size =
+  ActualWindowSize actual_size =
       InternalFlutterWindows_WindowManager_GetWindowContentSize(window_handle);
   EXPECT_EQ(actual_size.width, 640);
   EXPECT_EQ(actual_size.height, 480);

@@ -333,6 +333,9 @@ class FlutterWindowsEngine {
   virtual void OnDisplaysChanged(
       std::vector<FlutterEngineDisplay> const& displays) const;
 
+  // Retrive the display manager.
+  DisplayManager* display_manager() { return display_manager_.get(); }
+
  protected:
   // Creates the keyboard key handler.
   //

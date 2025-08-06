@@ -95,6 +95,13 @@ class BoxConstraints {
   BoxConstraints(const BoxConstraints& other) = default;
   Size biggest() const { return biggest_; }
   Size smallest() const { return smallest_; }
+  Size constrain(const Size& size) {
+    const double width =
+        std::min(biggest_.width(), std::max(smallest_.width(), size.width()));
+    const double height = std::min(biggest_.height(),
+                                   std::max(smallest_.height(), size.height()));
+    return Size(width, height);
+  }
 
  private:
   Size smallest_ = Size(0, 0);
