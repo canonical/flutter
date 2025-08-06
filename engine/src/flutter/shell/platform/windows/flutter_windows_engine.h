@@ -330,7 +330,7 @@ class FlutterWindowsEngine {
   FlutterWindowsView* GetViewFromTopLevelWindow(HWND hwnd) const;
 
   // Called when the displays have changed.
-  void OnDisplaysChanged(
+  virtual void OnDisplaysChanged(
       std::vector<FlutterEngineDisplay> const& displays) const;
 
  protected:
