@@ -40,20 +40,6 @@ class MockWindowsProcTable : public WindowsProcTable {
               (const, override));
 
   MOCK_METHOD(HCURSOR, SetCursor, (HCURSOR cursor), (const, override));
-  MOCK_METHOD(BOOL,
-              EnumDisplayMonitors,
-              (HDC, LPCRECT, MONITORENUMPROC, LPARAM),
-              (const, override));
-
-  MOCK_METHOD(BOOL,
-              GetMonitorInfo,
-              (HMONITOR, LPMONITORINFO),
-              (const, override));
-
-  MOCK_METHOD(BOOL,
-              EnumDisplaySettingsW,
-              (LPCWSTR, DWORD, DEVMODEW*),
-              (const, override));
 
   MOCK_METHOD(BOOL,
               EnumDisplaySettings,

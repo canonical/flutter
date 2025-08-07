@@ -27,7 +27,6 @@
 #include "flutter/shell/platform/windows/accessibility_plugin.h"
 #include "flutter/shell/platform/windows/compositor.h"
 #include "flutter/shell/platform/windows/cursor_handler.h"
-#include "flutter/shell/platform/windows/display_manager.h"
 #include "flutter/shell/platform/windows/egl/manager.h"
 #include "flutter/shell/platform/windows/egl/proc_table.h"
 #include "flutter/shell/platform/windows/flutter_desktop_messenger.h"
@@ -328,13 +327,6 @@ class FlutterWindowsEngine {
   // Returns the root view associated with the top-level window with |hwnd| as
   // the window handle or nullptr if no such view could be found.
   FlutterWindowsView* GetViewFromTopLevelWindow(HWND hwnd) const;
-
-  // Called when the displays have changed.
-  virtual void OnDisplaysChanged(
-      std::vector<FlutterEngineDisplay> const& displays) const;
-
-  // Retrive the display manager.
-  DisplayManager* display_manager() { return display_manager_.get(); }
 
  protected:
   // Creates the keyboard key handler.
