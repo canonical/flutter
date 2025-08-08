@@ -14,16 +14,19 @@
 //
 // See: https://github.com/flutter/flutter/issues/30701.
 
+import 'dart:io';
 import 'dart:ui' show Display, FlutterView;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 
 import '../foundation/_features.dart';
 import 'binding.dart';
 import 'framework.dart';
 import 'inherited_model.dart';
 import 'view.dart';
+import '_window_win32.dart';
 
 const String _kWindowingDisabledErrorMessage = '''
 Windowing APIs are not enabled.
@@ -60,7 +63,7 @@ See: https://github.com/flutter/flutter/issues/30701.
 ///
 ///  * [RegularWindowController], the controller for regular top-level windows.
 @internal
-sealed class BaseWindowController {
+sealed class BaseWindowController extends ChangeNotifier {
   /// The current size of the drawable area of the window.
   ///
   /// This might differ from the requested size.
@@ -136,12 +139,6 @@ mixin class RegularWindowControllerDelegate {
   void onWindowDestroyed() {
     if (!isWindowingEnabled) {
       throw UnsupportedError(_kWindowingDisabledErrorMessage);
-    }
-
-    final WindowingOwner owner = WidgetsBinding.instance.windowingOwner;
-    if (!owner.hasTopLevelWindows()) {
-      // TODO(mattkae): close the application if this is the last window
-      // via ServicesBinding.instance.exitApplication(AppExitType.cancelable);
     }
   }
 }
@@ -408,7 +405,10 @@ abstract class WindowingOwner {
       return _WindowingOwnerUnsupported(errorMessage: _kWindowingDisabledErrorMessage);
     }
 
-    // TODO(mattkae): Implement windowing owners for desktop platforms.
+    if (Platform.isWindows) {
+      return WindowingOwnerWin32();
+    }
+
     return _WindowingOwnerUnsupported(errorMessage: 'Windowing is unsupported on this platform.');
   }
 }
@@ -507,10 +507,14 @@ class RegularWindow extends StatelessWidget {
   @internal
   @override
   Widget build(BuildContext context) {
-    return WindowScope(
-      controller: controller,
-      child: View(view: controller.rootView, child: child),
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (BuildContext context, Widget? _) => WindowScope(
+        controller: controller,
+        child: View(view: controller.rootView, child: child),
+      ),
     );
+    ;
   }
 }
 
