@@ -190,6 +190,7 @@ const int _GDK_WINDOW_STATE_MAXIMIZED = 1 << 2;
 const int _GDK_WINDOW_STATE_FULLSCREEN = 1 << 4;
 
 const int _GDK_WINDOW_TYPE_HINT_DIALOG = 1;
+const int _GDK_WINDOW_TYPE_HINT_TOOLTIP = 10;
 
 /// Wraps GtkWindow
 class _GtkWindow extends _GtkContainer {
@@ -600,7 +601,16 @@ class WindowingOwnerLinux extends WindowingOwner {
     required WindowPositioner positioner,
     required BaseWindowController parent,
   }) {
-    throw UnimplementedError('Tooltip windows are not yet implemented on Linux.');
+    final TooltipWindowControllerLinux controller = TooltipWindowControllerLinux(
+      owner: this,
+      delegate: delegate,
+      preferredConstraints: preferredConstraints,
+      anchorRect: anchorRect,
+      positioner: positioner,
+      parent: parent,
+    );
+    _windows[controller.rootView.viewId] = controller._window;
+    return controller;
   }
 }
 
@@ -934,5 +944,113 @@ class DialogWindowControllerLinux extends DialogWindowController {
     } else {
       _window.deiconify();
     }
+  }
+}
+
+/// Implementation of [TooltipWindowController] for the Linux platform.
+///
+/// {@macro flutter.widgets.windowing.experimental}
+///
+/// See also:
+///
+///  * [TooltipWindowController], the base class for tooltip windows.
+class TooltipWindowControllerLinux extends TooltipWindowController {
+  /// Creates a new tooltip window controller for Linux.
+  ///
+  /// When this constructor completes the native window has been created and
+  /// has a view associated with it.
+  ///
+  /// {@macro flutter.widgets.windowing.experimental}
+  ///
+  /// See also:
+  ///
+  ///  * [TooltipWindowController], the base class for tooltip windows.
+  @internal
+  TooltipWindowControllerLinux({
+    required WindowingOwnerLinux owner,
+    required TooltipWindowControllerDelegate delegate,
+    required BoxConstraints preferredConstraints,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+    required BaseWindowController parent,
+  }) : _owner = owner,
+       _delegate = delegate,
+       _parent = parent,
+       _window = _GtkWindow(),
+       super.empty() {
+    if (!isWindowingEnabled) {
+      throw UnsupportedError(_kWindowingDisabledErrorMessage);
+    }
+
+    _window.setTypeHint(_GDK_WINDOW_TYPE_HINT_TOOLTIP);
+    final _GtkWindow? parentWindow = owner._windows[parent.rootView.viewId];
+    if (parentWindow != null) {
+      _window.setTransientFor(parentWindow);
+    }
+
+    _windowMonitor = _FlWindowMonitor(
+      _window,
+      // onConfigure
+      notifyListeners,
+      // onStateChanged
+      () {},
+      // onIsActiveNotify
+      () {},
+      // onTitleNotify
+      () {},
+      // onClose
+      () {
+        _delegate.onWindowCloseRequested(this);
+      },
+      // onDestroy
+      _delegate.onWindowDestroyed,
+    );
+    setConstraints(preferredConstraints);
+    final _FlView view = _FlView();
+    final int viewId = view.getId();
+    rootView = WidgetsBinding.instance.platformDispatcher.views.firstWhere(
+      (FlutterView view) => view.viewId == viewId,
+    );
+    view.show();
+    _window.add(view);
+    _window.present();
+  }
+
+  final WindowingOwnerLinux _owner;
+  final TooltipWindowControllerDelegate _delegate;
+  final _GtkWindow _window;
+  final BaseWindowController _parent;
+  late final _FlWindowMonitor _windowMonitor;
+  bool _destroyed = false;
+
+  @override
+  @internal
+  Size get contentSize => _window.getSize();
+
+  @override
+  void destroy() {
+    if (_destroyed) {
+      return;
+    }
+    _window.destroy();
+    _windowMonitor.close();
+    _windowMonitor.unref();
+    _destroyed = true;
+    _owner._windows.remove(rootView.viewId);
+  }
+
+  @override
+  @internal
+  BaseWindowController get parent => _parent;
+
+  @override
+  @internal
+  void setConstraints(BoxConstraints constraints) {
+    _window.setGeometryHints(
+      minWidth: constraints.minWidth.toInt(),
+      minHeight: constraints.minHeight.toInt(),
+      maxWidth: constraints.maxWidth.isInfinite ? 0x7fffffff : constraints.maxWidth.toInt(),
+      maxHeight: constraints.maxHeight.isInfinite ? 0x7fffffff : constraints.maxHeight.toInt(),
+    );
   }
 }
