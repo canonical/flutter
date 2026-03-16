@@ -14,6 +14,7 @@ import 'models.dart';
 import 'popup_button.dart';
 import 'popup_window_edit_dialog.dart';
 import 'regular_window_content.dart';
+import 'satellite_window_content.dart';
 import 'regular_window_edit_dialog.dart';
 import 'tooltip_button.dart';
 import 'tooltip_window_edit_dialog.dart';
@@ -251,6 +252,27 @@ class _WindowCreatorCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     PopupButton(parentController: windowController),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () {
+                        late final WindowEntry entry;
+                        final controller = SatelliteWindowController(
+                          delegate: CallbackSatelliteWindowControllerDelegate(
+                            onDestroyed: () => windowRegistry.unregister(entry),
+                          ),
+                          preferredSize: windowSettings.satelliteSize,
+                          parent: windowController,
+                          initialPositioner: windowSettings.positioner,
+                        );
+
+                        entry = WindowEntry(
+                          controller: controller,
+                          builder: (BuildContext context) => const SatelliteWindowContent(),
+                        );
+                        windowRegistry.register(entry);
+                      },
+                      child: const Text('Satellite'),
+                    ),
                     const SizedBox(height: 8),
                     Container(
                       alignment: Alignment.bottomRight,
