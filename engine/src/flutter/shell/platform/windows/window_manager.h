@@ -78,10 +78,12 @@ struct TooltipWindowCreationRequest {
 };
 
 struct SatelliteWindowCreationRequest {
+  WindowSizeRequest preferred_size;
   WindowConstraints preferred_constraints;
   bool is_sized_to_content;
   HWND parent;
   GetWindowPositionCallback get_position_callback;
+  LPCWSTR title;
 };
 
 struct WindowsMessage {

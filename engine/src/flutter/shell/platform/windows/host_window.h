@@ -80,10 +80,12 @@ class HostWindow {
   static std::unique_ptr<HostWindow> CreateSatelliteWindow(
       WindowManager* window_manager,
       FlutterWindowsEngine* engine,
+      const WindowSizeRequest& preferred_size,
       const WindowConstraints& preferred_constraints,
       bool is_sized_to_content,
       GetWindowPositionCallback get_position_callback,
-      HWND parent);
+      HWND parent,
+      LPCWSTR title);
 
   // Returns the instance pointer for |hwnd| or nullptr if invalid.
   static HostWindow* GetThisFromHandle(HWND hwnd);

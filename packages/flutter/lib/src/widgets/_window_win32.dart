@@ -982,22 +982,18 @@ class SatelliteWindowControllerWin32 extends SatelliteWindowController {
       _handleGetWindowPosition,
     );
 
-    final BoxConstraints effectiveConstraints =
-        preferredConstraints ??
-        (preferredSize != null
-            ? BoxConstraints.tight(preferredSize)
-            : const BoxConstraints());
-
     final int viewId = _Win32PlatformInterface.createSatelliteWindow(
       _owner.allocator,
       WidgetsBinding.instance.platformDispatcher.engineId!,
-      effectiveConstraints,
-      preferredSize != null,
+      preferredSize,
+      preferredConstraints,
+      preferredSize == null,
       _Win32PlatformInterface.getWindowHandle(
         WidgetsBinding.instance.platformDispatcher.engineId!,
         parent.rootView.viewId,
       ),
       _onGetWindowPosition.nativeFunction,
+      title,
     );
     if (viewId < 0) {
       throw Exception('Windows failed to create a satellite window with a valid view id.');
@@ -1351,7 +1347,8 @@ class _Win32PlatformInterface {
   static int createSatelliteWindow(
     ffi.Allocator allocator,
     int engineId,
-    BoxConstraints preferredConstraints,
+    Size? preferredSize,
+    BoxConstraints? preferredConstraints,
     bool isSizedToContent,
     HWND parent,
     ffi.Pointer<
@@ -1364,14 +1361,17 @@ class _Win32PlatformInterface {
       >
     >
     onGetWindowPosition,
+    String? title,
   ) {
     final ffi.Pointer<_SatelliteWindowCreationRequest> request =
         allocator<_SatelliteWindowCreationRequest>();
     try {
+      request.ref.preferredSize.from(preferredSize);
       request.ref.preferredConstraints.from(preferredConstraints);
       request.ref.isSizedToContent = isSizedToContent;
       request.ref.parent = parent;
       request.ref.onGetWindowPosition = onGetWindowPosition;
+      request.ref.title = (title ?? 'Satellite window').toNativeUtf16(allocator: allocator);
       return _createSatelliteWindow(engineId, request);
     } finally {
       allocator.free(request);
@@ -1563,6 +1563,7 @@ final class _TooltipWindowCreationRequest extends ffi.Struct {
 }
 
 final class _SatelliteWindowCreationRequest extends ffi.Struct {
+  external _WindowSizeRequest preferredSize;
   external _WindowConstraintsRequest preferredConstraints;
   @ffi.Bool()
   external bool isSizedToContent;
@@ -1577,6 +1578,7 @@ final class _SatelliteWindowCreationRequest extends ffi.Struct {
     >
   >
   onGetWindowPosition;
+  external ffi.Pointer<_Utf16> title;
 }
 
 /// Payload for the initialization request for the windowing subsystem used

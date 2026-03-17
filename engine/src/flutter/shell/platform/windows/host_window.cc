@@ -242,13 +242,16 @@ std::unique_ptr<HostWindow> HostWindow::CreateTooltipWindow(
 std::unique_ptr<HostWindow> HostWindow::CreateSatelliteWindow(
     WindowManager* window_manager,
     FlutterWindowsEngine* engine,
+    const WindowSizeRequest& preferred_size,
     const WindowConstraints& preferred_constraints,
     bool is_sized_to_content,
     GetWindowPositionCallback get_position_callback,
-    HWND parent) {
+    HWND parent,
+    LPCWSTR title) {
   return std::unique_ptr<HostWindowSatellite>(new HostWindowSatellite(
-      window_manager, engine, FromWindowConstraints(preferred_constraints),
-      is_sized_to_content, get_position_callback, parent));
+      window_manager, engine, preferred_size,
+      FromWindowConstraints(preferred_constraints), is_sized_to_content,
+      get_position_callback, parent, title));
 }
 
 HostWindow::HostWindow(WindowManager* window_manager,

@@ -75,9 +75,9 @@ FlutterViewId WindowManager::CreateTooltipWindow(
 FlutterViewId WindowManager::CreateSatelliteWindow(
     const SatelliteWindowCreationRequest* request) {
   auto window = HostWindow::CreateSatelliteWindow(
-      this, engine_, request->preferred_constraints,
+      this, engine_, request->preferred_size, request->preferred_constraints,
       request->is_sized_to_content, request->get_position_callback,
-      request->parent);
+      request->parent, request->title);
   if (!window || !window->GetWindowHandle()) {
     FML_LOG(ERROR) << "Failed to create satellite window";
     return -1;
