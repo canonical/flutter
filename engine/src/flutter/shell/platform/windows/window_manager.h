@@ -77,6 +77,13 @@ struct TooltipWindowCreationRequest {
   GetWindowPositionCallback get_position_callback;
 };
 
+struct SatelliteWindowCreationRequest {
+  WindowConstraints preferred_constraints;
+  bool is_sized_to_content;
+  HWND parent;
+  GetWindowPositionCallback get_position_callback;
+};
+
 struct WindowsMessage {
   FlutterViewId view_id;
   HWND hwnd;
@@ -120,6 +127,9 @@ class WindowManager {
 
   FlutterViewId CreateTooltipWindow(
       const TooltipWindowCreationRequest* request);
+
+  FlutterViewId CreateSatelliteWindow(
+      const SatelliteWindowCreationRequest* request);
 
   // Message handler called by |HostWindow::WndProc| to process window
   // messages before delegating them to the host window. This allows the
@@ -208,6 +218,18 @@ bool InternalFlutterWindows_WindowManager_GetFullscreen(HWND hwnd);
 
 FLUTTER_EXPORT
 void InternalFlutterWindows_WindowManager_UpdateTooltipPosition(HWND hwnd);
+
+FLUTTER_EXPORT
+FlutterViewId InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+    int64_t engine_id,
+    const flutter::SatelliteWindowCreationRequest* request);
+
+// Changes the parent of a satellite window to |new_parent|.
+// This does NOT reposition the satellite window.
+FLUTTER_EXPORT
+void InternalFlutterWindows_WindowManager_SetSatelliteParent(
+    HWND satellite_hwnd,
+    HWND new_parent);
 }
 
 #endif  // FLUTTER_SHELL_PLATFORM_WINDOWS_WINDOW_MANAGER_H_

@@ -17,6 +17,9 @@ enum class WindowArchetype {
 
   // Tooltip window.
   kTooltip,
+
+  // Satellite window.
+  kSatellite,
 };
 
 }  // namespace flutter

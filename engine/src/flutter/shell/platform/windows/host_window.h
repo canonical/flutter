@@ -74,6 +74,17 @@ class HostWindow {
       GetWindowPositionCallback get_position_callback,
       HWND parent);
 
+  // Creates a satellite Win32 window. A satellite window follows its parent's
+  // movement, is positioned initially via |get_position_callback|, and cannot
+  // be minimized. |parent| is the window that this satellite tracks.
+  static std::unique_ptr<HostWindow> CreateSatelliteWindow(
+      WindowManager* window_manager,
+      FlutterWindowsEngine* engine,
+      const WindowConstraints& preferred_constraints,
+      bool is_sized_to_content,
+      GetWindowPositionCallback get_position_callback,
+      HWND parent);
+
   // Returns the instance pointer for |hwnd| or nullptr if invalid.
   static HostWindow* GetThisFromHandle(HWND hwnd);
 

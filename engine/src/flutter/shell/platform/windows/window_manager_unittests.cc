@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "flutter/shell/platform/windows/flutter_windows_view.h"
+#include "flutter/shell/platform/windows/host_window_satellite.h"
 #include "flutter/shell/platform/windows/testing/flutter_windows_engine_builder.h"
 #include "flutter/shell/platform/windows/testing/windows_test.h"
 #include "flutter/shell/platform/windows/window_manager.h"
@@ -638,6 +639,297 @@ TEST_F(WindowManagerTest, TooltipWindowUpdatesPositionOnViewSizeChange) {
   // (we offset by callback_count * 5)
   EXPECT_NE(initial_rect.left, new_rect.left);
   EXPECT_NE(initial_rect.top, new_rect.top);
+}
+
+TEST_F(WindowManagerTest, CreateSatelliteWindow) {
+  IsolateScope isolate_scope(isolate());
+
+  const int64_t parent_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent_view_id);
+
+  auto position_callback = [](const WindowSize& child_size,
+                              const WindowRect& parent_rect,
+                              const WindowRect& output_rect) -> WindowRect* {
+    WindowRect* rect = static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
+    rect->left = parent_rect.left + 10;
+    rect->top = parent_rect.top + 10;
+    rect->width = child_size.width;
+    rect->height = child_size.height;
+    return rect;
+  };
+
+  SatelliteWindowCreationRequest creation_request{
+      .preferred_constraints = {.has_view_constraints = true,
+                                .view_min_width = 100,
+                                .view_min_height = 50,
+                                .view_max_width = 300,
+                                .view_max_height = 200},
+      .is_sized_to_content = false,
+      .parent = parent_window_handle,
+      .get_position_callback = position_callback};
+
+  const int64_t satellite_view_id =
+      InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+          engine_id(), &creation_request);
+
+  EXPECT_NE(satellite_view_id, -1);
+  HWND satellite_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), satellite_view_id);
+  EXPECT_NE(satellite_window_handle, nullptr);
+}
+
+TEST_F(WindowManagerTest, SatelliteWindowUsesPositionCallbackOnCreation) {
+  IsolateScope isolate_scope(isolate());
+
+  // Create a parent window and move it to a known position.
+  const int64_t parent_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent_view_id);
+  SetWindowPos(parent_window_handle, nullptr, 200, 100, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER);
+
+  // The callback places the satellite at (parent_left + 20, parent_top + 30).
+  auto position_callback = [](const WindowSize& child_size,
+                              const WindowRect& parent_rect,
+                              const WindowRect& output_rect) -> WindowRect* {
+    WindowRect* rect = static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
+    rect->left = parent_rect.left + 20;
+    rect->top = parent_rect.top + 30;
+    rect->width = child_size.width;
+    rect->height = child_size.height;
+    return rect;
+  };
+
+  SatelliteWindowCreationRequest creation_request{
+      .preferred_constraints = {.has_view_constraints = true,
+                                .view_min_width = 100,
+                                .view_min_height = 50,
+                                .view_max_width = 300,
+                                .view_max_height = 200},
+      .is_sized_to_content = false,
+      .parent = parent_window_handle,
+      .get_position_callback = position_callback};
+
+  const int64_t satellite_view_id =
+      InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+          engine_id(), &creation_request);
+
+  HWND satellite_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), satellite_view_id);
+
+  // Verify the satellite was positioned by the callback relative to the
+  // parent's client area.
+  RECT parent_client_rect;
+  GetClientRect(parent_window_handle, &parent_client_rect);
+  POINT parent_top_left = {parent_client_rect.left, parent_client_rect.top};
+  ClientToScreen(parent_window_handle, &parent_top_left);
+
+  RECT satellite_rect;
+  GetWindowRect(satellite_window_handle, &satellite_rect);
+
+  EXPECT_EQ(satellite_rect.left, parent_top_left.x + 20);
+  EXPECT_EQ(satellite_rect.top, parent_top_left.y + 30);
+}
+
+TEST_F(WindowManagerTest, SatelliteWindowFollowsParentMovement) {
+  IsolateScope isolate_scope(isolate());
+
+  WindowingInitRequest init_request{
+      .on_message = [](WindowsMessage* message) {}};
+  InternalFlutterWindows_WindowManager_Initialize(engine_id(), &init_request);
+
+  // Create a parent window at a known position.
+  const int64_t parent_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent_view_id);
+  SetWindowPos(parent_window_handle, nullptr, 200, 100, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER);
+
+  auto position_callback = [](const WindowSize& child_size,
+                              const WindowRect& parent_rect,
+                              const WindowRect& output_rect) -> WindowRect* {
+    WindowRect* rect = static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
+    rect->left = parent_rect.left + 10;
+    rect->top = parent_rect.top + 10;
+    rect->width = child_size.width;
+    rect->height = child_size.height;
+    return rect;
+  };
+
+  SatelliteWindowCreationRequest creation_request{
+      .preferred_constraints = {.has_view_constraints = true,
+                                .view_min_width = 100,
+                                .view_min_height = 50,
+                                .view_max_width = 300,
+                                .view_max_height = 200},
+      .is_sized_to_content = false,
+      .parent = parent_window_handle,
+      .get_position_callback = position_callback};
+
+  const int64_t satellite_view_id =
+      InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+          engine_id(), &creation_request);
+
+  HWND satellite_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), satellite_view_id);
+
+  // Record the satellite's initial position.
+  RECT satellite_rect_before;
+  GetWindowRect(satellite_window_handle, &satellite_rect_before);
+
+  // Move the parent by (+50, +100).
+  SetWindowPos(parent_window_handle, nullptr, 250, 200, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER);
+
+  // The WM_WINDOWPOSCHANGED message is dispatched synchronously by
+  // SetWindowPos, so the satellite should have already moved.
+  RECT satellite_rect_after;
+  GetWindowRect(satellite_window_handle, &satellite_rect_after);
+
+  EXPECT_EQ(satellite_rect_after.left, satellite_rect_before.left + 50);
+  EXPECT_EQ(satellite_rect_after.top, satellite_rect_before.top + 100);
+}
+
+TEST_F(WindowManagerTest, SatelliteWindowCannotBeMinimized) {
+  IsolateScope isolate_scope(isolate());
+
+  const int64_t parent_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent_view_id);
+
+  auto position_callback = [](const WindowSize& child_size,
+                              const WindowRect& parent_rect,
+                              const WindowRect& output_rect) -> WindowRect* {
+    WindowRect* rect = static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
+    rect->left = parent_rect.left;
+    rect->top = parent_rect.top;
+    rect->width = child_size.width;
+    rect->height = child_size.height;
+    return rect;
+  };
+
+  SatelliteWindowCreationRequest creation_request{
+      .preferred_constraints = {.has_view_constraints = true,
+                                .view_min_width = 100,
+                                .view_min_height = 50,
+                                .view_max_width = 300,
+                                .view_max_height = 200},
+      .is_sized_to_content = false,
+      .parent = parent_window_handle,
+      .get_position_callback = position_callback};
+
+  const int64_t satellite_view_id =
+      InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+          engine_id(), &creation_request);
+
+  HWND satellite_window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), satellite_view_id);
+
+  // Attempt to minimize the satellite window via WM_SYSCOMMAND.
+  SendMessage(satellite_window_handle, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+
+  // The window should NOT be minimized.
+  EXPECT_FALSE(IsIconic(satellite_window_handle));
+}
+
+TEST_F(WindowManagerTest, SatelliteWindowCanReparent) {
+  IsolateScope isolate_scope(isolate());
+
+  WindowingInitRequest init_request{
+      .on_message = [](WindowsMessage* message) {}};
+  InternalFlutterWindows_WindowManager_Initialize(engine_id(), &init_request);
+
+  // Create two parent windows.
+  const int64_t parent1_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent1_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent1_view_id);
+  SetWindowPos(parent1_handle, nullptr, 100, 100, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER);
+
+  const int64_t parent2_view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND parent2_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), parent2_view_id);
+  SetWindowPos(parent2_handle, nullptr, 500, 500, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER);
+
+  auto position_callback = [](const WindowSize& child_size,
+                              const WindowRect& parent_rect,
+                              const WindowRect& output_rect) -> WindowRect* {
+    WindowRect* rect = static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
+    rect->left = parent_rect.left;
+    rect->top = parent_rect.top;
+    rect->width = child_size.width;
+    rect->height = child_size.height;
+    return rect;
+  };
+
+  SatelliteWindowCreationRequest creation_request{
+      .preferred_constraints = {.has_view_constraints = true,
+                                .view_min_width = 100,
+                                .view_min_height = 50,
+                                .view_max_width = 300,
+                                .view_max_height = 200},
+      .is_sized_to_content = false,
+      .parent = parent1_handle,
+      .get_position_callback = position_callback};
+
+  const int64_t satellite_view_id =
+      InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+          engine_id(), &creation_request);
+
+  HWND satellite_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(
+          engine_id(), satellite_view_id);
+
+  // Record the satellite position before reparenting.
+  RECT satellite_rect_before;
+  GetWindowRect(satellite_handle, &satellite_rect_before);
+
+  // Reparent to parent2. This should NOT move the satellite.
+  InternalFlutterWindows_WindowManager_SetSatelliteParent(satellite_handle,
+                                                          parent2_handle);
+
+  RECT satellite_rect_after;
+  GetWindowRect(satellite_handle, &satellite_rect_after);
+
+  // Position must not change on reparent.
+  EXPECT_EQ(satellite_rect_before.left, satellite_rect_after.left);
+  EXPECT_EQ(satellite_rect_before.top, satellite_rect_after.top);
+
+  // Now move parent2 by (+30, +40). The satellite should follow parent2.
+  RECT parent2_rect;
+  GetWindowRect(parent2_handle, &parent2_rect);
+  SetWindowPos(parent2_handle, nullptr, parent2_rect.left + 30,
+               parent2_rect.top + 40, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+
+  RECT satellite_rect_moved;
+  GetWindowRect(satellite_handle, &satellite_rect_moved);
+
+  EXPECT_EQ(satellite_rect_moved.left, satellite_rect_after.left + 30);
+  EXPECT_EQ(satellite_rect_moved.top, satellite_rect_after.top + 40);
 }
 
 }  // namespace testing

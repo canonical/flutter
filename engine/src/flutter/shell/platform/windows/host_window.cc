@@ -5,6 +5,7 @@
 #include "flutter/shell/platform/windows/host_window.h"
 #include "flutter/shell/platform/windows/host_window_dialog.h"
 #include "flutter/shell/platform/windows/host_window_regular.h"
+#include "flutter/shell/platform/windows/host_window_satellite.h"
 #include "flutter/shell/platform/windows/host_window_tooltip.h"
 
 #include <dwmapi.h>
@@ -238,12 +239,27 @@ std::unique_ptr<HostWindow> HostWindow::CreateTooltipWindow(
       is_sized_to_content, get_position_callback, parent));
 }
 
+std::unique_ptr<HostWindow> HostWindow::CreateSatelliteWindow(
+    WindowManager* window_manager,
+    FlutterWindowsEngine* engine,
+    const WindowConstraints& preferred_constraints,
+    bool is_sized_to_content,
+    GetWindowPositionCallback get_position_callback,
+    HWND parent) {
+  return std::unique_ptr<HostWindowSatellite>(new HostWindowSatellite(
+      window_manager, engine, FromWindowConstraints(preferred_constraints),
+      is_sized_to_content, get_position_callback, parent));
+}
+
 HostWindow::HostWindow(WindowManager* window_manager,
                        FlutterWindowsEngine* engine)
     : window_manager_(window_manager), engine_(engine) {}
 
 void HostWindow::InitializeFlutterView(
     HostWindowInitializationParams const& params) {
+  archetype_ = params.archetype;
+  box_constraints_ = params.box_constraints;
+
   // Set up the view.
   auto view_window = std::make_unique<FlutterWindow>(
       params.initial_window_rect.width(), params.initial_window_rect.height(),

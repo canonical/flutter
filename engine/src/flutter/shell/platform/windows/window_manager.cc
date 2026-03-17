@@ -17,6 +17,7 @@
 #include "shell/platform/windows/client_wrapper/include/flutter/flutter_view.h"
 #include "shell/platform/windows/flutter_windows_view.h"
 #include "shell/platform/windows/host_window.h"
+#include "shell/platform/windows/host_window_satellite.h"
 #include "shell/platform/windows/host_window_tooltip.h"
 
 namespace flutter {
@@ -71,6 +72,21 @@ FlutterViewId WindowManager::CreateTooltipWindow(
   return view_id;
 }
 
+FlutterViewId WindowManager::CreateSatelliteWindow(
+    const SatelliteWindowCreationRequest* request) {
+  auto window = HostWindow::CreateSatelliteWindow(
+      this, engine_, request->preferred_constraints,
+      request->is_sized_to_content, request->get_position_callback,
+      request->parent);
+  if (!window || !window->GetWindowHandle()) {
+    FML_LOG(ERROR) << "Failed to create satellite window";
+    return -1;
+  }
+  FlutterViewId const view_id = window->view_controller_->view()->view_id();
+  active_windows_[window->GetWindowHandle()] = std::move(window);
+  return view_id;
+}
+
 void WindowManager::OnEngineShutdown() {
   // Don't send any more messages to isolate.
   on_message_ = nullptr;
@@ -96,6 +112,23 @@ std::optional<LRESULT> WindowManager::HandleMessage(HWND hwnd,
     return std::nullopt;
   }
 
+  // When a window moves, notify any satellite windows that track it as their
+  // parent so they can follow the movement.
+  if (message == WM_WINDOWPOSCHANGED) {
+    auto* wpcs = reinterpret_cast<WINDOWPOS*>(lparam);
+    if (!(wpcs->flags & SWP_NOMOVE)) {
+      for (auto& [child_hwnd, child_window] : active_windows_) {
+        if (child_window->archetype_ == WindowArchetype::kSatellite) {
+          auto* satellite =
+              static_cast<HostWindowSatellite*>(child_window.get());
+          if (satellite->GetParentHwnd() == hwnd) {
+            satellite->OnParentMoved();
+          }
+        }
+      }
+    }
+  }
+
   HostWindow* host_window = HostWindow::GetThisFromHandle(hwnd);
   FlutterWindowsView* view =
       host_window ? host_window->view_controller_->view() : nullptr;
@@ -115,6 +148,11 @@ std::optional<LRESULT> WindowManager::HandleMessage(HWND hwnd,
 
   // Not initialized yet.
   if (!isolate_) {
+    return std::nullopt;
+  }
+
+  // on_message_ may be null if the engine is shutting down.
+  if (!on_message_) {
     return std::nullopt;
   }
 
@@ -247,4 +285,25 @@ void InternalFlutterWindows_WindowManager_UpdateTooltipPosition(HWND hwnd) {
   flutter::HostWindowTooltip* tooltip_window =
       reinterpret_cast<flutter::HostWindowTooltip*>(window);
   tooltip_window->UpdatePosition();
+}
+
+FLUTTER_EXPORT
+FlutterViewId InternalFlutterWindows_WindowManager_CreateSatelliteWindow(
+    int64_t engine_id,
+    const flutter::SatelliteWindowCreationRequest* request) {
+  flutter::FlutterWindowsEngine* engine =
+      flutter::FlutterWindowsEngine::GetEngineForId(engine_id);
+  return engine->window_manager()->CreateSatelliteWindow(request);
+}
+
+FLUTTER_EXPORT
+void InternalFlutterWindows_WindowManager_SetSatelliteParent(
+    HWND satellite_hwnd,
+    HWND new_parent) {
+  flutter::HostWindow* window =
+      flutter::HostWindow::GetThisFromHandle(satellite_hwnd);
+  if (window) {
+    auto* satellite = reinterpret_cast<flutter::HostWindowSatellite*>(window);
+    satellite->SetSatelliteParent(new_parent);
+  }
 }
