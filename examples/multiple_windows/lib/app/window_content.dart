@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'tooltip_window_content.dart';
 import 'dialog_window_content.dart';
 import 'regular_window_content.dart';
+import 'satellite_window_content.dart';
 import 'package:flutter/src/widgets/_window.dart';
 
 /// Responsible for rendering the appropriate content for a window based on
@@ -49,7 +50,10 @@ class WindowContent extends StatelessWidget {
         ),
       ),
       PopupWindowController() => throw UnimplementedError(),
-      SatelliteWindowController() => throw UnimplementedError(),
+      final SatelliteWindowController satellite => SatelliteWindow(
+        controller: satellite,
+        child: MaterialApp(home: SatelliteWindowContent()),
+      ),
     };
   }
 }

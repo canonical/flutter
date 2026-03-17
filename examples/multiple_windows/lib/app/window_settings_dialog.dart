@@ -41,6 +41,10 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
       TextEditingController();
   final TextEditingController _dialogWidthController = TextEditingController();
   final TextEditingController _dialogHeightController = TextEditingController();
+  final TextEditingController _satelliteWidthController =
+      TextEditingController();
+  final TextEditingController _satelliteHeightController =
+      TextEditingController();
   final TextEditingController _offsetDxController = TextEditingController();
   final TextEditingController _offsetDyController = TextEditingController();
 
@@ -67,6 +71,12 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
     _dialogHeightController.addListener(_updateDialogSize);
     _dialogWidthController.text = widget.settings.dialogSize.width.toString();
     _dialogHeightController.text = widget.settings.dialogSize.height.toString();
+    _satelliteWidthController.text = widget.settings.satelliteSize.width
+        .toString();
+    _satelliteHeightController.text = widget.settings.satelliteSize.height
+        .toString();
+    _satelliteWidthController.addListener(_updateSatelliteSize);
+    _satelliteHeightController.addListener(_updateSatelliteSize);
     _offsetDxController.text = widget.settings.positioner.offset.dx.toString();
     _offsetDyController.text = widget.settings.positioner.offset.dy.toString();
     _flipX = widget.settings.positioner.constraintAdjustment.flipX;
@@ -97,6 +107,8 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
                     _buildRegularEditor(),
                     const Divider(),
                     _buildDialogEditor(),
+                    const Divider(),
+                    _buildSatelliteEditor(),
                     const Divider(),
                     _buildTooltipEditor(),
                   ],
@@ -148,6 +160,29 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
           Expanded(
             child: TextFormField(
               controller: _dialogHeightController,
+              decoration: const InputDecoration(labelText: 'Initial height'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSatelliteEditor() {
+    return ListTile(
+      title: const Text('Satellite'),
+      subtitle: Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: _satelliteWidthController,
+              decoration: const InputDecoration(labelText: 'Initial width'),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: TextFormField(
+              controller: _satelliteHeightController,
               decoration: const InputDecoration(labelText: 'Initial height'),
             ),
           ),
@@ -365,6 +400,13 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
                     widget.settings.dialogSize.height,
               );
 
+              widget.settings.satelliteSize = Size(
+                double.tryParse(_satelliteWidthController.text) ??
+                    widget.settings.satelliteSize.width,
+                double.tryParse(_satelliteHeightController.text) ??
+                    widget.settings.satelliteSize.height,
+              );
+
               widget.settings.positioner = widget.settings.positioner.copyWith(
                 parentAnchor: _parentAnchor,
                 childAnchor: _childAnchor,
@@ -411,16 +453,29 @@ class _WindowSettingsEditorState extends State<_WindowSettingsEditor> {
     );
   }
 
+  void _updateSatelliteSize() {
+    widget.settings.satelliteSize = Size(
+      double.tryParse(_satelliteWidthController.text) ??
+          widget.settings.satelliteSize.width,
+      double.tryParse(_satelliteHeightController.text) ??
+          widget.settings.satelliteSize.height,
+    );
+  }
+
   @override
   void dispose() {
     _regularWidthController.removeListener(_updateRegularSize);
     _regularHeightController.removeListener(_updateRegularSize);
     _dialogWidthController.removeListener(_updateDialogSize);
     _dialogHeightController.removeListener(_updateDialogSize);
+    _satelliteWidthController.removeListener(_updateSatelliteSize);
+    _satelliteHeightController.removeListener(_updateSatelliteSize);
     _regularWidthController.dispose();
     _regularHeightController.dispose();
     _dialogWidthController.dispose();
     _dialogHeightController.dispose();
+    _satelliteWidthController.dispose();
+    _satelliteHeightController.dispose();
     super.dispose();
   }
 }

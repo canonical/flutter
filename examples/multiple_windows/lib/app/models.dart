@@ -24,6 +24,8 @@ class KeyedWindow {
         return dialogController.parent;
       case TooltipWindowController tooltipController:
         return tooltipController.parent;
+      case SatelliteWindowController satelliteWindowController:
+        return satelliteWindowController.parent;
       default:
         throw Exception('Unknown controller type');
     }
@@ -84,6 +86,7 @@ class WindowSettings {
   WindowSettings({
     this.regularSize = const Size(800, 600),
     this.dialogSize = const Size(400, 400),
+    this.satelliteSize = const Size(280, 600),
     this.positioner = const WindowPositioner(
       parentAnchor: WindowPositionerAnchor.right,
       childAnchor: WindowPositionerAnchor.left,
@@ -95,6 +98,9 @@ class WindowSettings {
 
   /// The initial size of the dialog window.
   Size dialogSize;
+
+  /// The initial size of the satellite window.
+  Size satelliteSize;
 
   /// The positioner used to determine where new tooltips and popups are placed.
   WindowPositioner positioner;
@@ -126,6 +132,19 @@ class WindowSettingsAccessor extends InheritedWidget {
 class CallbackDialogWindowControllerDelegate
     with DialogWindowControllerDelegate {
   CallbackDialogWindowControllerDelegate({required this.onDestroyed});
+
+  @override
+  void onWindowDestroyed() {
+    onDestroyed();
+    super.onWindowDestroyed();
+  }
+
+  final VoidCallback onDestroyed;
+}
+
+class CallbackSatelliteWindowControllerDelegate
+    with SatelliteWindowControllerDelegate {
+  CallbackSatelliteWindowControllerDelegate({required this.onDestroyed});
 
   @override
   void onWindowDestroyed() {

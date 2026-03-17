@@ -270,6 +270,28 @@ class _WindowCreatorCard extends StatelessWidget {
                       child: const Text('Modal Dialog'),
                     ),
                     const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () {
+                        final UniqueKey key = UniqueKey();
+                        windowManager.add(
+                          KeyedWindow(
+                            key: key,
+                            controller: SatelliteWindowController(
+                              delegate:
+                                  CallbackSatelliteWindowControllerDelegate(
+                                    onDestroyed: () =>
+                                        windowManager.remove(key),
+                                  ),
+                              preferredSize: windowSettings.satelliteSize,
+                              parent: windowController,
+                              initialPositioner: windowSettings.positioner,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('Satellite'),
+                    ),
+                    const SizedBox(height: 8),
                     Container(
                       alignment: Alignment.bottomRight,
                       child: TextButton(
