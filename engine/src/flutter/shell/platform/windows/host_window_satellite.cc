@@ -4,6 +4,7 @@
 
 #include "flutter/shell/platform/windows/host_window_satellite.h"
 
+#include <iostream>
 #include "flutter/shell/platform/windows/flutter_windows_view_controller.h"
 #include "shell/platform/windows/window_manager.h"
 
@@ -12,32 +13,45 @@ namespace flutter {
 HostWindowSatellite::HostWindowSatellite(
     WindowManager* window_manager,
     FlutterWindowsEngine* engine,
+    const WindowSizeRequest& preferred_size,
     const BoxConstraints& constraints,
     bool is_sized_to_content,
     GetWindowPositionCallback get_position_callback,
-    HWND parent)
+    HWND parent,
+    LPCWSTR title)
     : HostWindow(window_manager, engine),
       get_position_callback_(get_position_callback),
       parent_(parent),
       isolate_(Isolate::Current()),
       view_alive_(std::make_shared<int>(0)) {
-  // Use minimum constraints as initial size to ensure the view can be created
-  // with valid metrics. If is_sized_to_content is true, the size will be
-  // updated when content is rendered.
-  auto const initial_width =
-      static_cast<double>(constraints.smallest().width());
-  auto const initial_height =
-      static_cast<double>(constraints.smallest().height());
+  constexpr DWORD kWindowStyle =
+      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX;
+
+  // Compute the initial window size. Use the preferred size when provided;
+  // otherwise fall back to the constraint minimum so the view can be created
+  // with valid metrics.
+  Size initial_size;
+  if (preferred_size.has_preferred_view_size) {
+    std::optional<Size> window_size = GetWindowSizeForClientSize(
+        *engine->windows_proc_table(),
+        Size(preferred_size.preferred_view_width,
+             preferred_size.preferred_view_height),
+        constraints.smallest(), constraints.biggest(), kWindowStyle, 0, parent);
+    initial_size =
+        window_size ? *window_size : Size{CW_USEDEFAULT, CW_USEDEFAULT};
+  } else {
+    initial_size = constraints.smallest();
+  }
 
   InitializeFlutterView(HostWindowInitializationParams{
       .archetype = WindowArchetype::kSatellite,
-      .window_style = WS_POPUP,
-      .extended_window_style = WS_EX_TOOLWINDOW,
+      .window_style = kWindowStyle,
+      .extended_window_style = 0,
       .box_constraints = constraints,
-      .initial_window_rect = {{0, 0}, {initial_width, initial_height}},
-      .title = L"",
+      .initial_window_rect = {{0, 0}, initial_size},
+      .title = title ? title : L"",
       .owner_window = parent,
-      .nCmdShow = SW_SHOWNORMAL,
+      .nCmdShow = SW_HIDE,
       .sizing_delegate = this,
       .is_sized_to_content = is_sized_to_content});
   SetWindowLongPtr(window_handle_, GWLP_HWNDPARENT,
@@ -48,11 +62,26 @@ HostWindowSatellite::HostWindowSatellite(
   RECT parent_rect;
   GetWindowRect(parent_, &parent_rect);
   last_parent_pos_ = {parent_rect.left, parent_rect.top};
+  width_ = initial_size.width();
+  height_ = initial_size.height();
 
-  // Apply initial positioning using the callback.
-  width_ = static_cast<int>(initial_width);
-  height_ = static_cast<int>(initial_height);
-  ApplyInitialPosition();
+  if (!is_sized_to_content) {
+    std::weak_ptr<int> weak_view_alive = view_alive_;
+    engine_->task_runner()->PostTask([this, weak_view_alive]() {
+      auto const view_alive = weak_view_alive.lock();
+      if (!view_alive) {
+        return;
+      }
+
+      if (is_being_destroyed_) {
+        return;
+      }
+
+      if (!initial_position_applied_) {
+        ApplyInitialPosition();
+      }
+    });
+  }
 }
 
 void HostWindowSatellite::ApplyInitialPosition() {
@@ -83,6 +112,7 @@ void HostWindowSatellite::ApplyInitialPosition() {
                rect->height, SWP_NOACTIVATE | SWP_NOOWNERZORDER);
   free(rect);
 
+  ShowWindow(window_handle_, SW_SHOWNORMAL);
   initial_position_applied_ = true;
 }
 
@@ -94,15 +124,15 @@ void HostWindowSatellite::DidUpdateViewSize(int32_t width, int32_t height) {
     if (!view_alive) {
       return;
     }
-    if (width_ == width && height_ == height) {
-      return;
-    }
+
     if (is_being_destroyed_) {
       return;
     }
 
-    width_ = width;
-    height_ = height;
+    if (width_ != width || height_ != height) {
+      width_ = width;
+      height_ = height;
+    }
 
     // Only run the position callback for the initial placement.
     // After that, the window is positioned solely by following the parent.

@@ -21,10 +21,12 @@ class HostWindowSatellite : public HostWindow,
  public:
   HostWindowSatellite(WindowManager* window_manager,
                       FlutterWindowsEngine* engine,
+                      const WindowSizeRequest& preferred_size,
                       const BoxConstraints& constraints,
                       bool is_sized_to_content,
                       GetWindowPositionCallback get_position_callback,
-                      HWND parent);
+                      HWND parent,
+                      LPCWSTR title);
 
   // Called by |WindowManager| when the parent window moves.
   // Shifts this satellite by the same delta.
