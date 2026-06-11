@@ -472,6 +472,119 @@ class Tooltip extends StatefulWidget {
   }
 }
 
+class _TooltipStateController {
+  _TooltipStateController({required this.useWindowing}) {
+    if (useWindowing) {
+      tooltipWindowController = _TooltipWindowControllerInternal();
+    } else {
+      overlayPortalController = OverlayPortalController();
+    }
+  }
+
+  final bool useWindowing;
+  late final _TooltipWindowControllerInternal? tooltipWindowController;
+  late final OverlayPortalController? overlayPortalController;
+
+  bool get isShowing {
+    if (useWindowing) {
+      return tooltipWindowController!.isShowing;
+    } else {
+      return overlayPortalController!.isShowing;
+    }
+  }
+
+  void show() {
+    if (useWindowing) {
+      tooltipWindowController!.show();
+    } else {
+      overlayPortalController!.show();
+    }
+  }
+
+  void hide() {
+    if (useWindowing) {
+      tooltipWindowController!.hide();
+    } else {
+      overlayPortalController!.hide();
+    }
+  }
+}
+
+class _TooltipWindowControllerInternal {
+  late final _TooltipWindowWrapperState state;
+
+  bool get isShowing => state.shown;
+
+  void show() {
+    state.show();
+  }
+
+  void hide() {
+    state.hide();
+  }
+}
+
+class _TooltipWindowWrapper extends StatefulWidget {
+  _TooltipWindowWrapper({required this.controller, required this.builder, required this.child});
+
+  final _TooltipWindowControllerInternal controller;
+  final WidgetBuilder builder;
+  final Widget child;
+
+  @override
+  State<_TooltipWindowWrapper> createState() => _TooltipWindowWrapperState();
+}
+
+class _TooltipWindowWrapperState extends State<_TooltipWindowWrapper> {
+  bool shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.state = this;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final FlutterView parent =
+        WindowControllerContext.of(context)?.rootView ?? PlatformDispatcher.instance.implicitView!;
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    final Offset? position = box?.localToGlobal(Offset.zero);
+    const WindowPositionerAnchor parentAnchor = WindowPositionerAnchor.top;
+    const WindowPositionerAnchor childAnchor = WindowPositionerAnchor.bottom;
+
+    return ViewAnchor(
+      view: shown
+          ? TooltipWindow(
+              controller: TooltipWindowController(
+                parent: parent,
+                anchorRect: Rect.fromPoints(
+                  position ?? Offset(0, 0),
+                  position != null && box != null
+                      ? Offset(position.dx + box.size.width, position.dy + box.size.height)
+                      : Offset(100, 100),
+                ),
+                positioner: const WindowPositioner(
+                  parentAnchor: parentAnchor,
+                  childAnchor: childAnchor,
+                ),
+              ),
+              child: widget.builder(context),
+            )
+          : null,
+      child: widget.child,
+    );
+  }
+
+  void show() {
+    setState(() => shown = true);
+  }
+
+  void hide() {
+    setState(() => shown = false);
+  }
+}
+
 /// Contains the state for a [Tooltip].
 ///
 /// This class can be used to programmatically show the Tooltip, see the
@@ -490,7 +603,7 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
   static const bool _defaultEnableFeedback = true;
   static const TextAlign _defaultTextAlign = TextAlign.start;
 
-  final OverlayPortalController _overlayController = OverlayPortalController();
+  final _TooltipStateController _overlayController = _TooltipStateController(useWindowing: true);
 
   // From InheritedWidgets
   late bool _visible;
@@ -827,12 +940,15 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
   }
 
   Widget _buildTooltipOverlay(BuildContext context) {
-    final OverlayState overlayState = Overlay.of(context, debugRequiredFor: widget);
-    final RenderBox box = this.context.findRenderObject()! as RenderBox;
-    final Offset target = box.localToGlobal(
-      box.size.center(Offset.zero),
-      ancestor: overlayState.context.findRenderObject(),
-    );
+    Offset target = Offset.zero;
+    if (!_overlayController.useWindowing) {
+      final OverlayState overlayState = Overlay.of(context, debugRequiredFor: widget);
+      final RenderBox box = this.context.findRenderObject()! as RenderBox;
+      target = box.localToGlobal(
+        box.size.center(Offset.zero),
+        ancestor: overlayState.context.findRenderObject(),
+      );
+    }
 
     final (TextStyle defaultTextStyle, BoxDecoration defaultDecoration) = switch (Theme.of(
       context,
@@ -889,6 +1005,7 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
           widget.verticalOffset ?? tooltipTheme.verticalOffset ?? _defaultVerticalOffset,
       preferBelow: widget.preferBelow ?? tooltipTheme.preferBelow ?? _defaultPreferBelow,
       ignorePointer: widget.ignorePointer ?? widget.message != null,
+      isWindowing: _overlayController.useWindowing,
     );
 
     return SelectionContainer.maybeOf(context) == null
@@ -947,8 +1064,16 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
         ),
       );
     }
+
+    if (_overlayController.useWindowing) {
+      return _TooltipWindowWrapper(
+        controller: _overlayController.tooltipWindowController!,
+        builder: _buildTooltipOverlay,
+        child: result,
+      );
+    }
     return OverlayPortal(
-      controller: _overlayController,
+      controller: _overlayController.overlayPortalController!,
       overlayChildBuilder: _buildTooltipOverlay,
       child: result,
     );
@@ -1015,6 +1140,7 @@ class _TooltipOverlay extends StatelessWidget {
     required this.verticalOffset,
     required this.preferBelow,
     required this.ignorePointer,
+    required this.isWindowing,
     this.onEnter,
     this.onExit,
   });
@@ -1033,6 +1159,7 @@ class _TooltipOverlay extends StatelessWidget {
   final PointerEnterEventListener? onEnter;
   final PointerExitEventListener? onExit;
   final bool ignorePointer;
+  final bool isWindowing;
 
   @override
   Widget build(BuildContext context) {
@@ -1062,6 +1189,11 @@ class _TooltipOverlay extends StatelessWidget {
     if (onEnter != null || onExit != null) {
       result = _ExclusiveMouseRegion(onEnter: onEnter, onExit: onExit, child: result);
     }
+
+    if (isWindowing) {
+      return result;
+    }
+
     return Positioned.fill(
       bottom: MediaQuery.maybeViewInsetsOf(context)?.bottom ?? 0.0,
       child: CustomSingleChildLayout(
