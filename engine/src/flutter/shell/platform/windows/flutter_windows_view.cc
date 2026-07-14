@@ -735,7 +735,12 @@ void FlutterWindowsView::SetFirstFrameCallback(fml::closure callback) {
   first_frame_callback_ = std::move(callback);
 }
 
+bool FlutterWindowsView::HasFirstFramePresented() const {
+  return first_frame_presented_.load();
+}
+
 void FlutterWindowsView::FireFirstFrameCallbackIfSet() {
+  first_frame_presented_.store(true);
   std::scoped_lock lock(first_frame_callback_mutex_);
   if (first_frame_callback_) {
     fml::closure callback = std::move(first_frame_callback_);

@@ -128,6 +128,13 @@ class HostWindow {
   // Set the fullscreen state. |display_id| indicates the display where
   // the window should be shown fullscreen; std::nullopt indicates
   // that no display was specified, so the current display may be used.
+  //
+  // If the view has not yet presented its first frame, the request is queued
+  // and applied once the first frame is presented (see
+  // |ApplyPendingFullscreen|). Entering fullscreen resizes the window, which
+  // relies on the view already presenting frames in order for the synchronous
+  // resize to complete; applying it before the first frame would leave the
+  // render surface unbound and the window transparent.
   virtual void SetFullscreen(bool fullscreen,
                              std::optional<FlutterEngineDisplayId> display_id);
 
@@ -166,6 +173,16 @@ class HostWindow {
   // - https://learn.microsoft.com/windows/win32/winmsg/window-styles
   // - https://learn.microsoft.com/windows/win32/winmsg/extended-window-styles
   void InitializeFlutterView(HostWindowInitializationParams const& params);
+
+  // Applies a fullscreen state change to the native window immediately. This is
+  // the implementation of |SetFullscreen| once it is safe to resize the window.
+  void ApplyFullscreen(bool fullscreen,
+                       std::optional<FlutterEngineDisplayId> display_id);
+
+  // Applies a fullscreen request that was deferred until the view presented its
+  // first frame. Does nothing if no request is pending. Called from the
+  // first-frame callback, before the window is first shown.
+  void ApplyPendingFullscreen();
 
   friend WindowManager;
 
@@ -272,6 +289,14 @@ class HostWindow {
 
   // Whether or not the window is currently in a fullscreen state.
   bool is_fullscreen_ = false;
+
+  // A fullscreen request received before the view presented its first frame.
+  // Applied once the first frame is presented (see |ApplyPendingFullscreen|).
+  struct PendingFullscreenRequest {
+    bool fullscreen;
+    std::optional<FlutterEngineDisplayId> display_id;
+  };
+  std::optional<PendingFullscreenRequest> pending_fullscreen_;
 
   // Saved window information from before entering fullscreen mode.
   SavedWindowInfo saved_window_info_;

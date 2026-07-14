@@ -148,6 +148,11 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   // until the first frame is rendered, avoiding a blank window flash.
   void SetFirstFrameCallback(fml::closure callback);
 
+  // Whether this view has presented at least one frame. May be called on any
+  // thread. Used to defer work (such as entering fullscreen) that relies on the
+  // view already presenting frames, so that a synchronous resize can complete.
+  bool HasFirstFramePresented() const;
+
   // |WindowBindingHandlerDelegate|
   bool OnWindowSizeChanged(size_t width, size_t height) override;
 
@@ -526,6 +531,10 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   // Callback invoked on the platform thread after the first frame is
   // presented. Set via |SetFirstFrameCallback| and cleared after invocation.
   fml::closure first_frame_callback_;
+
+  // Set to true once the first frame has been presented. Written on the raster
+  // thread from |FireFirstFrameCallbackIfSet| and read from any thread.
+  std::atomic<bool> first_frame_presented_{false};
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterWindowsView);
 };

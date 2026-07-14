@@ -88,6 +88,18 @@ class WindowManagerTest : public WindowsTest {
   }
   FlutterWindowsEngine* engine() { return engine_.get(); }
 
+  // Simulates the view backing |window_handle| presenting its first frame and
+  // runs the resulting platform-thread tasks. Operations that are deferred
+  // until the first frame is presented (such as entering fullscreen) are
+  // applied as a result.
+  void PresentFirstFrame(HWND window_handle) {
+    FlutterWindowsView* view =
+        engine()->GetViewFromTopLevelWindow(window_handle);
+    ASSERT_NE(view, nullptr);
+    view->OnFramePresented();
+    engine()->task_runner()->ProcessTasks();
+  }
+
  private:
   std::unique_ptr<FlutterWindowsEngine> engine_;
   NiceMock<egl::MockContext> mock_egl_context_;
@@ -244,12 +256,51 @@ TEST_F(WindowManagerTest, CanFullscreenWindow) {
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
 
+  PresentFirstFrame(window_handle);
+
   FullscreenRequest request{.fullscreen = true, .has_display_id = false};
   InternalFlutterWindows_WindowManager_SetFullscreen(window_handle, &request);
 
   int screen_width = GetSystemMetrics(SM_CXSCREEN);
   int screen_height = GetSystemMetrics(SM_CYSCREEN);
   ActualWindowSize actual_size =
+      InternalFlutterWindows_WindowManager_GetWindowContentSize(window_handle);
+  EXPECT_EQ(actual_size.width, screen_width);
+  EXPECT_EQ(actual_size.height, screen_height);
+  EXPECT_TRUE(
+      InternalFlutterWindows_WindowManager_GetFullscreen(window_handle));
+}
+
+TEST_F(WindowManagerTest, SetFullscreenDefersUntilFirstFrame) {
+  IsolateScope isolate_scope(isolate());
+
+  const int64_t view_id =
+      InternalFlutterWindows_WindowManager_CreateRegularWindow(
+          engine_id(), regular_creation_request());
+  const HWND window_handle =
+      InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
+                                                                   view_id);
+
+  // Request fullscreen before the view has presented its first frame. The
+  // request must be deferred: the window is not yet resized, but the getter
+  // reflects the pending requested state.
+  FullscreenRequest request{.fullscreen = true, .has_display_id = false};
+  InternalFlutterWindows_WindowManager_SetFullscreen(window_handle, &request);
+
+  const int screen_width = GetSystemMetrics(SM_CXSCREEN);
+  const int screen_height = GetSystemMetrics(SM_CYSCREEN);
+  ActualWindowSize actual_size =
+      InternalFlutterWindows_WindowManager_GetWindowContentSize(window_handle);
+  EXPECT_EQ(actual_size.width, 800);
+  EXPECT_EQ(actual_size.height, 600);
+  EXPECT_TRUE(
+      InternalFlutterWindows_WindowManager_GetFullscreen(window_handle));
+
+  // Presenting the first frame applies the deferred request, resizing the
+  // window to fill the screen.
+  PresentFirstFrame(window_handle);
+
+  actual_size =
       InternalFlutterWindows_WindowManager_GetWindowContentSize(window_handle);
   EXPECT_EQ(actual_size.width, screen_width);
   EXPECT_EQ(actual_size.height, screen_height);
@@ -266,6 +317,8 @@ TEST_F(WindowManagerTest, CanUnfullscreenWindow) {
   const HWND window_handle =
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
+
+  PresentFirstFrame(window_handle);
 
   FullscreenRequest request{.fullscreen = true, .has_display_id = false};
   InternalFlutterWindows_WindowManager_SetFullscreen(window_handle, &request);
@@ -290,6 +343,8 @@ TEST_F(WindowManagerTest, CanSetWindowSizeWhileFullscreen) {
   const HWND window_handle =
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
+
+  PresentFirstFrame(window_handle);
 
   FullscreenRequest request{.fullscreen = true, .has_display_id = false};
   InternalFlutterWindows_WindowManager_SetFullscreen(window_handle, &request);
@@ -321,6 +376,8 @@ TEST_F(WindowManagerTest, CanSetWindowConstraintsWhileFullscreen) {
   const HWND window_handle =
       InternalFlutterWindows_WindowManager_GetTopLevelWindowHandle(engine_id(),
                                                                    view_id);
+
+  PresentFirstFrame(window_handle);
 
   FullscreenRequest request{.fullscreen = true, .has_display_id = false};
   InternalFlutterWindows_WindowManager_SetFullscreen(window_handle, &request);

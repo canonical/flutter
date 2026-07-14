@@ -304,6 +304,15 @@ void HostWindow::InitializeFlutterView(
   view_controller_->view()->SetFirstFrameCallback(
       [hwnd = window_handle_, cmd_show = params.nCmdShow]() {
         if (::IsWindow(hwnd)) {
+          // Apply any fullscreen request that was deferred until the first
+          // frame was presented. Doing this before the window is first shown
+          // means the window appears fullscreen without a non-fullscreen flash.
+          // The host window is looked up from the handle (rather than captured)
+          // so this remains safe if the window was destroyed before the first
+          // frame.
+          if (HostWindow* const window = GetThisFromHandle(hwnd)) {
+            window->ApplyPendingFullscreen();
+          }
           ShowWindow(hwnd, cmd_show);
         }
       });
@@ -580,12 +589,40 @@ void HostWindow::SetConstraints(const WindowConstraints& constraints) {
   }
 }
 
+void HostWindow::SetFullscreen(
+    bool fullscreen,
+    std::optional<FlutterEngineDisplayId> display_id) {
+  // Entering or leaving fullscreen resizes the window, which triggers the
+  // view's synchronous resize handshake. That handshake can only complete once
+  // the view is presenting frames. If the first frame has not been presented
+  // yet (e.g. fullscreen is requested immediately after the window is created),
+  // defer the change until the first frame is presented; otherwise the render
+  // surface would be left stranded at the wrong size and the window would
+  // render transparent. See https://github.com/flutter/flutter/issues/186948.
+  if (view_controller_ &&
+      !view_controller_->view()->HasFirstFramePresented()) {
+    pending_fullscreen_ = PendingFullscreenRequest{fullscreen, display_id};
+    return;
+  }
+
+  ApplyFullscreen(fullscreen, display_id);
+}
+
+void HostWindow::ApplyPendingFullscreen() {
+  if (!pending_fullscreen_) {
+    return;
+  }
+  PendingFullscreenRequest const request = *pending_fullscreen_;
+  pending_fullscreen_.reset();
+  ApplyFullscreen(request.fullscreen, request.display_id);
+}
+
 // The fullscreen method is largely adapted from the method found in chromium:
 // See:
 //
 // * https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/views/win/fullscreen_handler.h
 // * https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/views/win/fullscreen_handler.cc
-void HostWindow::SetFullscreen(
+void HostWindow::ApplyFullscreen(
     bool fullscreen,
     std::optional<FlutterEngineDisplayId> display_id) {
   if (fullscreen == GetFullscreen()) {
@@ -732,6 +769,11 @@ void HostWindow::SetFullscreen(
 }
 
 bool HostWindow::GetFullscreen() const {
+  // Reflect a queued request that has not been applied yet, so the observable
+  // fullscreen state is consistent with the most recent |SetFullscreen| call.
+  if (pending_fullscreen_) {
+    return pending_fullscreen_->fullscreen;
+  }
   return is_fullscreen_;
 }
 
