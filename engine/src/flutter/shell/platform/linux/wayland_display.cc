@@ -40,13 +40,16 @@ constexpr uint32_t kMaxSyncobjManagerVersion = 1;
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
 
+// Binds a global and records it in |protocols|.
 template <typename T>
-T* Bind(wl_registry* registry,
+T* Bind(std::vector<WaylandDisplay::Protocol>* protocols,
+        wl_registry* registry,
         uint32_t name,
         const wl_interface* interface,
         uint32_t server_version,
         uint32_t max_version) {
   uint32_t version = std::min(server_version, max_version);
+  protocols->push_back({interface->name, version});
   return static_cast<T*>(wl_registry_bind(registry, name, interface, version));
 }
 
@@ -263,43 +266,46 @@ void WaylandDisplay::RegistryGlobal(void* data,
   auto* self = static_cast<WaylandDisplay*>(data);
   if (strcmp(interface, wl_compositor_interface.name) == 0) {
     if (version >= kMinCompositorVersion) {
-      self->compositor_ =
-          Bind<wl_compositor>(registry, name, &wl_compositor_interface, version,
-                              kMaxCompositorVersion);
+      self->compositor_ = Bind<wl_compositor>(&self->protocols_, registry, name,
+                                              &wl_compositor_interface, version,
+                                              kMaxCompositorVersion);
     }
   } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
-    self->wm_base_ = Bind<xdg_wm_base>(registry, name, &xdg_wm_base_interface,
-                                       version, kMaxWmBaseVersion);
+    self->wm_base_ =
+        Bind<xdg_wm_base>(&self->protocols_, registry, name,
+                          &xdg_wm_base_interface, version, kMaxWmBaseVersion);
     xdg_wm_base_add_listener(self->wm_base_, &kWmBaseListener, self);
   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
     if (version >= kMinDmabufVersion) {
-      self->dmabuf_ = Bind<zwp_linux_dmabuf_v1>(registry, name,
-                                                &zwp_linux_dmabuf_v1_interface,
-                                                version, kMaxDmabufVersion);
+      self->dmabuf_ = Bind<zwp_linux_dmabuf_v1>(
+          &self->protocols_, registry, name, &zwp_linux_dmabuf_v1_interface,
+          version, kMaxDmabufVersion);
     }
   } else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
-    self->viewporter_ =
-        Bind<wp_viewporter>(registry, name, &wp_viewporter_interface, version,
-                            kMaxViewporterVersion);
+    self->viewporter_ = Bind<wp_viewporter>(&self->protocols_, registry, name,
+                                            &wp_viewporter_interface, version,
+                                            kMaxViewporterVersion);
   } else if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) ==
              0) {
     self->fractional_scale_manager_ = Bind<wp_fractional_scale_manager_v1>(
-        registry, name, &wp_fractional_scale_manager_v1_interface, version,
+        &self->protocols_, registry, name,
+        &wp_fractional_scale_manager_v1_interface, version,
         kMaxFractionalScaleManagerVersion);
   } else if (strcmp(interface, wp_presentation_interface.name) == 0) {
-    self->presentation_ =
-        Bind<wp_presentation>(registry, name, &wp_presentation_interface,
-                              version, kMaxPresentationVersion);
+    self->presentation_ = Bind<wp_presentation>(
+        &self->protocols_, registry, name, &wp_presentation_interface, version,
+        kMaxPresentationVersion);
     wp_presentation_add_listener(self->presentation_, &kPresentationListener,
                                  self);
   } else if (strcmp(interface, wp_fifo_manager_v1_interface.name) == 0) {
-    self->fifo_manager_ =
-        Bind<wp_fifo_manager_v1>(registry, name, &wp_fifo_manager_v1_interface,
-                                 version, kMaxFifoManagerVersion);
+    self->fifo_manager_ = Bind<wp_fifo_manager_v1>(
+        &self->protocols_, registry, name, &wp_fifo_manager_v1_interface,
+        version, kMaxFifoManagerVersion);
   } else if (strcmp(interface,
                     wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
     self->syncobj_manager_ = Bind<wp_linux_drm_syncobj_manager_v1>(
-        registry, name, &wp_linux_drm_syncobj_manager_v1_interface, version,
+        &self->protocols_, registry, name,
+        &wp_linux_drm_syncobj_manager_v1_interface, version,
         kMaxSyncobjManagerVersion);
   }
 }

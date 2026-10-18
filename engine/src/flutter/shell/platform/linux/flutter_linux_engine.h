@@ -60,6 +60,15 @@ class FlutterLinuxEngine {
 
   FlutterLinuxApplication* application() const { return application_; }
 
+  // Returns true if Impeller has been enabled with a command line switch.
+  bool IsImpellerEnabled() const;
+
+  // The EGL contexts the engine renders with.
+  EGLManager* egl() const { return egl_.get(); }
+
+  // Presents the frames the engine renders.
+  CompositorOpenGL* compositor() const { return compositor_.get(); }
+
   // Creates the view shown in a new window of the given logical size.
   //
   // Only the implicit view is currently supported, so this can only be
@@ -87,9 +96,6 @@ class FlutterLinuxEngine {
                      Properties properties);
 
   bool Initialize();
-
-  // Returns true if Impeller has been enabled with a command line switch.
-  bool IsImpellerEnabled() const;
 
   // Posts a Flutter task to be run on the platform thread.
   void PostFlutterTask(FlutterTask task, uint64_t target_time_nanos);

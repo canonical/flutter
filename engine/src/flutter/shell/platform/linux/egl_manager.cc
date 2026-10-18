@@ -67,7 +67,32 @@ bool EGLManager::Initialize() {
                    << eglGetError();
     return false;
   }
+  QueryGLStrings();
   return true;
+}
+
+void EGLManager::QueryGLStrings() {
+  EGLDisplay previous_display = eglGetCurrentDisplay();
+  EGLContext previous_context = eglGetCurrentContext();
+  EGLSurface previous_draw = eglGetCurrentSurface(EGL_DRAW);
+  EGLSurface previous_read = eglGetCurrentSurface(EGL_READ);
+  if (!MakeRenderContextCurrent()) {
+    return;
+  }
+  auto get_string = [](GLenum name) {
+    const GLubyte* value = glGetString(name);
+    return value != nullptr ? std::string(reinterpret_cast<const char*>(value))
+                            : std::string();
+  };
+  gl_vendor_ = get_string(GL_VENDOR);
+  gl_renderer_ = get_string(GL_RENDERER);
+  gl_version_ = get_string(GL_VERSION);
+  if (previous_context != EGL_NO_CONTEXT) {
+    eglMakeCurrent(previous_display, previous_draw, previous_read,
+                   previous_context);
+  } else {
+    ClearCurrent();
+  }
 }
 
 bool EGLManager::MakeRenderContextCurrent() {

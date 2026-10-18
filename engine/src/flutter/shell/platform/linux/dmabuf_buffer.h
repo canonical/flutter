@@ -55,6 +55,10 @@ class DmabufBuffer {
   // The GL framebuffer to render into.
   uint32_t framebuffer() const { return framebuffer_; }
 
+  // The DRM format modifier describing the buffer layout, or
+  // DRM_FORMAT_MOD_INVALID if the driver chose the layout implicitly.
+  uint64_t modifier() const { return modifier_; }
+
   // The Wayland buffer to attach to a surface.
   wl_buffer* buffer() const { return buffer_; }
 
@@ -84,6 +88,7 @@ class DmabufBuffer {
   int width_ = 0;
   int height_ = 0;
   gbm_bo* bo_ = nullptr;
+  uint64_t modifier_ = 0;
   EGLImageKHR image_ = EGL_NO_IMAGE_KHR;
   GLuint texture_ = 0;
   GLuint depth_stencil_ = 0;

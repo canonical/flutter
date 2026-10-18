@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
@@ -36,6 +37,9 @@ class GpuDevice {
   ~GpuDevice();
 
   int drm_fd() const { return drm_fd_.get(); }
+
+  // The path of the render node, e.g. "/dev/dri/renderD128".
+  const std::string& path() const { return path_; }
   gbm_device* gbm() const { return gbm_; }
   EGLDisplay display() const { return display_; }
 
@@ -69,6 +73,7 @@ class GpuDevice {
   // Checks for and loads the functions used for explicit synchronization.
   void InitializeExplicitSync(const char* extensions);
 
+  std::string path_;
   fml::UniqueFD drm_fd_;
   gbm_device* gbm_ = nullptr;
   EGLDisplay display_ = EGL_NO_DISPLAY;

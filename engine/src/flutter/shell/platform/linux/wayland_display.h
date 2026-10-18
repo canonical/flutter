@@ -40,6 +40,16 @@ class WaylandDisplay : public EventLoop::Source {
 
   ~WaylandDisplay() override;
 
+  // A Wayland global in use.
+  struct Protocol {
+    // The interface name, e.g. "wp_presentation".
+    const char* name;
+
+    // The version bound, which is the lower of the version the compositor
+    // supports and the version the embedder supports.
+    uint32_t version;
+  };
+
   wl_display* display() const { return display_; }
   wl_compositor* compositor() const { return compositor_; }
   xdg_wm_base* wm_base() const { return wm_base_; }
@@ -60,6 +70,9 @@ class WaylandDisplay : public EventLoop::Source {
   // CLOCK_MONOTONIC, the clock the engine and event loop use.
   uint64_t PresentationTimeToMonotonic(uint64_t seconds,
                                        uint32_t nanoseconds) const;
+
+  // The globals bound from the compositor, in the order they were bound.
+  const std::vector<Protocol>& protocols() const { return protocols_; }
 
   // The device the compositor prefers buffers to be allocated on, if it
   // reported one.
@@ -155,6 +168,7 @@ class WaylandDisplay : public EventLoop::Source {
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;
   wp_presentation* presentation_ = nullptr;
+  std::vector<Protocol> protocols_;
   wp_fifo_manager_v1* fifo_manager_ = nullptr;
   wp_linux_drm_syncobj_manager_v1* syncobj_manager_ = nullptr;
 

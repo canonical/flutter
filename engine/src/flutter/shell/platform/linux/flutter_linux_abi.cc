@@ -4,13 +4,19 @@
 
 #include "flutter/shell/platform/linux/public/flutter_linux_abi.h"
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 
 #include "flutter/shell/platform/common/path_utils.h"
+#include "flutter/shell/platform/linux/compositor_opengl.h"
+#include "flutter/shell/platform/linux/dmabuf_buffer.h"
+#include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
+#include "flutter/shell/platform/linux/gpu_device.h"
 
 namespace {
 
@@ -58,6 +64,22 @@ void flutter_linux_application_quit(FlutterLinuxApplication* application) {
   ToApplication(application)->Quit();
 }
 
+size_t flutter_linux_application_get_wayland_protocol_count(
+    FlutterLinuxApplication* application) {
+  return ToApplication(application)->display()->protocols().size();
+}
+
+void flutter_linux_application_get_wayland_protocol(
+    FlutterLinuxApplication* application,
+    size_t index,
+    const char** name,
+    uint32_t* version) {
+  const flutter::WaylandDisplay::Protocol& protocol =
+      ToApplication(application)->display()->protocols().at(index);
+  *name = protocol.name;
+  *version = protocol.version;
+}
+
 FlutterLinuxEngine* flutter_linux_engine_new(
     FlutterLinuxApplication* application,
     const FlutterLinuxEngineProperties* properties) {
@@ -90,6 +112,41 @@ bool flutter_linux_engine_run(FlutterLinuxEngine* engine) {
 
 bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine) {
   return ToEngine(engine)->running();
+}
+
+void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
+                                             FlutterLinuxRenderingInfo* info) {
+  flutter::FlutterLinuxEngine* e = ToEngine(engine);
+  flutter::EGLManager* egl = e->egl();
+  flutter::WaylandDisplay* display = e->application()->display();
+
+  FlutterLinuxRenderingInfo result = {};
+  result.struct_size = sizeof(FlutterLinuxRenderingInfo);
+  result.renderer = e->IsImpellerEnabled() ? FLUTTER_LINUX_RENDERER_IMPELLER
+                                           : FLUTTER_LINUX_RENDERER_SKIA;
+  result.graphics_api = FLUTTER_LINUX_GRAPHICS_API_OPENGL_ES;
+  result.gpu_device = egl->gpu()->path().c_str();
+  result.gl_vendor = egl->gl_vendor().c_str();
+  result.gl_renderer = egl->gl_renderer().c_str();
+  result.gl_version = egl->gl_version().c_str();
+  result.buffer_sharing = FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF;
+  result.buffer_format = flutter::DmabufBuffer::kFormat;
+  result.buffer_modifier = e->compositor()->buffer_modifier();
+  result.buffer_synchronization =
+      e->compositor()->explicit_sync()
+          ? FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_EXPLICIT
+          : FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_IMPLICIT;
+  result.presentation_feedback = display->presentation() != nullptr;
+  result.fifo = display->fifo_manager() != nullptr;
+  result.fractional_scale = display->viewporter() != nullptr &&
+                            display->fractional_scale_manager() != nullptr;
+
+  if (info->struct_size < sizeof(info->struct_size)) {
+    return;
+  }
+  size_t size = std::min(info->struct_size, sizeof(result));
+  memcpy(info, &result, size);
+  info->struct_size = size;
 }
 
 FlutterLinuxView* flutter_linux_view_new(FlutterLinuxEngine* engine,

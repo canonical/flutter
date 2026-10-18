@@ -8,6 +8,7 @@
 #include <EGL/egl.h>
 
 #include <memory>
+#include <string>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
@@ -27,6 +28,11 @@ class EGLManager {
 
   GpuDevice* gpu() const { return gpu_; }
 
+  // Information about the OpenGL implementation, from glGetString.
+  const std::string& gl_vendor() const { return gl_vendor_; }
+  const std::string& gl_renderer() const { return gl_renderer_; }
+  const std::string& gl_version() const { return gl_version_; }
+
   // Makes the render context current on the calling thread.
   bool MakeRenderContextCurrent();
 
@@ -44,9 +50,15 @@ class EGLManager {
 
   bool Initialize();
 
+  // Reads the OpenGL implementation strings using the render context.
+  void QueryGLStrings();
+
   GpuDevice* gpu_;
   EGLContext render_context_ = EGL_NO_CONTEXT;
   EGLContext resource_context_ = EGL_NO_CONTEXT;
+  std::string gl_vendor_;
+  std::string gl_renderer_;
+  std::string gl_version_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(EGLManager);
 };

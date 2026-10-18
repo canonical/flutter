@@ -16,6 +16,7 @@
 // standard library.
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "flutter_export.h"
@@ -39,6 +40,45 @@ typedef struct {
 
 typedef void (*FlutterLinuxViewCloseCallback)(void* user_data);
 
+typedef enum {
+  FLUTTER_LINUX_RENDERER_SKIA,
+  FLUTTER_LINUX_RENDERER_IMPELLER,
+} FlutterLinuxRenderer;
+
+typedef enum {
+  FLUTTER_LINUX_GRAPHICS_API_OPENGL_ES,
+  FLUTTER_LINUX_GRAPHICS_API_VULKAN,
+} FlutterLinuxGraphicsApi;
+
+typedef enum {
+  FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF,
+  FLUTTER_LINUX_BUFFER_SHARING_WL_SHM,
+} FlutterLinuxBufferSharing;
+
+typedef enum {
+  FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_IMPLICIT,
+  FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_EXPLICIT,
+} FlutterLinuxBufferSynchronization;
+
+// Strings remain valid until the engine is freed. Only the first
+// |struct_size| bytes are written, so fields can be added in later versions.
+typedef struct {
+  size_t struct_size;
+  FlutterLinuxRenderer renderer;
+  FlutterLinuxGraphicsApi graphics_api;
+  const char* gpu_device;
+  const char* gl_vendor;
+  const char* gl_renderer;
+  const char* gl_version;
+  FlutterLinuxBufferSharing buffer_sharing;
+  uint32_t buffer_format;
+  uint64_t buffer_modifier;
+  FlutterLinuxBufferSynchronization buffer_synchronization;
+  bool presentation_feedback;
+  bool fifo;
+  bool fractional_scale;
+} FlutterLinuxRenderingInfo;
+
 FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
 
 FLUTTER_EXPORT void flutter_linux_application_free(
@@ -50,6 +90,18 @@ FLUTTER_EXPORT void flutter_linux_application_run(
 FLUTTER_EXPORT void flutter_linux_application_quit(
     FlutterLinuxApplication* application);
 
+// Returns the number of Wayland globals bound from the compositor.
+FLUTTER_EXPORT size_t flutter_linux_application_get_wayland_protocol_count(
+    FlutterLinuxApplication* application);
+
+// Gets the interface name and bound version of the Wayland global at |index|.
+// |name| remains valid until the application is freed.
+FLUTTER_EXPORT void flutter_linux_application_get_wayland_protocol(
+    FlutterLinuxApplication* application,
+    size_t index,
+    const char** name,
+    uint32_t* version);
+
 FLUTTER_EXPORT FlutterLinuxEngine* flutter_linux_engine_new(
     FlutterLinuxApplication* application,
     const FlutterLinuxEngineProperties* properties);
@@ -59,6 +111,10 @@ FLUTTER_EXPORT void flutter_linux_engine_free(FlutterLinuxEngine* engine);
 FLUTTER_EXPORT bool flutter_linux_engine_run(FlutterLinuxEngine* engine);
 
 FLUTTER_EXPORT bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine);
+
+FLUTTER_EXPORT void flutter_linux_engine_get_rendering_info(
+    FlutterLinuxEngine* engine,
+    FlutterLinuxRenderingInfo* info);
 
 FLUTTER_EXPORT FlutterLinuxView*
 flutter_linux_view_new(FlutterLinuxEngine* engine, int width, int height);

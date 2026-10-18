@@ -7,6 +7,7 @@
 
 #include <wayland-client.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -52,6 +53,14 @@ class CompositorOpenGL {
   // Stops presenting frames to the view with |view_id|. Called on the
   // platform thread.
   void RemoveView(FlutterViewId view_id);
+
+  // True if buffers are explicitly synchronized with the compositor.
+  bool explicit_sync() const { return explicit_sync_; }
+
+  // The DRM format modifier of the most recently allocated buffer, or
+  // DRM_FORMAT_MOD_INVALID if its layout was chosen implicitly or no buffer
+  // has been allocated yet. May be called from any thread.
+  uint64_t buffer_modifier() const { return buffer_modifier_; }
 
   // |FlutterCompositor.create_backing_store_callback|
   bool CreateBackingStore(const FlutterBackingStoreConfig& config,
@@ -134,6 +143,8 @@ class CompositorOpenGL {
 
   // True if buffers are explicitly synchronized with the compositor.
   bool explicit_sync_ = false;
+
+  std::atomic<uint64_t> buffer_modifier_;
 
   // Events for buffers are on a separate queue so they can be processed on
   // the raster thread independently of the platform thread.

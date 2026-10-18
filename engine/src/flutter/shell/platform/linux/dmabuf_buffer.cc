@@ -137,6 +137,7 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
     return false;
   }
 
+  modifier_ = modifier;
   bool has_modifier = modifier != DRM_FORMAT_MOD_INVALID;
   std::vector<EGLint> attributes = {EGL_WIDTH,
                                     width_,

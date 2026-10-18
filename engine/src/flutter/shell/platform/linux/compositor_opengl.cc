@@ -4,6 +4,7 @@
 
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 
+#include <drm_fourcc.h>
 #include <poll.h>
 
 #include <algorithm>
@@ -46,7 +47,10 @@ int64_t NowNanoseconds() {
 CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
                                    WaylandDisplay* display,
                                    bool depth_stencil)
-    : egl_(egl), display_(display), depth_stencil_(depth_stencil) {
+    : egl_(egl),
+      display_(display),
+      depth_stencil_(depth_stencil),
+      buffer_modifier_(DRM_FORMAT_MOD_INVALID) {
   queue_ = wl_display_create_queue(display_->display());
   dmabuf_wrapper_ = static_cast<zwp_linux_dmabuf_v1*>(
       wl_proxy_create_wrapper(display_->dmabuf()));
@@ -228,6 +232,7 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
   if (!buffer) {
     return nullptr;
   }
+  buffer_modifier_ = buffer->modifier();
   auto new_buffer = std::make_unique<PoolBuffer>();
   new_buffer->buffer = std::move(buffer);
   if (explicit_sync_) {

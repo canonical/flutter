@@ -110,7 +110,8 @@ GpuDevice::~GpuDevice() {
 }
 
 bool GpuDevice::Initialize(std::optional<dev_t> device) {
-  std::string path = FindRenderNode(device);
+  path_ = FindRenderNode(device);
+  const std::string& path = path_;
   if (path.empty()) {
     FML_LOG(ERROR) << "No GPU render node available";
     return false;

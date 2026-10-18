@@ -34,6 +34,90 @@
 
 namespace flutter {
 
+// A Wayland protocol the embedder is using.
+struct FlutterDesktopWaylandProtocol {
+  // The name of the global interface, e.g. "wp_presentation".
+  std::string name;
+
+  // The version in use. This is the lower of the version the compositor
+  // supports and the version the embedder supports.
+  uint32_t version;
+};
+
+// The renderer Flutter draws with.
+enum class FlutterDesktopRenderer {
+  kSkia,
+  kImpeller,
+};
+
+// The graphics API used to access the GPU.
+enum class FlutterDesktopGraphicsApi {
+  kOpenGLES,
+  kVulkan,
+};
+
+// How rendered frames are shared with the compositor.
+enum class FlutterDesktopBufferSharing {
+  // GPU buffers are shared directly with the compositor without copying
+  // (zwp_linux_dmabuf_v1).
+  kLinuxDmabuf,
+
+  // Frames are copied into shared memory (wl_shm).
+  kWlShm,
+};
+
+// How access to shared buffers is coordinated with the compositor.
+enum class FlutterDesktopBufferSynchronization {
+  // The kernel driver tracks GPU access to buffers.
+  kImplicit,
+
+  // Fences are passed to and from the compositor
+  // (wp_linux_drm_syncobj_manager_v1).
+  kExplicit,
+};
+
+// Information about how an engine renders and presents frames.
+struct FlutterDesktopRenderingInfo {
+  FlutterDesktopRenderer renderer = FlutterDesktopRenderer::kSkia;
+
+  FlutterDesktopGraphicsApi graphics_api = FlutterDesktopGraphicsApi::kOpenGLES;
+
+  // The path of the GPU device rendered with, e.g. "/dev/dri/renderD128".
+  std::string gpu_device;
+
+  // The OpenGL implementation, if graphics_api is kOpenGLES.
+  std::string gl_vendor;
+  std::string gl_renderer;
+  std::string gl_version;
+
+  FlutterDesktopBufferSharing buffer_sharing =
+      FlutterDesktopBufferSharing::kLinuxDmabuf;
+
+  // The pixel format of the buffers, as a DRM fourcc code (drm_fourcc.h).
+  uint32_t buffer_format = 0;
+
+  // The DRM format modifier describing the memory layout of the most
+  // recently allocated buffer (e.g. tiling or compression). This is
+  // DRM_FORMAT_MOD_INVALID (0x00ffffffffffffff) if the driver chose the
+  // layout without reporting it, or no frame has been drawn yet.
+  uint64_t buffer_modifier = 0;
+
+  FlutterDesktopBufferSynchronization buffer_synchronization =
+      FlutterDesktopBufferSynchronization::kImplicit;
+
+  // True if frames are scheduled using the times the compositor reports they
+  // were shown (wp_presentation).
+  bool presentation_feedback = false;
+
+  // True if every frame is shown for at least one display refresh
+  // (wp_fifo_v1).
+  bool fifo = false;
+
+  // True if frames are rendered at fractional scales rather than the next
+  // integer scale (wp_fractional_scale_v1 and wp_viewporter).
+  bool fractional_scale = false;
+};
+
 // The platform resources shared by all engines in a process.
 class FlutterDesktopApplication {
  public:
@@ -61,6 +145,22 @@ class FlutterDesktopApplication {
 
   // Causes run to return. May be called from any thread.
   void quit() { flutter_linux_application_quit(application_); }
+
+  // The Wayland protocols in use.
+  std::vector<FlutterDesktopWaylandProtocol> wayland_protocols() const {
+    size_t count =
+        flutter_linux_application_get_wayland_protocol_count(application_);
+    std::vector<FlutterDesktopWaylandProtocol> protocols;
+    protocols.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+      const char* name = nullptr;
+      uint32_t version = 0;
+      flutter_linux_application_get_wayland_protocol(application_, i, &name,
+                                                     &version);
+      protocols.push_back({name, version});
+    }
+    return protocols;
+  }
 
  private:
   friend class FlutterDesktopEngine;
@@ -140,6 +240,42 @@ class FlutterDesktopEngine {
   // The application this engine is in.
   const std::shared_ptr<FlutterDesktopApplication>& application() const {
     return application_;
+  }
+
+  // Information about how this engine renders and presents frames. Some
+  // values are only known once the first frame has been drawn.
+  FlutterDesktopRenderingInfo rendering_info() const {
+    FlutterLinuxRenderingInfo abi_info = {};
+    abi_info.struct_size = sizeof(abi_info);
+    flutter_linux_engine_get_rendering_info(engine_, &abi_info);
+
+    FlutterDesktopRenderingInfo info;
+    info.renderer = abi_info.renderer == FLUTTER_LINUX_RENDERER_IMPELLER
+                        ? FlutterDesktopRenderer::kImpeller
+                        : FlutterDesktopRenderer::kSkia;
+    info.graphics_api =
+        abi_info.graphics_api == FLUTTER_LINUX_GRAPHICS_API_VULKAN
+            ? FlutterDesktopGraphicsApi::kVulkan
+            : FlutterDesktopGraphicsApi::kOpenGLES;
+    info.gpu_device = abi_info.gpu_device;
+    info.gl_vendor = abi_info.gl_vendor;
+    info.gl_renderer = abi_info.gl_renderer;
+    info.gl_version = abi_info.gl_version;
+    info.buffer_sharing =
+        abi_info.buffer_sharing == FLUTTER_LINUX_BUFFER_SHARING_WL_SHM
+            ? FlutterDesktopBufferSharing::kWlShm
+            : FlutterDesktopBufferSharing::kLinuxDmabuf;
+    info.buffer_format = abi_info.buffer_format;
+    info.buffer_modifier = abi_info.buffer_modifier;
+    info.buffer_synchronization =
+        abi_info.buffer_synchronization ==
+                FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_EXPLICIT
+            ? FlutterDesktopBufferSynchronization::kExplicit
+            : FlutterDesktopBufferSynchronization::kImplicit;
+    info.presentation_feedback = abi_info.presentation_feedback;
+    info.fifo = abi_info.fifo;
+    info.fractional_scale = abi_info.fractional_scale;
+    return info;
   }
 
  private:
