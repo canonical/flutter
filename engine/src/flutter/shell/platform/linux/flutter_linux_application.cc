@@ -31,7 +31,7 @@ FlutterLinuxApplication::~FlutterLinuxApplication() {
 bool FlutterLinuxApplication::Initialize() {
   event_loop_ = std::make_unique<EventLoop>();
 
-  display_ = WaylandDisplay::Create();
+  display_ = WaylandDisplay::Create(event_loop_.get());
   if (!display_) {
     return false;
   }

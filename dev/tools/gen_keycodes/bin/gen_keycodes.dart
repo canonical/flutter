@@ -8,7 +8,7 @@ import 'dart:io' hide Platform;
 import 'package:args/args.dart';
 import 'package:gen_keycodes/android_code_gen.dart';
 import 'package:gen_keycodes/base_code_gen.dart';
-import 'package:gen_keycodes/gtk_code_gen.dart';
+import 'package:gen_keycodes/linux_code_gen.dart';
 import 'package:gen_keycodes/ios_code_gen.dart';
 import 'package:gen_keycodes/keyboard_keys_code_gen.dart';
 import 'package:gen_keycodes/keyboard_maps_code_gen.dart';
@@ -288,13 +288,7 @@ Future<void> main(List<String> rawArguments) async {
       logicalData,
       readDataFile('windows_scancode_logical_map.json'),
     ),
-    'linux': GtkCodeGenerator(
-      physicalData,
-      logicalData,
-      readDataFile('gtk_modifier_bit_mapping.json'),
-      readDataFile('gtk_lock_bit_mapping.json'),
-      layoutGoals,
-    ),
+    'linux': LinuxCodeGenerator(physicalData, logicalData, layoutGoals),
     'web': WebCodeGenerator(
       physicalData,
       logicalData,

@@ -7,8 +7,8 @@ import 'dart:io';
 
 import 'package:gen_keycodes/android_code_gen.dart';
 import 'package:gen_keycodes/base_code_gen.dart';
-import 'package:gen_keycodes/gtk_code_gen.dart';
 import 'package:gen_keycodes/ios_code_gen.dart';
+import 'package:gen_keycodes/linux_code_gen.dart';
 import 'package:gen_keycodes/logical_key_data.dart';
 import 'package:gen_keycodes/macos_code_gen.dart';
 import 'package:gen_keycodes/physical_key_data.dart';
@@ -112,19 +112,17 @@ void main() {
     checkCommonOutput(output);
   });
   test('Generate Keycodes for Linux', () {
-    const platform = 'gtk';
-    final PlatformCodeGenerator codeGenerator = GtkCodeGenerator(
+    const platform = 'linux';
+    final PlatformCodeGenerator codeGenerator = LinuxCodeGenerator(
       physicalData,
       logicalData,
-      readDataFile(path.join(dataRoot, 'gtk_modifier_bit_mapping.json')),
-      readDataFile(path.join(dataRoot, 'gtk_lock_bit_mapping.json')),
       keyGoals,
     );
     final String output = codeGenerator.generate();
 
-    expect(codeGenerator.outputPath(platform), endsWith('fl_key_mapping.g.cc'));
-    expect(output, contains('initialize_modifier_bit_to_checked_keys'));
-    expect(output, contains('initialize_lock_bit_to_checked_keys'));
+    expect(codeGenerator.outputPath(platform), endsWith('key_mapping.g.cc'));
+    expect(output, contains('kXkbKeycodeToPhysicalKey'));
+    expect(output, contains('kKeysymToLogicalKey'));
     checkCommonOutput(output);
   });
   test('Generate Keycodes for Web', () {

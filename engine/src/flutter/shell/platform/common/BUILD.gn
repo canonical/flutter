@@ -113,20 +113,33 @@ source_set("common_cpp_accessibility") {
   ]
 }
 
-source_set("common_cpp") {
+# The JSON codecs, which only depend on the header-only codec templates in
+# the client wrapper.
+source_set("common_cpp_json") {
   public = [
-    "incoming_message_dispatcher.h",
     "json_message_codec.h",
     "json_method_codec.h",
   ]
 
-  # TODO: Refactor flutter_glfw.cc to move the implementations corresponding
-  # to the _public_headers above into this target.
   sources = [
-    "incoming_message_dispatcher.cc",
     "json_message_codec.cc",
     "json_method_codec.cc",
   ]
+
+  public_configs = [ "//flutter:config" ]
+
+  public_deps = [
+    "//flutter/shell/platform/common/client_wrapper:codec_headers",
+    "//flutter/third_party/rapidjson",
+  ]
+}
+
+source_set("common_cpp") {
+  public = [ "incoming_message_dispatcher.h" ]
+
+  # TODO: Refactor flutter_glfw.cc to move the implementations corresponding
+  # to the _public_headers above into this target.
+  sources = [ "incoming_message_dispatcher.cc" ]
 
   configs += [ ":desktop_library_implementation" ]
 
@@ -140,7 +153,7 @@ source_set("common_cpp") {
 
   public_deps = [
     ":common_cpp_core",
-    "//flutter/third_party/rapidjson",
+    ":common_cpp_json",
   ]
 }
 

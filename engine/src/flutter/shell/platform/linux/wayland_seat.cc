@@ -4,6 +4,10 @@
 
 #include "flutter/shell/platform/linux/wayland_seat.h"
 
+#include <sys/mman.h>
+#include <unistd.h>
+
+#include <chrono>
 #include <ctime>
 
 namespace flutter {
@@ -27,6 +31,27 @@ uint64_t EventTime(uint32_t time) {
     return now * 1000;
   }
   return (now - age) * 1000;
+}
+
+// Converts a time on the event loop clock to microseconds.
+uint64_t ToMicros(EventLoop::TimePoint time) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+             time.time_since_epoch())
+      .count();
+}
+
+// Returns the event loop time for a Wayland event time.
+EventLoop::TimePoint ToTimePoint(uint32_t time) {
+  return EventLoop::TimePoint(std::chrono::microseconds(EventTime(time)));
+}
+
+// Returns the character produced by |keysym| for deriving layouts.
+uint32_t LayoutCharacter(const XkbFunctions* xkb, uint32_t keysym) {
+  if (keysym == 0) {
+    return 0;
+  }
+  uint32_t character = xkb->keysym_to_utf32(keysym);
+  return character != 0 ? character : kLayoutNotCharacter;
 }
 
 }  // namespace
@@ -58,13 +83,26 @@ const wl_touch_listener WaylandSeat::kTouchListener = {
     .orientation = TouchOrientation,
 };
 
+const wl_keyboard_listener WaylandSeat::kKeyboardListener = {
+    .keymap = KeyboardKeymap,
+    .enter = KeyboardEnter,
+    .leave = KeyboardLeave,
+    .key = KeyboardKeyEvent,
+    .modifiers = KeyboardModifiers,
+    .repeat_info = KeyboardRepeatInfo,
+};
+
 WaylandSeat::WaylandSeat(wl_seat* seat,
-                         wp_cursor_shape_manager_v1* cursor_shape_manager)
-    : seat_(seat), cursor_shape_manager_(cursor_shape_manager) {
+                         wp_cursor_shape_manager_v1* cursor_shape_manager,
+                         EventLoop* event_loop)
+    : seat_(seat),
+      cursor_shape_manager_(cursor_shape_manager),
+      event_loop_(event_loop) {
   wl_seat_add_listener(seat_, &kSeatListener, this);
 }
 
 WaylandSeat::~WaylandSeat() {
+  ReleaseKeyboard();
   ReleaseTouch();
   ReleasePointer();
   wl_seat_destroy(seat_);
@@ -86,6 +124,19 @@ void WaylandSeat::SetInputHandler(wl_surface* surface, InputHandler* handler) {
   touch_frame_surfaces_.erase(surface);
 }
 
+void WaylandSeat::SetKeyboardHandler(wl_surface* surface,
+                                     KeyboardHandler* handler) {
+  if (handler != nullptr) {
+    keyboard_handlers_[surface] = handler;
+    return;
+  }
+  keyboard_handlers_.erase(surface);
+  if (keyboard_focus_ == surface) {
+    keyboard_focus_ = nullptr;
+    StopRepeat();
+  }
+}
+
 void WaylandSeat::SetCursor(uint32_t shape) {
   if (pointer_ == nullptr || cursor_shape_manager_ == nullptr ||
       pointer_focus_ == nullptr) {
@@ -102,6 +153,96 @@ void WaylandSeat::SetCursor(uint32_t shape) {
 InputHandler* WaylandSeat::HandlerFor(wl_surface* surface) const {
   auto it = handlers_.find(surface);
   return it != handlers_.end() ? it->second : nullptr;
+}
+
+KeyboardHandler* WaylandSeat::KeyboardHandlerFor(wl_surface* surface) const {
+  auto it = keyboard_handlers_.find(surface);
+  return it != keyboard_handlers_.end() ? it->second : nullptr;
+}
+
+KeyboardKey WaylandSeat::ResolveKey(uint32_t keycode) {
+  const XkbFunctions* xkb = xkb_keyboard_->functions();
+  KeyboardKey key;
+  key.keycode = keycode;
+  key.keysym = xkb_keyboard_->GetKeysym(keycode);
+  key.character = xkb->keysym_to_utf32(key.keysym);
+  key.text = xkb_keyboard_->GetText(keycode);
+
+  const std::unordered_map<uint32_t, uint64_t>& layout_keys =
+      LayoutLogicalKeys(xkb_keyboard_->GetLayout(keycode));
+  auto it = layout_keys.find(keycode);
+  if (it != layout_keys.end()) {
+    key.logical_key = it->second;
+    key.layout_logical_key = true;
+  } else {
+    key.logical_key = GetLogicalKey(
+        key.keysym, xkb->keysym_to_utf32(xkb->keysym_to_lower(key.keysym)));
+  }
+  return key;
+}
+
+const std::unordered_map<uint32_t, uint64_t>& WaylandSeat::LayoutLogicalKeys(
+    uint32_t layout) {
+  auto it = layout_keys_.find(layout);
+  if (it != layout_keys_.end()) {
+    return it->second;
+  }
+  const XkbFunctions* xkb = xkb_keyboard_->functions();
+  return layout_keys_[layout] = DeriveLayoutLogicalKeys(
+             [this, xkb, layout](uint32_t keycode, uint32_t level) {
+               return LayoutCharacter(
+                   xkb, xkb_keyboard_->GetLevelKeysym(keycode, layout, level));
+             });
+}
+
+void WaylandSeat::StartRepeat(uint32_t keycode,
+                              EventLoop::TimePoint press_time) {
+  StopRepeat();
+  if (repeat_rate_ <= 0 || !xkb_keyboard_->KeyRepeats(keycode)) {
+    return;
+  }
+  repeat_keycode_ = keycode;
+  uint64_t generation = repeat_generation_;
+  EventLoop::TimePoint target_time =
+      press_time + std::chrono::milliseconds(repeat_delay_);
+  event_loop_->PostTask(
+      [this, alive = std::weak_ptr<bool>(alive_), generation, target_time]() {
+        if (!alive.expired()) {
+          RepeatKey(generation, target_time);
+        }
+      },
+      target_time);
+}
+
+void WaylandSeat::StopRepeat() {
+  repeat_keycode_ = 0;
+  repeat_generation_++;
+}
+
+void WaylandSeat::RepeatKey(uint64_t generation,
+                            EventLoop::TimePoint target_time) {
+  if (generation != repeat_generation_ || xkb_keyboard_ == nullptr) {
+    return;
+  }
+  KeyboardHandler* handler = KeyboardHandlerFor(keyboard_focus_);
+  if (handler == nullptr) {
+    return;
+  }
+  handler->OnKey(ToMicros(EventLoop::Clock::now()), ResolveKey(repeat_keycode_),
+                 KeyAction::kRepeat, xkb_keyboard_->GetModifiers());
+
+  // Schedule from the previous target so the rate doesn't drift, but don't
+  // send a burst of repeats if the loop was blocked.
+  EventLoop::TimePoint next_time =
+      target_time + std::chrono::microseconds(1000000 / repeat_rate_);
+  next_time = std::max(next_time, EventLoop::Clock::now());
+  event_loop_->PostTask(
+      [this, alive = std::weak_ptr<bool>(alive_), generation, next_time]() {
+        if (!alive.expired()) {
+          RepeatKey(generation, next_time);
+        }
+      },
+      next_time);
 }
 
 void WaylandSeat::ReleasePointer() {
@@ -124,6 +265,17 @@ void WaylandSeat::ReleaseTouch() {
   }
   touch_focus_.clear();
   touch_frame_surfaces_.clear();
+}
+
+void WaylandSeat::ReleaseKeyboard() {
+  StopRepeat();
+  if (keyboard_ != nullptr) {
+    wl_keyboard_release(keyboard_);
+    keyboard_ = nullptr;
+  }
+  keyboard_focus_ = nullptr;
+  xkb_keyboard_.reset();
+  layout_keys_.clear();
 }
 
 void WaylandSeat::SeatCapabilities(void* data,
@@ -150,6 +302,20 @@ void WaylandSeat::SeatCapabilities(void* data,
   } else if (!has_touch && self->touch_ != nullptr) {
     TouchCancel(self, self->touch_);
     self->ReleaseTouch();
+  }
+
+  // Keyboard input requires libxkbcommon to interpret the keymap.
+  bool has_keyboard = (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0;
+  if (has_keyboard && self->keyboard_ == nullptr &&
+      XkbFunctions::Get() != nullptr) {
+    self->keyboard_ = wl_seat_get_keyboard(seat);
+    wl_keyboard_add_listener(self->keyboard_, &kKeyboardListener, self);
+  } else if (!has_keyboard && self->keyboard_ != nullptr) {
+    KeyboardHandler* handler = self->KeyboardHandlerFor(self->keyboard_focus_);
+    self->ReleaseKeyboard();
+    if (handler != nullptr) {
+      handler->OnKeyboardLeave(MonotonicMillis() * 1000);
+    }
   }
 }
 
@@ -378,5 +544,122 @@ void WaylandSeat::TouchOrientation(void* data,
                                    wl_touch* touch,
                                    int32_t id,
                                    wl_fixed_t orientation) {}
+
+void WaylandSeat::KeyboardKeymap(void* data,
+                                 wl_keyboard* keyboard,
+                                 uint32_t format,
+                                 int32_t fd,
+                                 uint32_t size) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  self->StopRepeat();
+  self->layout_keys_.clear();
+
+  if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+    close(fd);
+    self->xkb_keyboard_.reset();
+    return;
+  }
+
+  // The keymap must be mapped privately, as it may be shared with other
+  // clients.
+  void* keymap = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  close(fd);
+  if (keymap == MAP_FAILED) {
+    self->xkb_keyboard_.reset();
+    return;
+  }
+  self->xkb_keyboard_ = XkbKeyboard::Create(
+      XkbFunctions::Get(),
+      std::string_view(static_cast<const char*>(keymap), size));
+  munmap(keymap, size);
+}
+
+void WaylandSeat::KeyboardEnter(void* data,
+                                wl_keyboard* keyboard,
+                                uint32_t serial,
+                                wl_surface* surface,
+                                wl_array* keys) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  self->keyboard_focus_ = surface;
+  KeyboardHandler* handler = self->KeyboardHandlerFor(surface);
+  if (handler == nullptr || self->xkb_keyboard_ == nullptr) {
+    return;
+  }
+
+  std::vector<KeyboardKey> pressed_keys;
+  const auto* codes = static_cast<const uint32_t*>(keys->data);
+  for (size_t i = 0; i < keys->size / sizeof(uint32_t); i++) {
+    pressed_keys.push_back(self->ResolveKey(codes[i] + 8));
+  }
+  handler->OnKeyboardEnter(MonotonicMillis() * 1000, pressed_keys,
+                           self->xkb_keyboard_->GetModifiers());
+}
+
+void WaylandSeat::KeyboardLeave(void* data,
+                                wl_keyboard* keyboard,
+                                uint32_t serial,
+                                wl_surface* surface) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  self->StopRepeat();
+  KeyboardHandler* handler = self->KeyboardHandlerFor(self->keyboard_focus_);
+  self->keyboard_focus_ = nullptr;
+  if (handler != nullptr) {
+    handler->OnKeyboardLeave(MonotonicMillis() * 1000);
+  }
+}
+
+void WaylandSeat::KeyboardKeyEvent(void* data,
+                                   wl_keyboard* keyboard,
+                                   uint32_t serial,
+                                   uint32_t time,
+                                   uint32_t key,
+                                   uint32_t state) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  KeyboardHandler* handler = self->KeyboardHandlerFor(self->keyboard_focus_);
+  if (handler == nullptr || self->xkb_keyboard_ == nullptr) {
+    return;
+  }
+
+  uint32_t keycode = key + 8;
+  bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
+  if (pressed) {
+    self->StartRepeat(keycode, ToTimePoint(time));
+  } else if (keycode == self->repeat_keycode_) {
+    self->StopRepeat();
+  }
+
+  handler->OnKey(EventTime(time), self->ResolveKey(keycode),
+                 pressed ? KeyAction::kDown : KeyAction::kUp,
+                 self->xkb_keyboard_->GetModifiers());
+}
+
+void WaylandSeat::KeyboardModifiers(void* data,
+                                    wl_keyboard* keyboard,
+                                    uint32_t serial,
+                                    uint32_t mods_depressed,
+                                    uint32_t mods_latched,
+                                    uint32_t mods_locked,
+                                    uint32_t group) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  if (self->xkb_keyboard_ == nullptr) {
+    return;
+  }
+  self->xkb_keyboard_->UpdateState(mods_depressed, mods_latched, mods_locked,
+                                   group);
+  KeyboardHandler* handler = self->KeyboardHandlerFor(self->keyboard_focus_);
+  if (handler != nullptr) {
+    handler->OnKeyModifiers(MonotonicMillis() * 1000,
+                            self->xkb_keyboard_->GetModifiers());
+  }
+}
+
+void WaylandSeat::KeyboardRepeatInfo(void* data,
+                                     wl_keyboard* keyboard,
+                                     int32_t rate,
+                                     int32_t delay) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  self->repeat_rate_ = rate;
+  self->repeat_delay_ = delay;
+}
 
 }  // namespace flutter

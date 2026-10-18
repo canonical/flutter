@@ -100,6 +100,12 @@ source_set("flutter_linux_headers") {
       [ "//flutter/shell/platform/common:relative_flutter_library_headers" ]
 }
 
+# Stops the EGL headers including Xlib, which defines macros that conflict
+# with other code.
+config("no_x11") {
+  defines = [ "EGL_NO_X11" ]
+}
+
 source_set("flutter_linux_sources") {
   public = [
     "compositor_opengl.h",
@@ -110,13 +116,18 @@ source_set("flutter_linux_sources") {
     "event_loop.h",
     "flutter_linux_engine.h",
     "flutter_linux_view.h",
+    "key_event_converter.h",
+    "keyboard_manager.h",
+    "platform_messenger.h",
     "render_buffer.h",
     "shm_buffer.h",
+    "text_input_plugin.h",
     "title_renderer.h",
     "wayland_display.h",
     "wayland_seat.h",
     "wayland_window.h",
     "window_decoration.h",
+    "xkb.h",
   ]
 
   sources = [
@@ -131,15 +142,21 @@ source_set("flutter_linux_sources") {
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
     "gpu_device.cc",
+    "key_event_converter.cc",
+    "key_mapping.g.cc",
+    "key_mapping.h",
+    "keyboard_manager.cc",
     "pointer_event_converter.cc",
     "render_buffer.cc",
     "shm_buffer.cc",
+    "text_input_plugin.cc",
     "title_renderer.cc",
     "vsync_predictor.cc",
     "wayland_display.cc",
     "wayland_seat.cc",
     "wayland_window.cc",
     "window_decoration.cc",
+    "xkb.cc",
   ]
 
   configs += [
@@ -152,6 +169,11 @@ source_set("flutter_linux_sources") {
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
 
+  public_configs = [ ":no_x11" ]
+
+  # libxkbcommon is loaded at runtime.
+  libs = [ "dl" ]
+
   public_deps = [
     ":flutter_linux_headers",
     ":wayland_protocols",
@@ -161,6 +183,8 @@ source_set("flutter_linux_sources") {
 
   deps = [
     "//flutter/shell/platform/common:common_cpp_core",
+    "//flutter/shell/platform/common:common_cpp_input",
+    "//flutter/shell/platform/common:common_cpp_json",
     "//flutter/shell/platform/common:common_cpp_switches",
     "//flutter/skia",
     "//flutter/skia/modules/skparagraph",
@@ -194,8 +218,12 @@ executable("flutter_linux_unittests") {
 
   sources = [
     "event_loop_unittests.cc",
+    "fake_platform_messenger.h",
     "flutter_linux_unittests.cc",
+    "key_event_converter_unittests.cc",
+    "keyboard_manager_unittests.cc",
     "pointer_event_converter_unittests.cc",
+    "text_input_plugin_unittests.cc",
     "title_renderer_unittests.cc",
     "vsync_predictor_unittests.cc",
   ]
@@ -207,6 +235,7 @@ executable("flutter_linux_unittests") {
   deps = [
     ":flutter_linux_fixtures",
     ":flutter_linux_sources",
+    "//flutter/shell/platform/common:common_cpp_json",
     "//flutter/shell/platform/embedder:embedder_as_internal_library",
     "//flutter/testing",
   ]

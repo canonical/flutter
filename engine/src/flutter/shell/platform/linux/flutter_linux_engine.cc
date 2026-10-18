@@ -54,11 +54,19 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
       switches_(GetSwitchesFromEnvironment()) {
   embedder_api_.struct_size = sizeof(FlutterEngineProcTable);
   FlutterEngineGetProcAddresses(&embedder_api_);
+
+  keyboard_manager_ = std::make_unique<KeyboardManager>(
+      this, [this](const FlutterKeyEvent& event,
+                   std::function<void(bool handled)> callback) {
+        SendKeyEvent(event, std::move(callback));
+      });
 }
 
 FlutterLinuxEngine::~FlutterLinuxEngine() {
   Stop();
   FML_DCHECK(views_.empty());
+
+  keyboard_manager_.reset();
 
   compositor_.reset();
   egl_.reset();
@@ -343,14 +351,136 @@ void FlutterLinuxEngine::SendPointerEvents(const FlutterPointerEvent* events,
   embedder_api_.SendPointerEvent(engine_, events, count);
 }
 
+void FlutterLinuxEngine::SendKeyEvent(
+    const FlutterKeyEvent& event,
+    std::function<void(bool handled)> callback) {
+  if (engine_ == nullptr) {
+    if (callback) {
+      callback(false);
+    }
+    return;
+  }
+
+  // The callback is called by the engine on the platform thread.
+  auto* user_data = new std::function<void(bool)>(std::move(callback));
+  FlutterEngineResult result = embedder_api_.SendKeyEvent(
+      engine_, &event,
+      [](bool handled, void* user_data) {
+        std::unique_ptr<std::function<void(bool)>> callback(
+            static_cast<std::function<void(bool)>*>(user_data));
+        if (*callback) {
+          (*callback)(handled);
+        }
+      },
+      user_data);
+  if (result != kSuccess) {
+    std::unique_ptr<std::function<void(bool)>> failed_callback(user_data);
+    if (*failed_callback) {
+      (*failed_callback)(false);
+    }
+  }
+}
+
+void FlutterLinuxEngine::SendMessage(const std::string& channel,
+                                     const std::vector<uint8_t>& message,
+                                     ReplyCallback reply) {
+  if (engine_ == nullptr) {
+    if (reply) {
+      reply(nullptr, 0);
+    }
+    return;
+  }
+
+  FlutterPlatformMessageResponseHandle* response_handle = nullptr;
+  ReplyCallback* reply_data = nullptr;
+  if (reply) {
+    reply_data = new ReplyCallback(std::move(reply));
+    FlutterEngineResult result =
+        embedder_api_.PlatformMessageCreateResponseHandle(
+            engine_,
+            [](const uint8_t* data, size_t size, void* user_data) {
+              std::unique_ptr<ReplyCallback> reply(
+                  static_cast<ReplyCallback*>(user_data));
+              (*reply)(data, size);
+            },
+            reply_data, &response_handle);
+    if (result != kSuccess) {
+      std::unique_ptr<ReplyCallback> failed_reply(reply_data);
+      (*failed_reply)(nullptr, 0);
+      return;
+    }
+  }
+
+  FlutterPlatformMessage platform_message = {};
+  platform_message.struct_size = sizeof(FlutterPlatformMessage);
+  platform_message.channel = channel.c_str();
+  platform_message.message = message.data();
+  platform_message.message_size = message.size();
+  platform_message.response_handle = response_handle;
+  FlutterEngineResult result =
+      embedder_api_.SendPlatformMessage(engine_, &platform_message);
+
+  if (response_handle != nullptr) {
+    embedder_api_.PlatformMessageReleaseResponseHandle(engine_,
+                                                       response_handle);
+    if (result != kSuccess) {
+      std::unique_ptr<ReplyCallback> failed_reply(reply_data);
+      (*failed_reply)(nullptr, 0);
+    }
+  }
+}
+
+void FlutterLinuxEngine::SetMessageHandler(const std::string& channel,
+                                           MessageHandler handler) {
+  if (handler) {
+    message_handlers_[channel] = std::move(handler);
+  } else {
+    message_handlers_.erase(channel);
+  }
+}
+
 void FlutterLinuxEngine::HandlePlatformMessage(
     const FlutterPlatformMessage* message) {
-  // No platform channels are implemented yet. Send an empty response so the
+  // Sends the response to the message exactly once. If the handler drops
+  // the response without sending it, an empty response is sent so the
   // framework knows the message was not handled.
-  if (message->response_handle != nullptr) {
-    embedder_api_.SendPlatformMessageResponse(engine_, message->response_handle,
-                                              nullptr, 0);
+  class Responder {
+   public:
+    Responder(FlutterLinuxEngine* engine,
+              const FlutterPlatformMessageResponseHandle* handle)
+        : engine_(engine), alive_(engine->alive_), handle_(handle) {}
+    ~Responder() { Respond({}); }
+
+    void Respond(const std::vector<uint8_t>& response) {
+      if (handle_ == nullptr) {
+        return;
+      }
+      const FlutterPlatformMessageResponseHandle* handle = handle_;
+      handle_ = nullptr;
+      if (alive_.expired() || engine_->engine_ == nullptr) {
+        return;
+      }
+      engine_->embedder_api_.SendPlatformMessageResponse(
+          engine_->engine_, handle, response.data(), response.size());
+    }
+
+   private:
+    FlutterLinuxEngine* engine_;
+    std::weak_ptr<bool> alive_;
+    const FlutterPlatformMessageResponseHandle* handle_;
+  };
+  auto responder = std::make_shared<Responder>(this, message->response_handle);
+
+  auto it = message_handlers_.find(message->channel);
+  if (it == message_handlers_.end()) {
+    return;
   }
+  // Copied so the handler can replace itself.
+  MessageHandler handler = it->second;
+  handler(message->message, message->message_size,
+          [responder](const std::vector<uint8_t>& response) {
+            responder->Respond(response);
+          });
 }
 
 FlutterRendererConfig FlutterLinuxEngine::GetRendererConfig() {

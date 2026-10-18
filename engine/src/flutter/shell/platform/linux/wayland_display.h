@@ -37,7 +37,10 @@ class WaylandDisplay : public EventLoop::Source {
  public:
   // Connects to the compositor specified by the environment. Returns nullptr
   // if unable to connect or the compositor is missing required features.
-  static std::unique_ptr<WaylandDisplay> Create();
+  //
+  // |event_loop| is the loop the display is dispatched from, and must
+  // outlive it.
+  static std::unique_ptr<WaylandDisplay> Create(EventLoop* event_loop);
 
   ~WaylandDisplay() override;
 
@@ -103,7 +106,7 @@ class WaylandDisplay : public EventLoop::Source {
   void Dispatch(bool readable) override;
 
  private:
-  explicit WaylandDisplay(wl_display* display);
+  WaylandDisplay(wl_display* display, EventLoop* event_loop);
 
   // Binds globals and queries buffer formats. Returns false if a required
   // feature is missing.
@@ -172,6 +175,7 @@ class WaylandDisplay : public EventLoop::Source {
   xdg_wm_base* wm_base_ = nullptr;
   wl_shm* shm_ = nullptr;
   wl_subcompositor* subcompositor_ = nullptr;
+  EventLoop* event_loop_;
   wl_seat* wl_seat_ = nullptr;
   wp_cursor_shape_manager_v1* cursor_shape_manager_ = nullptr;
   std::unique_ptr<WaylandSeat> seat_;

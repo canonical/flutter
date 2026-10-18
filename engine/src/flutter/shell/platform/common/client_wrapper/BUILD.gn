@@ -20,6 +20,17 @@ source_set("client_wrapper") {
       [ "//flutter/shell/platform/common:relative_flutter_library_headers" ]
 }
 
+# The header-only codec templates, for use without the rest of the wrapper,
+# which depends on the desktop embedding API.
+source_set("codec_headers") {
+  public = [
+    "include/flutter/message_codec.h",
+    "include/flutter/method_call.h",
+    "include/flutter/method_codec.h",
+    "include/flutter/method_result.h",
+  ]
+}
+
 source_set("client_wrapper_library_stubs") {
   sources = [
     "testing/stub_flutter_api.cc",

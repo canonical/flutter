@@ -94,7 +94,7 @@ const zwp_linux_dmabuf_feedback_v1_listener WaylandDisplay::kFeedbackListener =
         .tranche_flags = FeedbackTrancheFlags,
 };
 
-std::unique_ptr<WaylandDisplay> WaylandDisplay::Create() {
+std::unique_ptr<WaylandDisplay> WaylandDisplay::Create(EventLoop* event_loop) {
   wl_display* display = wl_display_connect(nullptr);
   if (display == nullptr) {
     FML_LOG(ERROR) << "Failed to connect to Wayland compositor: "
@@ -102,14 +102,16 @@ std::unique_ptr<WaylandDisplay> WaylandDisplay::Create() {
     return nullptr;
   }
 
-  std::unique_ptr<WaylandDisplay> result(new WaylandDisplay(display));
+  std::unique_ptr<WaylandDisplay> result(
+      new WaylandDisplay(display, event_loop));
   if (!result->Initialize()) {
     return nullptr;
   }
   return result;
 }
 
-WaylandDisplay::WaylandDisplay(wl_display* display) : display_(display) {}
+WaylandDisplay::WaylandDisplay(wl_display* display, EventLoop* event_loop)
+    : display_(display), event_loop_(event_loop) {}
 
 WaylandDisplay::~WaylandDisplay() {
   if (read_prepared_) {
@@ -177,7 +179,8 @@ bool WaylandDisplay::Initialize() {
     return false;
   }
   if (wl_seat_ != nullptr) {
-    seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_);
+    seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_,
+                                          event_loop_);
   }
   if (dmabuf_ == nullptr) {
     return true;

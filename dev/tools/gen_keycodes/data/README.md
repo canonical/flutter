@@ -51,14 +51,12 @@
 | [`windows_logical_to_window_vk.json`](windows_logical_to_window_vk.json) | Maps a logical key name to the names of its corresponding virtual keys in Win32. |
 | [`windows_scancode_logical_map.json`](windows_scancode_logical_map.json) | Maps a physical key name to a logical key name. This is used to when a `keycode` maps to multiple keys (including when the `keycode` is 0), therefore can only be told apart by the scan code. |
 
-### Linux (GTK)
+### Linux
 
 | File name | Explanation |
 | ---- | ---- |
-| [`gtk_key_mapping_cc.tmpl`](gtk_key_mapping_cc.tmpl) | The template for `fl_key_mapping.g.cc`. |
-| [`gtk_lock_bit_mapping.json`](gtk_lock_bit_mapping.json) | Maps a name for GTK's modifier bit macro to Flutter's logical name (element #0) and physical name (element #1). This is used to generate checked keys that GTK should keep lock state synchronous on.|
+| [`linux_key_mapping_cc.tmpl`](linux_key_mapping_cc.tmpl) | The template for `key_mapping.g.cc`. |
 | [`gtk_logical_name_mapping.json`](gtk_logical_name_mapping.json) | Maps a logical key name to the macro names of its corresponding `keyval`s. This is used to convert logical keys.|
-| [`gtk_modifier_bit_mapping.json`](gtk_modifier_bit_mapping.json) | Maps a name for GTK's modifier bit macro to Flutter's physical name (element #0), logical name (element #1), and the logical name for the paired key (element #2). This is used to generate checked keys where GTK should keep the pressed state synchronized.|
 | [`gtk_numpad_shift.json`](gtk_numpad_shift.json) | Maps the name of a `keyval` macro of a numpad key to that of the corresponding key with NumLock on. GTK uses different `keyval` for numpad keys with and without NumLock on, but Flutter's logical key model treats them as the same key.|
 
 ### Linux (GLFW)

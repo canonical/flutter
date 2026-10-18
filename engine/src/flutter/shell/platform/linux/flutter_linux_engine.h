@@ -6,6 +6,7 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_FLUTTER_LINUX_ENGINE_H_
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -17,6 +18,8 @@
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
+#include "flutter/shell/platform/linux/keyboard_manager.h"
+#include "flutter/shell/platform/linux/platform_messenger.h"
 #include "flutter/shell/platform/linux/vsync_predictor.h"
 
 namespace flutter {
@@ -30,7 +33,7 @@ constexpr FlutterViewId kImplicitViewId = 0;
 //
 // The engine must be created, run and destroyed on the application's platform
 // thread. Multiple engines may share an application.
-class FlutterLinuxEngine {
+class FlutterLinuxEngine : public PlatformMessenger {
  public:
   struct Properties {
     std::filesystem::path assets_path;
@@ -46,7 +49,7 @@ class FlutterLinuxEngine {
       FlutterLinuxApplication* application,
       Properties properties);
 
-  ~FlutterLinuxEngine();
+  ~FlutterLinuxEngine() override;
 
   // Starts running the engine.
   bool Run();
@@ -83,6 +86,23 @@ class FlutterLinuxEngine {
 
   // Sends pointer events to the engine.
   void SendPointerEvents(const FlutterPointerEvent* events, size_t count);
+
+  // Sends a key event to the engine. |callback| is called with whether the
+  // framework handled it, and may be empty.
+  void SendKeyEvent(const FlutterKeyEvent& event,
+                    std::function<void(bool handled)> callback);
+
+  // Handles keyboard input for the engine's views.
+  KeyboardManager* keyboard_manager() const { return keyboard_manager_.get(); }
+
+  // |PlatformMessenger|
+  void SendMessage(const std::string& channel,
+                   const std::vector<uint8_t>& message,
+                   ReplyCallback reply) override;
+
+  // |PlatformMessenger|
+  void SetMessageHandler(const std::string& channel,
+                         MessageHandler handler) override;
 
   // Called when the user requests a view be closed.
   void OnViewClose(FlutterLinuxView* view);
@@ -131,6 +151,11 @@ class FlutterLinuxEngine {
 
   // A vsync request waiting for the compositor to be ready for a new frame.
   std::optional<intptr_t> pending_vsync_baton_;
+
+  // Handlers for messages from the framework, by channel.
+  std::map<std::string, MessageHandler> message_handlers_;
+
+  std::unique_ptr<KeyboardManager> keyboard_manager_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;

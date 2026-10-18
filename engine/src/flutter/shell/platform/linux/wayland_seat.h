@@ -7,11 +7,17 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
+#include <unordered_map>
+#include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/event_loop.h"
+#include "flutter/shell/platform/linux/key_event_converter.h"
 #include "flutter/shell/platform/linux/protocols/cursor-shape-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/xkb.h"
 
 namespace flutter {
 
@@ -67,12 +73,42 @@ class InputHandler {
   virtual void OnTouchFrame() {}
 };
 
+// Receives keyboard events for a surface. Called on the platform thread.
+//
+// Times are in microseconds on CLOCK_MONOTONIC. |modifiers| is the state
+// before the event.
+class KeyboardHandler {
+ public:
+  virtual ~KeyboardHandler() = default;
+
+  // Called when the surface gains keyboard focus, with the keys already
+  // pressed.
+  virtual void OnKeyboardEnter(uint64_t time,
+                               const std::vector<KeyboardKey>& keys,
+                               const KeyModifiers& modifiers) = 0;
+
+  // Called when the surface loses keyboard focus. Pressed keys should be
+  // considered released.
+  virtual void OnKeyboardLeave(uint64_t time) = 0;
+
+  virtual void OnKey(uint64_t time,
+                     const KeyboardKey& key,
+                     KeyAction action,
+                     const KeyModifiers& modifiers) = 0;
+
+  // Called when the modifier or lock state changes.
+  virtual void OnKeyModifiers(uint64_t time, const KeyModifiers& modifiers) = 0;
+};
+
 // A group of input devices used by the user.
 class WaylandSeat {
  public:
   // Takes ownership of |seat|. |cursor_shape_manager| may be nullptr, in
-  // which case the cursor can't be changed.
-  WaylandSeat(wl_seat* seat, wp_cursor_shape_manager_v1* cursor_shape_manager);
+  // which case the cursor can't be changed. |event_loop| is used to repeat
+  // keys and must outlive the seat.
+  WaylandSeat(wl_seat* seat,
+              wp_cursor_shape_manager_v1* cursor_shape_manager,
+              EventLoop* event_loop);
   ~WaylandSeat();
 
   wl_seat* seat() const { return seat_; }
@@ -80,6 +116,10 @@ class WaylandSeat {
   // Sends input events over |surface| to |handler|, or stops sending them if
   // |handler| is nullptr.
   void SetInputHandler(wl_surface* surface, InputHandler* handler);
+
+  // Sends keyboard events for |surface| to |handler|, or stops sending them
+  // if |handler| is nullptr.
+  void SetKeyboardHandler(wl_surface* surface, KeyboardHandler* handler);
 
   // Sets the cursor shown over the surface the pointer is in. |shape| is a
   // wp_cursor_shape_device_v1 shape.
@@ -159,9 +199,42 @@ class WaylandSeat {
                                int32_t id,
                                wl_fixed_t orientation);
 
+  static void KeyboardKeymap(void* data,
+                             wl_keyboard* keyboard,
+                             uint32_t format,
+                             int32_t fd,
+                             uint32_t size);
+  static void KeyboardEnter(void* data,
+                            wl_keyboard* keyboard,
+                            uint32_t serial,
+                            wl_surface* surface,
+                            wl_array* keys);
+  static void KeyboardLeave(void* data,
+                            wl_keyboard* keyboard,
+                            uint32_t serial,
+                            wl_surface* surface);
+  static void KeyboardKeyEvent(void* data,
+                               wl_keyboard* keyboard,
+                               uint32_t serial,
+                               uint32_t time,
+                               uint32_t key,
+                               uint32_t state);
+  static void KeyboardModifiers(void* data,
+                                wl_keyboard* keyboard,
+                                uint32_t serial,
+                                uint32_t mods_depressed,
+                                uint32_t mods_latched,
+                                uint32_t mods_locked,
+                                uint32_t group);
+  static void KeyboardRepeatInfo(void* data,
+                                 wl_keyboard* keyboard,
+                                 int32_t rate,
+                                 int32_t delay);
+
   static const wl_seat_listener kSeatListener;
   static const wl_pointer_listener kPointerListener;
   static const wl_touch_listener kTouchListener;
+  static const wl_keyboard_listener kKeyboardListener;
 
   // Returns the handler for |surface|, or nullptr.
   InputHandler* HandlerFor(wl_surface* surface) const;
@@ -172,11 +245,31 @@ class WaylandSeat {
   // Sends the scrolling accumulated in the current pointer frame.
   void FlushScroll();
 
+  // Returns the keyboard handler for |surface|, or nullptr.
+  KeyboardHandler* KeyboardHandlerFor(wl_surface* surface) const;
+
+  // Returns the key |keycode| produces in the current keyboard state.
+  KeyboardKey ResolveKey(uint32_t keycode);
+
+  // Returns the logical keys chosen to match the US layout for |layout|.
+  const std::unordered_map<uint32_t, uint64_t>& LayoutLogicalKeys(
+      uint32_t layout);
+
+  // Starts repeating |keycode| if it repeats, replacing any repeating key.
+  void StartRepeat(uint32_t keycode, EventLoop::TimePoint press_time);
+  void StopRepeat();
+
+  // Sends a repeat of the repeating key if |generation| is still current,
+  // and schedules the next one.
+  void RepeatKey(uint64_t generation, EventLoop::TimePoint target_time);
+
   void ReleasePointer();
   void ReleaseTouch();
+  void ReleaseKeyboard();
 
   wl_seat* seat_;
   wp_cursor_shape_manager_v1* cursor_shape_manager_;
+  EventLoop* event_loop_;
   wl_pointer* pointer_ = nullptr;
   wp_cursor_shape_device_v1* cursor_shape_device_ = nullptr;
   wl_touch* touch_ = nullptr;
@@ -197,6 +290,32 @@ class WaylandSeat {
 
   // Surfaces that have received touch events in the current frame.
   std::set<wl_surface*> touch_frame_surfaces_;
+
+  wl_keyboard* keyboard_ = nullptr;
+  std::map<wl_surface*, KeyboardHandler*> keyboard_handlers_;
+
+  // The keymap and state, or nullptr if no keymap has been received.
+  std::unique_ptr<XkbKeyboard> xkb_keyboard_;
+
+  // Logical keys derived from each layout of the keymap.
+  std::map<uint32_t, std::unordered_map<uint32_t, uint64_t>> layout_keys_;
+
+  // The surface with keyboard focus.
+  wl_surface* keyboard_focus_ = nullptr;
+
+  // Key repeat settings, as keys per second and milliseconds before the
+  // first repeat. A rate of zero disables repeating.
+  int32_t repeat_rate_ = 25;
+  int32_t repeat_delay_ = 600;
+
+  // The key being repeated, and a counter that invalidates pending repeat
+  // tasks when it changes.
+  uint32_t repeat_keycode_ = 0;
+  uint64_t repeat_generation_ = 0;
+
+  // Repeat tasks hold a weak reference to this, so they don't run after the
+  // seat is destroyed.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 
   FML_DISALLOW_COPY_AND_ASSIGN(WaylandSeat);
 };
