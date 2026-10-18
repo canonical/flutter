@@ -10,7 +10,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/linux/dmabuf_buffer.h"
+#include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_window.h"
 
 namespace flutter {
@@ -48,7 +48,7 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
 
   // Shows a rendered frame, synchronized with |sync| if provided. Called on
   // the raster thread.
-  void PresentBuffer(DmabufBuffer* buffer,
+  void PresentBuffer(RenderBuffer* buffer,
                      const WaylandWindow::SyncPoints* sync);
 
   // |WaylandWindow::Delegate|

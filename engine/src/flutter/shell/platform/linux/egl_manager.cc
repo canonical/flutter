@@ -87,6 +87,9 @@ void EGLManager::QueryGLStrings() {
   gl_vendor_ = get_string(GL_VENDOR);
   gl_renderer_ = get_string(GL_RENDERER);
   gl_version_ = get_string(GL_VERSION);
+  std::string extensions = " " + get_string(GL_EXTENSIONS) + " ";
+  supports_read_bgra_ =
+      extensions.find(" GL_EXT_read_format_bgra ") != std::string::npos;
   if (previous_context != EGL_NO_CONTEXT) {
     eglMakeCurrent(previous_display, previous_draw, previous_read,
                    previous_context);

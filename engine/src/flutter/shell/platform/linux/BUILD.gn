@@ -105,6 +105,8 @@ source_set("flutter_linux_sources") {
     "event_loop.h",
     "flutter_linux_engine.h",
     "flutter_linux_view.h",
+    "render_buffer.h",
+    "shm_buffer.h",
     "wayland_display.h",
     "wayland_window.h",
   ]
@@ -120,6 +122,8 @@ source_set("flutter_linux_sources") {
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
     "gpu_device.cc",
+    "render_buffer.cc",
+    "shm_buffer.cc",
     "vsync_predictor.cc",
     "wayland_display.cc",
     "wayland_window.cc",

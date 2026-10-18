@@ -15,9 +15,9 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/linux/dmabuf_buffer.h"
 #include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 
 namespace flutter {
@@ -28,6 +28,9 @@ class FlutterLinuxView;
 //
 // Flutter renders each frame into a dmabuf, which is then handed directly to
 // the Wayland compositor. No copies are made.
+//
+// If the compositor or GPU can't share dmabufs, each frame is instead copied
+// from the GPU into shared memory (wl_shm).
 //
 // If the compositor and GPU support it, access to buffers is synchronized
 // explicitly with DRM timeline syncobjs (wp_linux_drm_syncobj_manager_v1).
@@ -54,12 +57,18 @@ class CompositorOpenGL {
   // platform thread.
   void RemoveView(FlutterViewId view_id);
 
-  // True if buffers are explicitly synchronized with the compositor.
+  // True if buffers are shared with the compositor as dmabufs, false if
+  // frames are copied into shared memory. May be called from any thread.
+  bool uses_dmabuf() const { return use_dmabuf_; }
+
+  // True if buffers are explicitly synchronized with the compositor. May be
+  // called from any thread.
   bool explicit_sync() const { return explicit_sync_; }
 
   // The DRM format modifier of the most recently allocated buffer, or
   // DRM_FORMAT_MOD_INVALID if its layout was chosen implicitly or no buffer
-  // has been allocated yet. May be called from any thread.
+  // has been allocated yet. Shared memory buffers are DRM_FORMAT_MOD_LINEAR.
+  // May be called from any thread.
   uint64_t buffer_modifier() const { return buffer_modifier_; }
 
   // |FlutterCompositor.create_backing_store_callback|
@@ -77,7 +86,7 @@ class CompositorOpenGL {
  private:
   // A buffer that can be used as a backing store.
   struct PoolBuffer {
-    std::unique_ptr<DmabufBuffer> buffer;
+    std::unique_ptr<RenderBuffer> buffer;
 
     // True while Flutter is using the buffer as a backing store.
     bool in_use = false;
@@ -98,6 +107,10 @@ class CompositorOpenGL {
   // Returns a buffer of the given size from the pool for |view_id|,
   // allocating one if necessary.
   PoolBuffer* GetBuffer(FlutterViewId view_id, int width, int height);
+
+  // Allocates a new buffer of the given size. Falls back to shared memory if
+  // the first dmabuf can't be allocated.
+  std::unique_ptr<RenderBuffer> AllocateBuffer(int width, int height);
 
   // Removes free buffers from the pool that aren't the given size.
   void TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,
@@ -141,8 +154,15 @@ class CompositorOpenGL {
   WaylandDisplay* display_;
   bool depth_stencil_;
 
+  // True if buffers are shared as dmabufs.
+  std::atomic<bool> use_dmabuf_;
+
+  // True once a dmabuf has been allocated, after which there is no fallback
+  // to shared memory.
+  bool dmabuf_allocated_ = false;
+
   // True if buffers are explicitly synchronized with the compositor.
-  bool explicit_sync_ = false;
+  std::atomic<bool> explicit_sync_;
 
   std::atomic<uint64_t> buffer_modifier_;
 
@@ -150,6 +170,7 @@ class CompositorOpenGL {
   // the raster thread independently of the platform thread.
   wl_event_queue* queue_ = nullptr;
   zwp_linux_dmabuf_v1* dmabuf_wrapper_ = nullptr;
+  wl_shm* shm_wrapper_ = nullptr;
 
   // Buffers for each view. Only accessed on the raster thread.
   std::map<FlutterViewId, std::vector<std::unique_ptr<PoolBuffer>>> pools_;

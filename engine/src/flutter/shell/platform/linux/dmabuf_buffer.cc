@@ -43,11 +43,6 @@ constexpr int kMaxPlanes = 4;
 }  // namespace
 
 const uint32_t DmabufBuffer::kFormat = DRM_FORMAT_ARGB8888;
-const uint32_t DmabufBuffer::kGLFormat = GL_RGBA8_OES;
-
-const wl_buffer_listener DmabufBuffer::kBufferListener = {
-    .release = BufferRelease,
-};
 
 std::unique_ptr<DmabufBuffer> DmabufBuffer::Create(
     EGLManager* egl,
@@ -56,34 +51,22 @@ std::unique_ptr<DmabufBuffer> DmabufBuffer::Create(
     int width,
     int height,
     bool depth_stencil) {
-  std::unique_ptr<DmabufBuffer> buffer(new DmabufBuffer(egl));
-  buffer->width_ = width;
-  buffer->height_ = height;
+  std::unique_ptr<DmabufBuffer> buffer(new DmabufBuffer(egl, width, height));
   if (!buffer->Initialize(dmabuf, modifiers, depth_stencil)) {
     return nullptr;
   }
   return buffer;
 }
 
-DmabufBuffer::DmabufBuffer(EGLManager* egl) : egl_(egl) {}
+DmabufBuffer::DmabufBuffer(EGLManager* egl, int width, int height)
+    : RenderBuffer(egl, width, height) {}
 
 DmabufBuffer::~DmabufBuffer() {
-  if (buffer_ != nullptr) {
-    wl_buffer_destroy(buffer_);
-  }
-  if (egl_->IsRenderContextCurrent()) {
-    if (framebuffer_ != 0) {
-      glDeleteFramebuffers(1, &framebuffer_);
-    }
-    if (depth_stencil_ != 0) {
-      glDeleteRenderbuffers(1, &depth_stencil_);
-    }
-    if (texture_ != 0) {
-      glDeleteTextures(1, &texture_);
-    }
+  if (texture_ != 0 && egl()->IsRenderContextCurrent()) {
+    glDeleteTextures(1, &texture_);
   }
   if (image_ != EGL_NO_IMAGE_KHR) {
-    egl_->gpu()->DestroyImage(egl_->gpu()->display(), image_);
+    egl()->gpu()->DestroyImage(egl()->gpu()->display(), image_);
   }
   if (bo_ != nullptr) {
     gbm_bo_destroy(bo_);
@@ -97,7 +80,7 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   // this allows the driver to pick an optimal (e.g. compressed or tiled)
   // layout that the compositor can still read.
   std::vector<uint64_t> explicit_modifiers;
-  if (egl_->gpu()->supports_dmabuf_modifiers()) {
+  if (egl()->gpu()->supports_dmabuf_modifiers()) {
     for (uint64_t modifier : modifiers) {
       if (modifier != DRM_FORMAT_MOD_INVALID) {
         explicit_modifiers.push_back(modifier);
@@ -107,7 +90,7 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
 
   uint64_t modifier = DRM_FORMAT_MOD_INVALID;
   if (!explicit_modifiers.empty()) {
-    bo_ = gbm_bo_create_with_modifiers(egl_->gpu()->gbm(), width_, height_,
+    bo_ = gbm_bo_create_with_modifiers(egl()->gpu()->gbm(), width(), height(),
                                        kFormat, explicit_modifiers.data(),
                                        explicit_modifiers.size());
     if (bo_ != nullptr) {
@@ -115,11 +98,11 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
     }
   }
   if (bo_ == nullptr) {
-    bo_ = gbm_bo_create(egl_->gpu()->gbm(), width_, height_, kFormat,
+    bo_ = gbm_bo_create(egl()->gpu()->gbm(), width(), height(), kFormat,
                         GBM_BO_USE_RENDERING);
   }
   if (bo_ == nullptr) {
-    FML_LOG(ERROR) << "Failed to allocate " << width_ << "x" << height_
+    FML_LOG(ERROR) << "Failed to allocate " << width() << "x" << height()
                    << " buffer";
     return false;
   }
@@ -140,9 +123,9 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   modifier_ = modifier;
   bool has_modifier = modifier != DRM_FORMAT_MOD_INVALID;
   std::vector<EGLint> attributes = {EGL_WIDTH,
-                                    width_,
+                                    width(),
                                     EGL_HEIGHT,
-                                    height_,
+                                    height(),
                                     EGL_LINUX_DRM_FOURCC_EXT,
                                     static_cast<EGLint>(kFormat)};
   for (int i = 0; i < n_planes; i++) {
@@ -161,9 +144,9 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   }
   attributes.push_back(EGL_NONE);
 
-  image_ = egl_->gpu()->CreateImage(egl_->gpu()->display(), EGL_NO_CONTEXT,
-                                    EGL_LINUX_DMA_BUF_EXT, nullptr,
-                                    attributes.data());
+  image_ = egl()->gpu()->CreateImage(egl()->gpu()->display(), EGL_NO_CONTEXT,
+                                     EGL_LINUX_DMA_BUF_EXT, nullptr,
+                                     attributes.data());
   if (image_ == EGL_NO_IMAGE_KHR) {
     FML_LOG(ERROR) << "Failed to import buffer into EGL: 0x" << std::hex
                    << eglGetError();
@@ -172,28 +155,10 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
 
   glGenTextures(1, &texture_);
   glBindTexture(GL_TEXTURE_2D, texture_);
-  egl_->gpu()->ImageTargetTexture2D(GL_TEXTURE_2D, image_);
+  egl()->gpu()->ImageTargetTexture2D(GL_TEXTURE_2D, image_);
   glBindTexture(GL_TEXTURE_2D, 0);
 
-  glGenFramebuffers(1, &framebuffer_);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                         texture_, 0);
-  if (depth_stencil) {
-    glGenRenderbuffers(1, &depth_stencil_);
-    glBindRenderbuffer(GL_RENDERBUFFER, depth_stencil_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8_OES, width_,
-                          height_);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                              GL_RENDERBUFFER, depth_stencil_);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
-                              GL_RENDERBUFFER, depth_stencil_);
-  }
-  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (status != GL_FRAMEBUFFER_COMPLETE) {
-    FML_LOG(ERROR) << "Buffer framebuffer incomplete: 0x" << std::hex << status;
+  if (!CreateFramebuffer(GL_TEXTURE_2D, texture_, depth_stencil)) {
     return false;
   }
 
@@ -205,16 +170,11 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
                                    gbm_bo_get_stride_for_plane(bo_, i),
                                    modifier >> 32, modifier & 0xffffffff);
   }
-  buffer_ = zwp_linux_buffer_params_v1_create_immed(params, width_, height_,
-                                                    kFormat, 0);
+  SetBuffer(zwp_linux_buffer_params_v1_create_immed(params, width(), height(),
+                                                    kFormat, 0));
   zwp_linux_buffer_params_v1_destroy(params);
-  wl_buffer_add_listener(buffer_, &kBufferListener, this);
 
   return true;
-}
-
-void DmabufBuffer::BufferRelease(void* data, wl_buffer* buffer) {
-  static_cast<DmabufBuffer*>(data)->busy_ = false;
 }
 
 }  // namespace flutter

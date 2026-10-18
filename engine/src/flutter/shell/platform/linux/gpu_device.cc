@@ -141,32 +141,37 @@ bool GpuDevice::Initialize(std::optional<dev_t> device) {
 
   const char* extensions = eglQueryString(display_, EGL_EXTENSIONS);
   for (const char* required :
-       {"EGL_KHR_surfaceless_context", "EGL_KHR_no_config_context",
-        "EGL_EXT_image_dma_buf_import"}) {
+       {"EGL_KHR_surfaceless_context", "EGL_KHR_no_config_context"}) {
     if (!HasExtension(extensions, required)) {
       FML_LOG(ERROR) << "EGL implementation does not support " << required;
       return false;
     }
   }
-  supports_dmabuf_modifiers_ =
-      HasExtension(extensions, "EGL_EXT_image_dma_buf_import_modifiers");
 
+  InitializeDmabufImport(extensions);
+  if (supports_dmabuf_import_) {
+    InitializeExplicitSync(extensions);
+  }
+
+  FML_DLOG(INFO) << "Rendering with " << path;
+  return true;
+}
+
+void GpuDevice::InitializeDmabufImport(const char* extensions) {
+  if (!HasExtension(extensions, "EGL_EXT_image_dma_buf_import")) {
+    return;
+  }
   CreateImage = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(
       eglGetProcAddress("eglCreateImageKHR"));
   DestroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(
       eglGetProcAddress("eglDestroyImageKHR"));
   ImageTargetTexture2D = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
       eglGetProcAddress("glEGLImageTargetTexture2DOES"));
-  if (CreateImage == nullptr || DestroyImage == nullptr ||
-      ImageTargetTexture2D == nullptr) {
-    FML_LOG(ERROR) << "EGL implementation does not support EGL images";
-    return false;
-  }
-
-  InitializeExplicitSync(extensions);
-
-  FML_DLOG(INFO) << "Rendering with " << path;
-  return true;
+  supports_dmabuf_import_ = CreateImage != nullptr && DestroyImage != nullptr &&
+                            ImageTargetTexture2D != nullptr;
+  supports_dmabuf_modifiers_ =
+      supports_dmabuf_import_ &&
+      HasExtension(extensions, "EGL_EXT_image_dma_buf_import_modifiers");
 }
 
 void GpuDevice::InitializeExplicitSync(const char* extensions) {

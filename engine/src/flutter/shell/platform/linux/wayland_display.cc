@@ -30,6 +30,7 @@ constexpr uint32_t kMinDmabufVersion = 3;
 // would cause the compositor to send events the listeners don't handle.
 constexpr uint32_t kMaxCompositorVersion = 4;
 constexpr uint32_t kMaxWmBaseVersion = 7;
+constexpr uint32_t kMaxShmVersion = 1;
 constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
@@ -129,6 +130,9 @@ WaylandDisplay::~WaylandDisplay() {
   if (dmabuf_ != nullptr) {
     zwp_linux_dmabuf_v1_destroy(dmabuf_);
   }
+  if (shm_ != nullptr) {
+    wl_shm_destroy(shm_);
+  }
   if (wm_base_ != nullptr) {
     xdg_wm_base_destroy(wm_base_);
   }
@@ -158,11 +162,12 @@ bool WaylandDisplay::Initialize() {
     FML_LOG(ERROR) << "Wayland compositor does not support xdg_wm_base";
     return false;
   }
-  if (dmabuf_ == nullptr) {
-    FML_LOG(ERROR)
-        << "Wayland compositor does not support zwp_linux_dmabuf_v1 v"
-        << kMinDmabufVersion;
+  if (shm_ == nullptr) {
+    FML_LOG(ERROR) << "Wayland compositor does not support wl_shm";
     return false;
+  }
+  if (dmabuf_ == nullptr) {
+    return true;
   }
 
   zwp_linux_dmabuf_feedback_v1* feedback = nullptr;
@@ -275,6 +280,9 @@ void WaylandDisplay::RegistryGlobal(void* data,
         Bind<xdg_wm_base>(&self->protocols_, registry, name,
                           &xdg_wm_base_interface, version, kMaxWmBaseVersion);
     xdg_wm_base_add_listener(self->wm_base_, &kWmBaseListener, self);
+  } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+    self->shm_ = Bind<wl_shm>(&self->protocols_, registry, name,
+                              &wl_shm_interface, version, kMaxShmVersion);
   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
     if (version >= kMinDmabufVersion) {
       self->dmabuf_ = Bind<zwp_linux_dmabuf_v1>(

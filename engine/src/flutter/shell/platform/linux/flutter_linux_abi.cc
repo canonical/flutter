@@ -129,7 +129,9 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
   result.gl_vendor = egl->gl_vendor().c_str();
   result.gl_renderer = egl->gl_renderer().c_str();
   result.gl_version = egl->gl_version().c_str();
-  result.buffer_sharing = FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF;
+  result.buffer_sharing = e->compositor()->uses_dmabuf()
+                              ? FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF
+                              : FLUTTER_LINUX_BUFFER_SHARING_WL_SHM;
   result.buffer_format = flutter::DmabufBuffer::kFormat;
   result.buffer_modifier = e->compositor()->buffer_modifier();
   result.buffer_synchronization =

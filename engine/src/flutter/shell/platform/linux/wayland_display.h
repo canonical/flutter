@@ -53,9 +53,10 @@ class WaylandDisplay : public EventLoop::Source {
   wl_display* display() const { return display_; }
   wl_compositor* compositor() const { return compositor_; }
   xdg_wm_base* wm_base() const { return wm_base_; }
-  zwp_linux_dmabuf_v1* dmabuf() const { return dmabuf_; }
+  wl_shm* shm() const { return shm_; }
 
   // Optional globals, may be nullptr.
+  zwp_linux_dmabuf_v1* dmabuf() const { return dmabuf_; }
   wp_viewporter* viewporter() const { return viewporter_; }
   wp_fractional_scale_manager_v1* fractional_scale_manager() const {
     return fractional_scale_manager_;
@@ -164,6 +165,7 @@ class WaylandDisplay : public EventLoop::Source {
   wl_registry* registry_ = nullptr;
   wl_compositor* compositor_ = nullptr;
   xdg_wm_base* wm_base_ = nullptr;
+  wl_shm* shm_ = nullptr;
   zwp_linux_dmabuf_v1* dmabuf_ = nullptr;
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;

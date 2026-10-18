@@ -62,7 +62,8 @@ enum class FlutterDesktopBufferSharing {
   // (zwp_linux_dmabuf_v1).
   kLinuxDmabuf,
 
-  // Frames are copied into shared memory (wl_shm).
+  // Frames are copied from the GPU into shared memory (wl_shm). This is used
+  // if the compositor or GPU don't support sharing dmabufs.
   kWlShm,
 };
 
@@ -99,7 +100,8 @@ struct FlutterDesktopRenderingInfo {
   // The DRM format modifier describing the memory layout of the most
   // recently allocated buffer (e.g. tiling or compression). This is
   // DRM_FORMAT_MOD_INVALID (0x00ffffffffffffff) if the driver chose the
-  // layout without reporting it, or no frame has been drawn yet.
+  // layout without reporting it, or no frame has been drawn yet. Shared
+  // memory buffers are DRM_FORMAT_MOD_LINEAR (0).
   uint64_t buffer_modifier = 0;
 
   FlutterDesktopBufferSynchronization buffer_synchronization =

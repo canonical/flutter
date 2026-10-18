@@ -33,6 +33,9 @@ class EGLManager {
   const std::string& gl_renderer() const { return gl_renderer_; }
   const std::string& gl_version() const { return gl_version_; }
 
+  // True if pixels can be read in BGRA order (GL_EXT_read_format_bgra).
+  bool supports_read_bgra() const { return supports_read_bgra_; }
+
   // Makes the render context current on the calling thread.
   bool MakeRenderContextCurrent();
 
@@ -50,7 +53,8 @@ class EGLManager {
 
   bool Initialize();
 
-  // Reads the OpenGL implementation strings using the render context.
+  // Reads the OpenGL implementation strings and extensions using the render
+  // context.
   void QueryGLStrings();
 
   GpuDevice* gpu_;
@@ -59,6 +63,7 @@ class EGLManager {
   std::string gl_vendor_;
   std::string gl_renderer_;
   std::string gl_version_;
+  bool supports_read_bgra_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(EGLManager);
 };

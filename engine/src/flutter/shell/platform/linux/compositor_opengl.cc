@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 
 #include "flutter/fml/eintr_wrapper.h"
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/dmabuf_buffer.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
+#include "flutter/shell/platform/linux/shm_buffer.h"
 
 namespace flutter {
 
@@ -42,6 +45,18 @@ int64_t NowNanoseconds() {
   return static_cast<int64_t>(now.tv_sec) * 1000000000 + now.tv_nsec;
 }
 
+// Warns that frames are being copied into shared memory, once per process.
+void WarnShmFallback(const char* reason) {
+  static std::once_flag once;
+  std::call_once(once, [reason]() {
+    fprintf(stderr,
+            "Flutter: linux_dmabuf is not available (%s), falling back to "
+            "wl_shm. Frames will be copied from the GPU, which reduces "
+            "performance.\n",
+            reason);
+  });
+}
+
 }  // namespace
 
 CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
@@ -50,8 +65,26 @@ CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
     : egl_(egl),
       display_(display),
       depth_stencil_(depth_stencil),
+      use_dmabuf_(false),
+      explicit_sync_(false),
       buffer_modifier_(DRM_FORMAT_MOD_INVALID) {
   queue_ = wl_display_create_queue(display_->display());
+  shm_wrapper_ = static_cast<wl_shm*>(wl_proxy_create_wrapper(display_->shm()));
+  wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(shm_wrapper_), queue_);
+
+  if (display_->dmabuf() == nullptr) {
+    WarnShmFallback("the Wayland compositor does not support it");
+    return;
+  }
+  if (!egl_->gpu()->supports_dmabuf_import()) {
+    WarnShmFallback("EGL does not support EGL_EXT_image_dma_buf_import");
+    return;
+  }
+  if (display_->GetModifiers(DmabufBuffer::kFormat).empty()) {
+    WarnShmFallback("the Wayland compositor does not support ARGB8888");
+    return;
+  }
+  use_dmabuf_ = true;
   dmabuf_wrapper_ = static_cast<zwp_linux_dmabuf_v1*>(
       wl_proxy_create_wrapper(display_->dmabuf()));
   wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(dmabuf_wrapper_), queue_);
@@ -71,7 +104,10 @@ CompositorOpenGL::~CompositorOpenGL() {
     egl_->ClearCurrent();
   }
 
-  wl_proxy_wrapper_destroy(dmabuf_wrapper_);
+  if (dmabuf_wrapper_ != nullptr) {
+    wl_proxy_wrapper_destroy(dmabuf_wrapper_);
+  }
+  wl_proxy_wrapper_destroy(shm_wrapper_);
   wl_event_queue_destroy(queue_);
 }
 
@@ -103,7 +139,7 @@ bool CompositorOpenGL::CreateBackingStore(
   result->user_data = pool_buffer;
   result->type = kFlutterBackingStoreTypeOpenGL;
   result->open_gl.type = kFlutterOpenGLTargetTypeFramebuffer;
-  result->open_gl.framebuffer.target = DmabufBuffer::kGLFormat;
+  result->open_gl.framebuffer.target = RenderBuffer::kGLFormat;
   result->open_gl.framebuffer.name = pool_buffer->buffer->framebuffer();
   result->open_gl.framebuffer.user_data = nullptr;
   result->open_gl.framebuffer.destruction_callback = [](void* user_data) {};
@@ -135,11 +171,15 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     return false;
   }
   auto* pool_buffer = static_cast<PoolBuffer*>(layer->backing_store->user_data);
-  DmabufBuffer* buffer = pool_buffer->buffer.get();
+  RenderBuffer* buffer = pool_buffer->buffer.get();
 
   std::scoped_lock lock(views_mutex_);
   auto it = views_.find(view_id);
   if (it == views_.end()) {
+    return false;
+  }
+
+  if (!buffer->PrepareToPresent()) {
     return false;
   }
 
@@ -226,9 +266,7 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
   if (!egl_->IsRenderContextCurrent() && !egl_->MakeRenderContextCurrent()) {
     return nullptr;
   }
-  std::unique_ptr<DmabufBuffer> buffer = DmabufBuffer::Create(
-      egl_, dmabuf_wrapper_, display_->GetModifiers(DmabufBuffer::kFormat),
-      width, height, depth_stencil_);
+  std::unique_ptr<RenderBuffer> buffer = AllocateBuffer(width, height);
   if (!buffer) {
     return nullptr;
   }
@@ -244,6 +282,26 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
   }
   pool.push_back(std::move(new_buffer));
   return pool.back().get();
+}
+
+std::unique_ptr<RenderBuffer> CompositorOpenGL::AllocateBuffer(int width,
+                                                               int height) {
+  if (use_dmabuf_) {
+    std::unique_ptr<RenderBuffer> buffer = DmabufBuffer::Create(
+        egl_, dmabuf_wrapper_, display_->GetModifiers(DmabufBuffer::kFormat),
+        width, height, depth_stencil_);
+    if (buffer) {
+      dmabuf_allocated_ = true;
+      return buffer;
+    }
+    if (dmabuf_allocated_) {
+      return nullptr;
+    }
+    WarnShmFallback("a buffer could not be allocated");
+    use_dmabuf_ = false;
+    explicit_sync_ = false;
+  }
+  return ShmBuffer::Create(egl_, shm_wrapper_, width, height, depth_stencil_);
 }
 
 void CompositorOpenGL::TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,

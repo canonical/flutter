@@ -24,7 +24,8 @@ namespace flutter {
 // The GPU that Flutter renders with, shared by all engines.
 //
 // Rendering is done without EGL surfaces: Flutter draws into framebuffers
-// backed by GBM buffers that are shared with the compositor as dmabufs.
+// backed by GBM buffers that are shared with the compositor as dmabufs, or
+// copied into shared memory if that is not possible.
 //
 // This may be used from any thread.
 class GpuDevice {
@@ -43,6 +44,9 @@ class GpuDevice {
   gbm_device* gbm() const { return gbm_; }
   EGLDisplay display() const { return display_; }
 
+  // True if the EGL implementation can import dmabufs.
+  bool supports_dmabuf_import() const { return supports_dmabuf_import_; }
+
   // True if the EGL implementation can import dmabufs with explicit
   // modifiers.
   bool supports_dmabuf_modifiers() const { return supports_dmabuf_modifiers_; }
@@ -52,7 +56,8 @@ class GpuDevice {
   // native fences.
   bool supports_explicit_sync() const { return supports_explicit_sync_; }
 
-  // Extension functions used to import dmabufs.
+  // Extension functions used to import dmabufs. Only set if
+  // supports_dmabuf_import() is true.
   PFNEGLCREATEIMAGEKHRPROC CreateImage = nullptr;
   PFNEGLDESTROYIMAGEKHRPROC DestroyImage = nullptr;
   PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2D = nullptr;
@@ -70,6 +75,9 @@ class GpuDevice {
 
   bool Initialize(std::optional<dev_t> device);
 
+  // Checks for and loads the functions used to import dmabufs.
+  void InitializeDmabufImport(const char* extensions);
+
   // Checks for and loads the functions used for explicit synchronization.
   void InitializeExplicitSync(const char* extensions);
 
@@ -77,6 +85,7 @@ class GpuDevice {
   fml::UniqueFD drm_fd_;
   gbm_device* gbm_ = nullptr;
   EGLDisplay display_ = EGL_NO_DISPLAY;
+  bool supports_dmabuf_import_ = false;
   bool supports_dmabuf_modifiers_ = false;
   bool supports_explicit_sync_ = false;
 
