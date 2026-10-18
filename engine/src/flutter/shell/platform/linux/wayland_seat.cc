@@ -150,8 +150,14 @@ void WaylandSeat::SetInputMethodHandler(wl_surface* surface,
 }
 
 void WaylandSeat::SetCursor(uint32_t shape) {
-  if (pointer_ == nullptr || cursor_shape_manager_ == nullptr ||
-      pointer_focus_ == nullptr) {
+  if (pointer_ == nullptr || pointer_focus_ == nullptr) {
+    return;
+  }
+  if (shape == kHiddenCursorShape) {
+    wl_pointer_set_cursor(pointer_, enter_serial_, nullptr, 0, 0);
+    return;
+  }
+  if (cursor_shape_manager_ == nullptr) {
     return;
   }
   if (cursor_shape_device_ == nullptr) {

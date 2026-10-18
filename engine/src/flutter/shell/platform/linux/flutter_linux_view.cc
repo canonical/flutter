@@ -114,7 +114,7 @@ void FlutterLinuxView::SendPointerEvents(const FlutterPointerEvent* events,
 void FlutterLinuxView::OnPointerEntered() {
   WaylandSeat* seat = engine_->application()->display()->seat();
   if (seat != nullptr) {
-    seat->SetCursor(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+    seat->SetCursor(engine_->cursor());
   }
 }
 

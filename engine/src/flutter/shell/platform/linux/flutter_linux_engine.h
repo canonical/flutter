@@ -19,6 +19,7 @@
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/keyboard_manager.h"
+#include "flutter/shell/platform/linux/mouse_cursor_plugin.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
 #include "flutter/shell/platform/linux/vsync_predictor.h"
 
@@ -95,6 +96,10 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // Handles keyboard input for the engine's views.
   KeyboardManager* keyboard_manager() const { return keyboard_manager_.get(); }
 
+  // The cursor to show over the engine's views, a wp_cursor_shape_device_v1
+  // shape or kHiddenCursorShape.
+  uint32_t cursor() const { return mouse_cursor_plugin_->cursor(); }
+
   // |PlatformMessenger|
   void SendMessage(const std::string& channel,
                    const std::vector<uint8_t>& message,
@@ -130,6 +135,9 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // the frames already presented.
   bool IsThrottled() const;
 
+  // Shows |shape| if the pointer is over one of the engine's views.
+  void OnCursorChanged(uint32_t shape);
+
   // Responds to a message from the framework.
   void HandlePlatformMessage(const FlutterPlatformMessage* message);
 
@@ -156,6 +164,7 @@ class FlutterLinuxEngine : public PlatformMessenger {
   std::map<std::string, MessageHandler> message_handlers_;
 
   std::unique_ptr<KeyboardManager> keyboard_manager_;
+  std::unique_ptr<MouseCursorPlugin> mouse_cursor_plugin_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;

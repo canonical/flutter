@@ -101,6 +101,9 @@ class KeyboardHandler {
   virtual void OnKeyModifiers(uint64_t time, const KeyModifiers& modifiers) = 0;
 };
 
+// A cursor shape that hides the cursor.
+constexpr uint32_t kHiddenCursorShape = 0;
+
 // A group of input devices used by the user.
 class WaylandSeat {
  public:
@@ -128,8 +131,11 @@ class WaylandSeat {
   // them if |handler| is nullptr.
   void SetInputMethodHandler(wl_surface* surface, InputMethodHandler* handler);
 
+  // The surface the pointer is in, or nullptr.
+  wl_surface* pointer_focus() const { return pointer_focus_; }
+
   // Sets the cursor shown over the surface the pointer is in. |shape| is a
-  // wp_cursor_shape_device_v1 shape.
+  // wp_cursor_shape_device_v1 shape, or kHiddenCursorShape.
   void SetCursor(uint32_t shape);
 
  private:

@@ -60,12 +60,15 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
                    std::function<void(bool handled)> callback) {
         SendKeyEvent(event, std::move(callback));
       });
+  mouse_cursor_plugin_ = std::make_unique<MouseCursorPlugin>(
+      this, [this](uint32_t shape) { OnCursorChanged(shape); });
 }
 
 FlutterLinuxEngine::~FlutterLinuxEngine() {
   Stop();
   FML_DCHECK(views_.empty());
 
+  mouse_cursor_plugin_.reset();
   keyboard_manager_.reset();
 
   compositor_.reset();
@@ -436,6 +439,19 @@ void FlutterLinuxEngine::SetMessageHandler(const std::string& channel,
     message_handlers_[channel] = std::move(handler);
   } else {
     message_handlers_.erase(channel);
+  }
+}
+
+void FlutterLinuxEngine::OnCursorChanged(uint32_t shape) {
+  WaylandSeat* seat = application_->display()->seat();
+  if (seat == nullptr) {
+    return;
+  }
+  for (const auto& [view_id, view] : views_) {
+    if (seat->pointer_focus() == view->window()->surface()) {
+      seat->SetCursor(shape);
+      return;
+    }
   }
 }
 
