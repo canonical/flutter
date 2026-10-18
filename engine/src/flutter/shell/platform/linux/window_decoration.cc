@@ -87,13 +87,13 @@ WindowDecoration::WindowDecoration(WaylandDisplay* display,
     viewport_ = wp_viewporter_get_viewport(display_->viewporter(), surface_);
   }
   if (display_->seat() != nullptr) {
-    display_->seat()->SetPointerHandler(surface_, this);
+    display_->seat()->SetInputHandler(surface_, this);
   }
 }
 
 WindowDecoration::~WindowDecoration() {
   if (display_->seat() != nullptr) {
-    display_->seat()->SetPointerHandler(surface_, nullptr);
+    display_->seat()->SetInputHandler(surface_, nullptr);
   }
   if (renderer_->MakeCurrent()) {
     buffers_.clear();
@@ -114,6 +114,7 @@ void WindowDecoration::SetState(const State& state) {
   // The buttons may have moved under the pointer.
   hover_ = Hit();
   pressed_button_ = Button::kNone;
+  button_touch_id_.reset();
   Redraw();
 }
 
@@ -243,29 +244,71 @@ void WindowDecoration::UpdatePointer(double x, double y) {
   }
 }
 
-void WindowDecoration::OnPointerEnter(double x, double y) {
+void WindowDecoration::OnPointerEnter(uint64_t time, double x, double y) {
   UpdatePointer(x, y);
 }
 
-void WindowDecoration::OnPointerLeave() {
-  bool redraw =
-      hover_.button != Button::kNone || pressed_button_ != Button::kNone;
+void WindowDecoration::OnPointerLeave(uint64_t time) {
+  bool redraw = hover_.button != Button::kNone;
   hover_ = Hit();
-  pressed_button_ = Button::kNone;
+  if (!button_touch_id_.has_value()) {
+    redraw = redraw || pressed_button_ != Button::kNone;
+    pressed_button_ = Button::kNone;
+  }
   if (redraw) {
     Redraw();
   }
 }
 
-void WindowDecoration::OnPointerMotion(double x, double y) {
+void WindowDecoration::OnPointerMotion(uint64_t time, double x, double y) {
   UpdatePointer(x, y);
 }
 
+void WindowDecoration::SetPressedButton(Button button) {
+  if (button != pressed_button_) {
+    pressed_button_ = button;
+    Redraw();
+  }
+}
+
+void WindowDecoration::ActivateButton(Button button) {
+  switch (button) {
+    case Button::kMinimize:
+      xdg_toplevel_set_minimized(toplevel_);
+      break;
+    case Button::kMaximize:
+      if (state_.maximized) {
+        xdg_toplevel_unset_maximized(toplevel_);
+      } else {
+        xdg_toplevel_set_maximized(toplevel_);
+      }
+      break;
+    case Button::kClose:
+      delegate_->OnDecorationClose();
+      break;
+    case Button::kNone:
+      break;
+  }
+}
+
+void WindowDecoration::PressTitleBar(uint32_t serial) {
+  auto now = std::chrono::steady_clock::now();
+  if (now - last_title_press_ < kDoubleClickTime) {
+    last_title_press_ = {};
+    if (state_.can_maximize) {
+      ActivateButton(Button::kMaximize);
+    }
+  } else {
+    last_title_press_ = now;
+    xdg_toplevel_move(toplevel_, display_->seat()->seat(), serial);
+  }
+}
+
 void WindowDecoration::OnPointerButton(uint32_t serial,
+                                       uint64_t time,
                                        uint32_t button,
                                        bool pressed) {
-  WaylandSeat* seat = display_->seat();
-  if (seat == nullptr) {
+  if (button_touch_id_.has_value()) {
     return;
   }
 
@@ -274,62 +317,81 @@ void WindowDecoration::OnPointerButton(uint32_t serial,
       return;
     }
     Button released = pressed_button_;
-    pressed_button_ = Button::kNone;
-    Redraw();
-    if (hover_.button != released) {
-      return;
-    }
-    switch (released) {
-      case Button::kMinimize:
-        xdg_toplevel_set_minimized(toplevel_);
-        break;
-      case Button::kMaximize:
-        if (state_.maximized) {
-          xdg_toplevel_unset_maximized(toplevel_);
-        } else {
-          xdg_toplevel_set_maximized(toplevel_);
-        }
-        break;
-      case Button::kClose:
-        delegate_->OnDecorationClose();
-        break;
-      case Button::kNone:
-        break;
+    SetPressedButton(Button::kNone);
+    if (hover_.button == released) {
+      ActivateButton(released);
     }
     return;
   }
 
   if (hover_.edges != 0) {
     if (button == BTN_LEFT) {
-      xdg_toplevel_resize(toplevel_, seat->seat(), serial, hover_.edges);
+      xdg_toplevel_resize(toplevel_, display_->seat()->seat(), serial,
+                          hover_.edges);
     }
   } else if (hover_.button != Button::kNone) {
     if (button == BTN_LEFT) {
-      pressed_button_ = hover_.button;
-      Redraw();
+      SetPressedButton(hover_.button);
     }
   } else if (hover_.title_bar) {
     if (button == BTN_LEFT) {
-      auto now = std::chrono::steady_clock::now();
-      if (now - last_title_press_ < kDoubleClickTime) {
-        last_title_press_ = {};
-        if (state_.can_maximize) {
-          if (state_.maximized) {
-            xdg_toplevel_unset_maximized(toplevel_);
-          } else {
-            xdg_toplevel_set_maximized(toplevel_);
-          }
-        }
-      } else {
-        last_title_press_ = now;
-        xdg_toplevel_move(toplevel_, seat->seat(), serial);
-      }
+      PressTitleBar(serial);
     } else if (button == BTN_RIGHT) {
       Rect window = WindowRect();
-      xdg_toplevel_show_window_menu(toplevel_, seat->seat(), serial,
+      xdg_toplevel_show_window_menu(toplevel_, display_->seat()->seat(), serial,
                                     static_cast<int>(pointer_x_) - window.x,
                                     static_cast<int>(pointer_y_) - window.y);
     }
+  }
+}
+
+void WindowDecoration::OnTouchDown(uint32_t serial,
+                                   uint64_t time,
+                                   int32_t id,
+                                   double x,
+                                   double y) {
+  if (pressed_button_ != Button::kNone) {
+    return;
+  }
+  Hit hit = HitTest(x, y);
+  if (hit.edges != 0) {
+    xdg_toplevel_resize(toplevel_, display_->seat()->seat(), serial, hit.edges);
+  } else if (hit.button != Button::kNone) {
+    button_touch_id_ = id;
+    touch_x_ = x;
+    touch_y_ = y;
+    SetPressedButton(hit.button);
+  } else if (hit.title_bar) {
+    PressTitleBar(serial);
+  }
+}
+
+void WindowDecoration::OnTouchMotion(uint64_t time,
+                                     int32_t id,
+                                     double x,
+                                     double y) {
+  if (button_touch_id_ == id) {
+    touch_x_ = x;
+    touch_y_ = y;
+  }
+}
+
+void WindowDecoration::OnTouchUp(uint64_t time, int32_t id) {
+  if (button_touch_id_ != id) {
+    return;
+  }
+  button_touch_id_.reset();
+  Button released = pressed_button_;
+  SetPressedButton(Button::kNone);
+  if (HitTest(touch_x_, touch_y_).button == released) {
+    ActivateButton(released);
+  }
+}
+
+void WindowDecoration::OnTouchCancel() {
+  if (button_touch_id_.has_value()) {
+    button_touch_id_.reset();
+    SetPressedButton(Button::kNone);
   }
 }
 

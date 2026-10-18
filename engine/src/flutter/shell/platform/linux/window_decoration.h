@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,7 +56,7 @@ struct DecorationFrame {
 // buffers are shown without copying.
 //
 // Used on the platform thread.
-class WindowDecoration : public PointerHandler {
+class WindowDecoration : public InputHandler {
  public:
   class Delegate {
    public:
@@ -111,11 +112,22 @@ class WindowDecoration : public PointerHandler {
   // not concurrently with other surface changes.
   void Apply(const DecorationFrame& frame);
 
-  // |PointerHandler|
-  void OnPointerEnter(double x, double y) override;
-  void OnPointerLeave() override;
-  void OnPointerMotion(double x, double y) override;
-  void OnPointerButton(uint32_t serial, uint32_t button, bool pressed) override;
+  // |InputHandler|
+  void OnPointerEnter(uint64_t time, double x, double y) override;
+  void OnPointerLeave(uint64_t time) override;
+  void OnPointerMotion(uint64_t time, double x, double y) override;
+  void OnPointerButton(uint32_t serial,
+                       uint64_t time,
+                       uint32_t button,
+                       bool pressed) override;
+  void OnTouchDown(uint32_t serial,
+                   uint64_t time,
+                   int32_t id,
+                   double x,
+                   double y) override;
+  void OnTouchUp(uint64_t time, int32_t id) override;
+  void OnTouchMotion(uint64_t time, int32_t id, double x, double y) override;
+  void OnTouchCancel() override;
 
  private:
   enum class Button { kNone, kMinimize, kMaximize, kClose };
@@ -145,6 +157,14 @@ class WindowDecoration : public PointerHandler {
 
   void UpdatePointer(double x, double y);
 
+  // Performs the action of |button|.
+  void ActivateButton(Button button);
+
+  // Starts a move, or toggles maximization on a double press.
+  void PressTitleBar(uint32_t serial);
+
+  void SetPressedButton(Button button);
+
   // Draws and submits a new frame.
   void Redraw();
 
@@ -171,6 +191,11 @@ class WindowDecoration : public PointerHandler {
   double pointer_y_ = 0;
   Hit hover_;
   Button pressed_button_ = Button::kNone;
+
+  // The touch point pressing |pressed_button_|, if any, and where it is.
+  std::optional<int32_t> button_touch_id_;
+  double touch_x_ = 0;
+  double touch_y_ = 0;
   std::chrono::steady_clock::time_point last_title_press_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(WindowDecoration);

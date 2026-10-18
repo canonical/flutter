@@ -21,6 +21,13 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
   if (!view->window_) {
     return nullptr;
   }
+  WaylandSeat* seat = application->display()->seat();
+  view->pointer_converter_ =
+      std::make_unique<PointerEventConverter>(view.get(), view_id);
+  if (seat != nullptr) {
+    seat->SetInputHandler(view->window_->surface(),
+                          view->pointer_converter_.get());
+  }
   return view;
 }
 
@@ -28,7 +35,12 @@ FlutterLinuxView::FlutterLinuxView(FlutterLinuxEngine* engine,
                                    FlutterViewId view_id)
     : engine_(engine), view_id_(view_id) {}
 
-FlutterLinuxView::~FlutterLinuxView() = default;
+FlutterLinuxView::~FlutterLinuxView() {
+  WaylandSeat* seat = engine_->application()->display()->seat();
+  if (seat != nullptr && window_) {
+    seat->SetInputHandler(window_->surface(), nullptr);
+  }
+}
 
 FlutterWindowMetricsEvent FlutterLinuxView::GetWindowMetrics() const {
   FlutterWindowMetricsEvent event = {};
@@ -82,6 +94,22 @@ void FlutterLinuxView::OnWindowPresented(uint64_t presentation_time_ns,
 
 void FlutterLinuxView::OnWindowFrameDone() {
   engine_->OnFrameDone();
+}
+
+double FlutterLinuxView::GetPointerScale() {
+  return window_->scale();
+}
+
+void FlutterLinuxView::SendPointerEvents(const FlutterPointerEvent* events,
+                                         size_t count) {
+  engine_->SendPointerEvents(events, count);
+}
+
+void FlutterLinuxView::OnPointerEntered() {
+  WaylandSeat* seat = engine_->application()->display()->seat();
+  if (seat != nullptr) {
+    seat->SetCursor(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+  }
 }
 
 }  // namespace flutter

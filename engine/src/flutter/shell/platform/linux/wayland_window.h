@@ -72,6 +72,9 @@ class WaylandWindow : public WindowDecoration::Delegate {
   int width() const { return width_; }
   int height() const { return height_; }
 
+  // The surface showing the window content.
+  wl_surface* surface() const { return surface_; }
+
   // The number of physical pixels per logical pixel.
   double scale() const { return scale_; }
 

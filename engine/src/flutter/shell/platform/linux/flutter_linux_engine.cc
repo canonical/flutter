@@ -326,6 +326,14 @@ void FlutterLinuxEngine::PostFlutterTask(FlutterTask task,
       target_time);
 }
 
+void FlutterLinuxEngine::SendPointerEvents(const FlutterPointerEvent* events,
+                                           size_t count) {
+  if (engine_ == nullptr || count == 0) {
+    return;
+  }
+  embedder_api_.SendPointerEvent(engine_, events, count);
+}
+
 void FlutterLinuxEngine::HandlePlatformMessage(
     const FlutterPlatformMessage* message) {
   // No platform channels are implemented yet. Send an empty response so the

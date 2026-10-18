@@ -10,6 +10,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
+#include "flutter/shell/platform/linux/pointer_event_converter.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_window.h"
 
@@ -18,7 +19,8 @@ namespace flutter {
 class FlutterLinuxEngine;
 
 // A Flutter view shown in a top-level window.
-class FlutterLinuxView : public WaylandWindow::Delegate {
+class FlutterLinuxView : public WaylandWindow::Delegate,
+                         public PointerEventConverter::Delegate {
  public:
   // Creates a view in a new window of the given logical size. Returns nullptr
   // on failure.
@@ -64,6 +66,12 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   // |WaylandWindow::Delegate|
   void OnWindowFrameDone() override;
 
+  // |PointerEventConverter::Delegate|
+  double GetPointerScale() override;
+  void SendPointerEvents(const FlutterPointerEvent* events,
+                         size_t count) override;
+  void OnPointerEntered() override;
+
   // The number of presented frames the compositor is not yet ready to
   // follow with another frame.
   size_t frames_in_flight() const { return window_->frames_in_flight(); }
@@ -75,6 +83,9 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   FlutterViewId view_id_;
   std::unique_ptr<WaylandWindow> window_;
   std::function<void()> close_callback_;
+
+  // Converts input in the window to Flutter events.
+  std::unique_ptr<PointerEventConverter> pointer_converter_;
 
   // Tasks posted by the view hold a weak reference to this, so they don't
   // run after the view is destroyed.

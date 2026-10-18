@@ -128,6 +128,7 @@ source_set("flutter_linux_sources") {
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
     "gpu_device.cc",
+    "pointer_event_converter.cc",
     "render_buffer.cc",
     "shm_buffer.cc",
     "vsync_predictor.cc",
@@ -187,6 +188,7 @@ executable("flutter_linux_unittests") {
   sources = [
     "event_loop_unittests.cc",
     "flutter_linux_unittests.cc",
+    "pointer_event_converter_unittests.cc",
     "vsync_predictor_unittests.cc",
   ]
 

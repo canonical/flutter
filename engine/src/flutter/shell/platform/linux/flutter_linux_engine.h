@@ -81,6 +81,9 @@ class FlutterLinuxEngine {
   // Informs the engine of the size of a view.
   void SendWindowMetrics(const FlutterWindowMetricsEvent& event);
 
+  // Sends pointer events to the engine.
+  void SendPointerEvents(const FlutterPointerEvent* events, size_t count);
+
   // Called when the user requests a view be closed.
   void OnViewClose(FlutterLinuxView* view);
 
