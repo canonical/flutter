@@ -6,6 +6,7 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DISPLAY_H_
 
 #include <sys/types.h>
+#include <time.h>
 #include <wayland-client.h>
 
 #include <cstdint>
@@ -19,6 +20,7 @@
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/protocols/fractional-scale-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
 
@@ -46,6 +48,12 @@ class WaylandDisplay : public EventLoop::Source {
   wp_fractional_scale_manager_v1* fractional_scale_manager() const {
     return fractional_scale_manager_;
   }
+  wp_presentation* presentation() const { return presentation_; }
+
+  // Converts a timestamp from wp_presentation to nanoseconds on
+  // CLOCK_MONOTONIC, the clock the engine and event loop use.
+  uint64_t PresentationTimeToMonotonic(uint64_t seconds,
+                                       uint32_t nanoseconds) const;
 
   // The device the compositor prefers buffers to be allocated on, if it
   // reported one.
@@ -87,6 +95,9 @@ class WaylandDisplay : public EventLoop::Source {
   static void RegistryGlobalRemove(void* data,
                                    wl_registry* registry,
                                    uint32_t name);
+  static void PresentationClockId(void* data,
+                                  wp_presentation* presentation,
+                                  uint32_t clock_id);
   static void WmBasePing(void* data, xdg_wm_base* wm_base, uint32_t serial);
   static void DmabufFormat(void* data,
                            zwp_linux_dmabuf_v1* dmabuf,
@@ -119,6 +130,7 @@ class WaylandDisplay : public EventLoop::Source {
 
   static const wl_registry_listener kRegistryListener;
   static const xdg_wm_base_listener kWmBaseListener;
+  static const wp_presentation_listener kPresentationListener;
   static const zwp_linux_dmabuf_v1_listener kDmabufListener;
   static const zwp_linux_dmabuf_feedback_v1_listener kFeedbackListener;
 
@@ -136,6 +148,10 @@ class WaylandDisplay : public EventLoop::Source {
   zwp_linux_dmabuf_v1* dmabuf_ = nullptr;
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;
+  wp_presentation* presentation_ = nullptr;
+
+  // The clock presentation timestamps are in.
+  clockid_t presentation_clock_ = CLOCK_MONOTONIC;
 
   std::optional<dev_t> main_device_;
   std::vector<FormatTableEntry> format_table_;

@@ -171,6 +171,13 @@ bool FlutterLinuxEngine::Run() {
                                       void* user_data) {
     static_cast<FlutterLinuxEngine*>(user_data)->HandlePlatformMessage(message);
   };
+  // Frames are scheduled using the presentation times reported by the
+  // compositor. Without these, the engine falls back to a 60Hz timer.
+  if (application_->display()->presentation() != nullptr) {
+    args.vsync_callback = [](void* user_data, intptr_t baton) {
+      static_cast<FlutterLinuxEngine*>(user_data)->OnVsyncRequest(baton);
+    };
+  }
   args.custom_task_runners = &custom_task_runners;
   args.compositor = &compositor;
   args.aot_data = aot_data_;
@@ -239,6 +246,29 @@ void FlutterLinuxEngine::OnViewClose(FlutterLinuxView* view) {
   if (view->view_id() == kImplicitViewId) {
     application_->Quit();
   }
+}
+
+void FlutterLinuxEngine::OnFramePresented(uint64_t presentation_time_ns,
+                                          uint64_t refresh_ns) {
+  vsync_predictor_.OnFramePresented(presentation_time_ns, refresh_ns);
+}
+
+void FlutterLinuxEngine::OnVsyncRequest(intptr_t baton) {
+  // The UI and platform threads are merged, so this is on the platform
+  // thread and can access the predictor.
+  FML_DCHECK(application_->event_loop()->RunsTasksOnCurrentThread());
+
+  uint64_t now = embedder_api_.GetCurrentTime();
+  VsyncPredictor::Vsync vsync = vsync_predictor_.NextVsync(now);
+  application_->event_loop()->PostTask(
+      [this, alive = std::weak_ptr<bool>(alive_), baton, vsync]() {
+        if (alive.expired() || engine_ == nullptr) {
+          return;
+        }
+        embedder_api_.OnVsync(engine_, baton, vsync.start_time,
+                              vsync.target_time);
+      },
+      ToEventLoopTime(vsync.start_time, now));
 }
 
 void FlutterLinuxEngine::PostFlutterTask(FlutterTask task,

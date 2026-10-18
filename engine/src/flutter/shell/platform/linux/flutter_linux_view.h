@@ -55,6 +55,10 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   // |WaylandWindow::Delegate|
   void OnWindowClose() override;
 
+  // |WaylandWindow::Delegate|
+  void OnWindowPresented(uint64_t presentation_time_ns,
+                         uint64_t refresh_ns) override;
+
  private:
   FlutterLinuxView(FlutterLinuxEngine* engine, FlutterViewId view_id);
 

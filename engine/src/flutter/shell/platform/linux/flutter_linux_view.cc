@@ -72,4 +72,9 @@ void FlutterLinuxView::OnWindowClose() {
       });
 }
 
+void FlutterLinuxView::OnWindowPresented(uint64_t presentation_time_ns,
+                                         uint64_t refresh_ns) {
+  engine_->OnFramePresented(presentation_time_ns, refresh_ns);
+}
+
 }  // namespace flutter

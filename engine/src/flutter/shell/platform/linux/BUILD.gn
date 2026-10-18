@@ -53,6 +53,7 @@ _public_headers = [
 _wayland_protocols = [
   "protocols/fractional-scale-v1.xml",
   "protocols/linux-dmabuf-v1.xml",
+  "protocols/presentation-time.xml",
   "protocols/viewporter.xml",
   "protocols/xdg-shell.xml",
 ]
@@ -115,6 +116,7 @@ source_set("flutter_linux_sources") {
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
     "gpu_device.cc",
+    "vsync_predictor.cc",
     "wayland_display.cc",
     "wayland_window.cc",
   ]
@@ -169,6 +171,7 @@ executable("flutter_linux_unittests") {
   sources = [
     "event_loop_unittests.cc",
     "flutter_linux_unittests.cc",
+    "vsync_predictor_unittests.cc",
   ]
 
   public_configs = [ "//flutter:config" ]

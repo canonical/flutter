@@ -33,6 +33,12 @@ const xdg_toplevel_listener WaylandWindow::kToplevelListener = {
     .wm_capabilities = ToplevelWmCapabilities,
 };
 
+const wp_presentation_feedback_listener WaylandWindow::kFeedbackListener = {
+    .sync_output = FeedbackSyncOutput,
+    .presented = FeedbackPresented,
+    .discarded = FeedbackDiscarded,
+};
+
 const wp_fractional_scale_v1_listener WaylandWindow::kFractionalScaleListener =
     {
         .preferred_scale = PreferredScale,
@@ -53,6 +59,13 @@ WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
     : display_(display), delegate_(delegate) {}
 
 WaylandWindow::~WaylandWindow() {
+  {
+    std::lock_guard<std::mutex> lock(feedback_mutex_);
+    for (struct wp_presentation_feedback* feedback : pending_feedback_) {
+      wp_presentation_feedback_destroy(feedback);
+    }
+    pending_feedback_.clear();
+  }
   if (fractional_scale_ != nullptr) {
     wp_fractional_scale_v1_destroy(fractional_scale_);
   }
@@ -136,8 +149,51 @@ void WaylandWindow::Present(wl_buffer* buffer, int width, int height) {
                                 static_cast<int>(std::round(width / scale)),
                                 static_cast<int>(std::round(height / scale)));
   }
+  if (display_->presentation() != nullptr) {
+    // The feedback is created on the default queue, so its events are
+    // delivered on the platform thread. No events are sent before the commit,
+    // so the listener can be safely added here.
+    std::lock_guard<std::mutex> lock(feedback_mutex_);
+    struct wp_presentation_feedback* feedback =
+        wp_presentation_feedback(display_->presentation(), surface_);
+    wp_presentation_feedback_add_listener(feedback, &kFeedbackListener, this);
+    pending_feedback_.insert(feedback);
+  }
   wl_surface_commit(surface_);
   wl_display_flush(display_->display());
+}
+
+void WaylandWindow::RemoveFeedback(struct wp_presentation_feedback* feedback) {
+  std::lock_guard<std::mutex> lock(feedback_mutex_);
+  pending_feedback_.erase(feedback);
+  wp_presentation_feedback_destroy(feedback);
+}
+
+void WaylandWindow::FeedbackSyncOutput(
+    void* data,
+    struct wp_presentation_feedback* feedback,
+    wl_output* output) {}
+
+void WaylandWindow::FeedbackPresented(void* data,
+                                      struct wp_presentation_feedback* feedback,
+                                      uint32_t tv_sec_hi,
+                                      uint32_t tv_sec_lo,
+                                      uint32_t tv_nsec,
+                                      uint32_t refresh,
+                                      uint32_t seq_hi,
+                                      uint32_t seq_lo,
+                                      uint32_t flags) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  self->RemoveFeedback(feedback);
+  uint64_t seconds = (static_cast<uint64_t>(tv_sec_hi) << 32) | tv_sec_lo;
+  self->delegate_->OnWindowPresented(
+      self->display_->PresentationTimeToMonotonic(seconds, tv_nsec), refresh);
+}
+
+void WaylandWindow::FeedbackDiscarded(
+    void* data,
+    struct wp_presentation_feedback* feedback) {
+  static_cast<WaylandWindow*>(data)->RemoveFeedback(feedback);
 }
 
 void WaylandWindow::SurfaceEnter(void* data,

@@ -33,6 +33,7 @@ constexpr uint32_t kMaxWmBaseVersion = 7;
 constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
+constexpr uint32_t kMaxPresentationVersion = 2;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
@@ -47,6 +48,12 @@ T* Bind(wl_registry* registry,
   return static_cast<T*>(wl_registry_bind(registry, name, interface, version));
 }
 
+uint64_t NowNanoseconds(clockid_t clock) {
+  timespec time;
+  clock_gettime(clock, &time);
+  return static_cast<uint64_t>(time.tv_sec) * 1000000000 + time.tv_nsec;
+}
+
 }  // namespace
 
 const wl_registry_listener WaylandDisplay::kRegistryListener = {
@@ -56,6 +63,10 @@ const wl_registry_listener WaylandDisplay::kRegistryListener = {
 
 const xdg_wm_base_listener WaylandDisplay::kWmBaseListener = {
     .ping = WmBasePing,
+};
+
+const wp_presentation_listener WaylandDisplay::kPresentationListener = {
+    .clock_id = PresentationClockId,
 };
 
 const zwp_linux_dmabuf_v1_listener WaylandDisplay::kDmabufListener = {
@@ -97,6 +108,9 @@ WaylandDisplay::~WaylandDisplay() {
   }
   if (fractional_scale_manager_ != nullptr) {
     wp_fractional_scale_manager_v1_destroy(fractional_scale_manager_);
+  }
+  if (presentation_ != nullptr) {
+    wp_presentation_destroy(presentation_);
   }
   if (viewporter_ != nullptr) {
     wp_viewporter_destroy(viewporter_);
@@ -264,7 +278,32 @@ void WaylandDisplay::RegistryGlobal(void* data,
     self->fractional_scale_manager_ = Bind<wp_fractional_scale_manager_v1>(
         registry, name, &wp_fractional_scale_manager_v1_interface, version,
         kMaxFractionalScaleManagerVersion);
+  } else if (strcmp(interface, wp_presentation_interface.name) == 0) {
+    self->presentation_ =
+        Bind<wp_presentation>(registry, name, &wp_presentation_interface,
+                              version, kMaxPresentationVersion);
+    wp_presentation_add_listener(self->presentation_, &kPresentationListener,
+                                 self);
   }
+}
+
+void WaylandDisplay::PresentationClockId(void* data,
+                                         wp_presentation* presentation,
+                                         uint32_t clock_id) {
+  static_cast<WaylandDisplay*>(data)->presentation_clock_ =
+      static_cast<clockid_t>(clock_id);
+}
+
+uint64_t WaylandDisplay::PresentationTimeToMonotonic(
+    uint64_t seconds,
+    uint32_t nanoseconds) const {
+  uint64_t time = seconds * 1000000000 + nanoseconds;
+  if (presentation_clock_ == CLOCK_MONOTONIC) {
+    return time;
+  }
+  // Convert using the current offset between the clocks.
+  return time - NowNanoseconds(presentation_clock_) +
+         NowNanoseconds(CLOCK_MONOTONIC);
 }
 
 void WaylandDisplay::RegistryGlobalRemove(void* data,

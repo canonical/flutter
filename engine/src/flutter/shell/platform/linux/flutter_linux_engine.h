@@ -16,6 +16,7 @@
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
+#include "flutter/shell/platform/linux/vsync_predictor.h"
 
 namespace flutter {
 
@@ -73,6 +74,10 @@ class FlutterLinuxEngine {
   // Called when the user requests a view be closed.
   void OnViewClose(FlutterLinuxView* view);
 
+  // Called when a frame from any view has been shown on the screen. Times
+  // are in nanoseconds on CLOCK_MONOTONIC. |refresh_ns| is zero if unknown.
+  void OnFramePresented(uint64_t presentation_time_ns, uint64_t refresh_ns);
+
  private:
   FlutterLinuxEngine(FlutterLinuxApplication* application,
                      Properties properties);
@@ -84,6 +89,9 @@ class FlutterLinuxEngine {
 
   // Posts a Flutter task to be run on the platform thread.
   void PostFlutterTask(FlutterTask task, uint64_t target_time_nanos);
+
+  // Responds to a request from the engine for the next vsync.
+  void OnVsyncRequest(intptr_t baton);
 
   // Responds to a message from the framework.
   void HandlePlatformMessage(const FlutterPlatformMessage* message);
@@ -100,6 +108,9 @@ class FlutterLinuxEngine {
 
   std::unique_ptr<EGLManager> egl_;
   std::unique_ptr<CompositorOpenGL> compositor_;
+
+  // Predicts when to draw frames, from when previous frames were shown.
+  VsyncPredictor vsync_predictor_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;

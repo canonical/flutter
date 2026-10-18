@@ -9,6 +9,8 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 
 #include "flutter/fml/macros.h"
@@ -32,6 +34,13 @@ class WaylandWindow {
 
     // Called when the user requests the window be closed.
     virtual void OnWindowClose() = 0;
+
+    // Called when a frame has been shown on the screen.
+    // |presentation_time_ns| is when it was shown, on CLOCK_MONOTONIC.
+    // |refresh_ns| is the time until the next display refresh, or zero if
+    // that is unknown.
+    virtual void OnWindowPresented(uint64_t presentation_time_ns,
+                                   uint64_t refresh_ns) = 0;
   };
 
   // Creates a window with the given logical size. This blocks until the
@@ -60,6 +69,9 @@ class WaylandWindow {
   // Shows |buffer| in the window. The buffer is |width| x |height| pixels
   // and rendered with OpenGL conventions (bottom row first).
   //
+  // If the compositor supports wp_presentation, the delegate is informed
+  // when the frame is shown.
+  //
   // May be called from any thread.
   void Present(wl_buffer* buffer, int width, int height);
 
@@ -86,6 +98,20 @@ class WaylandWindow {
   static void ToplevelWmCapabilities(void* data,
                                      xdg_toplevel* toplevel,
                                      wl_array* capabilities);
+  static void FeedbackSyncOutput(void* data,
+                                 struct wp_presentation_feedback* feedback,
+                                 wl_output* output);
+  static void FeedbackPresented(void* data,
+                                struct wp_presentation_feedback* feedback,
+                                uint32_t tv_sec_hi,
+                                uint32_t tv_sec_lo,
+                                uint32_t tv_nsec,
+                                uint32_t refresh,
+                                uint32_t seq_hi,
+                                uint32_t seq_lo,
+                                uint32_t flags);
+  static void FeedbackDiscarded(void* data,
+                                struct wp_presentation_feedback* feedback);
   static void PreferredScale(void* data,
                              wp_fractional_scale_v1* fractional_scale,
                              uint32_t scale);
@@ -94,6 +120,10 @@ class WaylandWindow {
   static const xdg_surface_listener kXdgSurfaceListener;
   static const xdg_toplevel_listener kToplevelListener;
   static const wp_fractional_scale_v1_listener kFractionalScaleListener;
+  static const wp_presentation_feedback_listener kFeedbackListener;
+
+  // Destroys |feedback| once it has delivered its result.
+  void RemoveFeedback(struct wp_presentation_feedback* feedback);
 
   WaylandDisplay* display_;
   Delegate* delegate_;
@@ -113,6 +143,11 @@ class WaylandWindow {
   std::atomic<int> width_ = 0;
   std::atomic<int> height_ = 0;
   std::atomic<double> scale_ = 1.0;
+
+  // Feedback requested on the raster thread, delivered on the platform
+  // thread.
+  std::mutex feedback_mutex_;
+  std::set<struct wp_presentation_feedback*> pending_feedback_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(WaylandWindow);
 };
