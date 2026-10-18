@@ -26,6 +26,10 @@ _pkg_configs = [
     name = "wayland_client"
     package = "wayland-client"
   },
+  {
+    name = "xkbcommon"
+    package = "xkbcommon"
+  },
 ]
 
 foreach(pkg, _pkg_configs) {

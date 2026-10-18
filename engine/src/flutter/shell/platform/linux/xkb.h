@@ -17,48 +17,11 @@ struct xkb_state;
 
 namespace flutter {
 
-// Functions from libxkbcommon, which is loaded at runtime so the embedder
-// has no build or link dependency on it.
-//
-// libxkbcommon is used to interpret the XKB keymaps Wayland compositors
-// send. It is installed on every system that runs a Wayland desktop, since
-// compositors and toolkits use it to the same end.
-struct XkbFunctions {
-  xkb_context* (*context_new)(int flags);
-  void (*context_unref)(xkb_context* context);
-  xkb_keymap* (*keymap_new_from_string)(xkb_context* context,
-                                        const char* string,
-                                        int format,
-                                        int flags);
-  void (*keymap_unref)(xkb_keymap* keymap);
-  int (*keymap_key_get_syms_by_level)(xkb_keymap* keymap,
-                                      uint32_t key,
-                                      uint32_t layout,
-                                      uint32_t level,
-                                      const uint32_t** syms_out);
-  int (*keymap_key_repeats)(xkb_keymap* keymap, uint32_t key);
-  uint32_t (*keymap_num_layouts)(xkb_keymap* keymap);
-  xkb_state* (*state_new)(xkb_keymap* keymap);
-  void (*state_unref)(xkb_state* state);
-  int (*state_update_mask)(xkb_state* state,
-                           uint32_t depressed_mods,
-                           uint32_t latched_mods,
-                           uint32_t locked_mods,
-                           uint32_t depressed_layout,
-                           uint32_t latched_layout,
-                           uint32_t locked_layout);
-  uint32_t (*state_key_get_one_sym)(xkb_state* state, uint32_t key);
-  uint32_t (*state_key_get_utf32)(xkb_state* state, uint32_t key);
-  uint32_t (*state_key_get_layout)(xkb_state* state, uint32_t key);
-  uint32_t (*state_serialize_mods)(xkb_state* state, int components);
-  int (*state_led_name_is_active)(xkb_state* state, const char* name);
-  uint32_t (*keysym_to_utf32)(uint32_t keysym);
-  uint32_t (*keysym_to_lower)(uint32_t keysym);
+// Returns the Unicode character |keysym| produces, or 0 if none.
+uint32_t KeysymToUtf32(uint32_t keysym);
 
-  // Returns the functions, or nullptr if libxkbcommon is not installed. A
-  // warning is printed the first time this fails.
-  static const XkbFunctions* Get();
-};
+// Returns the lowercase form of |keysym|.
+uint32_t KeysymToLower(uint32_t keysym);
 
 // The state of the modifiers that affect a key event.
 struct KeyModifiers {
@@ -78,8 +41,7 @@ class XkbKeyboard {
  public:
   // Compiles |keymap|, a keymap in the XKB text format. Returns nullptr on
   // failure.
-  static std::unique_ptr<XkbKeyboard> Create(const XkbFunctions* xkb,
-                                             std::string_view keymap);
+  static std::unique_ptr<XkbKeyboard> Create(std::string_view keymap);
 
   ~XkbKeyboard();
 
@@ -115,12 +77,9 @@ class XkbKeyboard {
   // Returns the current modifier state.
   KeyModifiers GetModifiers() const;
 
-  const XkbFunctions* functions() const { return xkb_; }
-
  private:
-  explicit XkbKeyboard(const XkbFunctions* xkb);
+  XkbKeyboard() = default;
 
-  const XkbFunctions* xkb_;
   xkb_context* context_ = nullptr;
   xkb_keymap* keymap_ = nullptr;
   xkb_state* state_ = nullptr;

@@ -46,11 +46,11 @@ EventLoop::TimePoint ToTimePoint(uint32_t time) {
 }
 
 // Returns the character produced by |keysym| for deriving layouts.
-uint32_t LayoutCharacter(const XkbFunctions* xkb, uint32_t keysym) {
+uint32_t LayoutCharacter(uint32_t keysym) {
   if (keysym == 0) {
     return 0;
   }
-  uint32_t character = xkb->keysym_to_utf32(keysym);
+  uint32_t character = KeysymToUtf32(keysym);
   return character != 0 ? character : kLayoutNotCharacter;
 }
 
@@ -161,11 +161,10 @@ KeyboardHandler* WaylandSeat::KeyboardHandlerFor(wl_surface* surface) const {
 }
 
 KeyboardKey WaylandSeat::ResolveKey(uint32_t keycode) {
-  const XkbFunctions* xkb = xkb_keyboard_->functions();
   KeyboardKey key;
   key.keycode = keycode;
   key.keysym = xkb_keyboard_->GetKeysym(keycode);
-  key.character = xkb->keysym_to_utf32(key.keysym);
+  key.character = KeysymToUtf32(key.keysym);
   key.text = xkb_keyboard_->GetText(keycode);
 
   const std::unordered_map<uint32_t, uint64_t>& layout_keys =
@@ -175,8 +174,8 @@ KeyboardKey WaylandSeat::ResolveKey(uint32_t keycode) {
     key.logical_key = it->second;
     key.layout_logical_key = true;
   } else {
-    key.logical_key = GetLogicalKey(
-        key.keysym, xkb->keysym_to_utf32(xkb->keysym_to_lower(key.keysym)));
+    key.logical_key =
+        GetLogicalKey(key.keysym, KeysymToUtf32(KeysymToLower(key.keysym)));
   }
   return key;
 }
@@ -187,11 +186,10 @@ const std::unordered_map<uint32_t, uint64_t>& WaylandSeat::LayoutLogicalKeys(
   if (it != layout_keys_.end()) {
     return it->second;
   }
-  const XkbFunctions* xkb = xkb_keyboard_->functions();
   return layout_keys_[layout] = DeriveLayoutLogicalKeys(
-             [this, xkb, layout](uint32_t keycode, uint32_t level) {
+             [this, layout](uint32_t keycode, uint32_t level) {
                return LayoutCharacter(
-                   xkb, xkb_keyboard_->GetLevelKeysym(keycode, layout, level));
+                   xkb_keyboard_->GetLevelKeysym(keycode, layout, level));
              });
 }
 
@@ -304,10 +302,8 @@ void WaylandSeat::SeatCapabilities(void* data,
     self->ReleaseTouch();
   }
 
-  // Keyboard input requires libxkbcommon to interpret the keymap.
   bool has_keyboard = (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0;
-  if (has_keyboard && self->keyboard_ == nullptr &&
-      XkbFunctions::Get() != nullptr) {
+  if (has_keyboard && self->keyboard_ == nullptr) {
     self->keyboard_ = wl_seat_get_keyboard(seat);
     wl_keyboard_add_listener(self->keyboard_, &kKeyboardListener, self);
   } else if (!has_keyboard && self->keyboard_ != nullptr) {
@@ -569,7 +565,6 @@ void WaylandSeat::KeyboardKeymap(void* data,
     return;
   }
   self->xkb_keyboard_ = XkbKeyboard::Create(
-      XkbFunctions::Get(),
       std::string_view(static_cast<const char*>(keymap), size));
   munmap(keymap, size);
 }

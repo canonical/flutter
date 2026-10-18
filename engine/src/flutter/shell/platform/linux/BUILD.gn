@@ -165,14 +165,12 @@ source_set("flutter_linux_sources") {
     "//flutter/shell/platform/linux/config:gbm",
     "//flutter/shell/platform/linux/config:glesv2",
     "//flutter/shell/platform/linux/config:libdrm",
+    "//flutter/shell/platform/linux/config:xkbcommon",
   ]
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
 
   public_configs = [ ":no_x11" ]
-
-  # libxkbcommon is loaded at runtime.
-  libs = [ "dl" ]
 
   public_deps = [
     ":flutter_linux_headers",
