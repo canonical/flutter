@@ -24,6 +24,7 @@
 extern "C" {
 #endif
 
+typedef struct _FlutterLinuxApplication FlutterLinuxApplication;
 typedef struct _FlutterLinuxEngine FlutterLinuxEngine;
 typedef struct _FlutterLinuxView FlutterLinuxView;
 
@@ -36,7 +37,21 @@ typedef struct {
   const char* const* dart_entrypoint_argv;
 } FlutterLinuxEngineProperties;
 
+typedef void (*FlutterLinuxViewCloseCallback)(void* user_data);
+
+FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
+
+FLUTTER_EXPORT void flutter_linux_application_free(
+    FlutterLinuxApplication* application);
+
+FLUTTER_EXPORT void flutter_linux_application_run(
+    FlutterLinuxApplication* application);
+
+FLUTTER_EXPORT void flutter_linux_application_quit(
+    FlutterLinuxApplication* application);
+
 FLUTTER_EXPORT FlutterLinuxEngine* flutter_linux_engine_new(
+    FlutterLinuxApplication* application,
     const FlutterLinuxEngineProperties* properties);
 
 FLUTTER_EXPORT void flutter_linux_engine_free(FlutterLinuxEngine* engine);
@@ -44,12 +59,6 @@ FLUTTER_EXPORT void flutter_linux_engine_free(FlutterLinuxEngine* engine);
 FLUTTER_EXPORT bool flutter_linux_engine_run(FlutterLinuxEngine* engine);
 
 FLUTTER_EXPORT bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine);
-
-FLUTTER_EXPORT void flutter_linux_engine_run_event_loop(
-    FlutterLinuxEngine* engine);
-
-FLUTTER_EXPORT void flutter_linux_engine_quit_event_loop(
-    FlutterLinuxEngine* engine);
 
 FLUTTER_EXPORT FlutterLinuxView*
 flutter_linux_view_new(FlutterLinuxEngine* engine, int width, int height);
@@ -64,6 +73,14 @@ FLUTTER_EXPORT void flutter_linux_view_set_title(FlutterLinuxView* view,
 FLUTTER_EXPORT void flutter_linux_view_set_application_id(
     FlutterLinuxView* view,
     const char* application_id);
+
+// Sets |callback| to be called when the user requests the view be closed,
+// replacing the default behavior of quitting the application. Pass NULL to
+// restore the default behavior.
+FLUTTER_EXPORT void flutter_linux_view_set_close_callback(
+    FlutterLinuxView* view,
+    FlutterLinuxViewCloseCallback callback,
+    void* user_data);
 
 #if defined(__cplusplus)
 }  // extern "C"

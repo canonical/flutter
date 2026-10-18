@@ -14,8 +14,8 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
     int width,
     int height) {
   std::unique_ptr<FlutterLinuxView> view(new FlutterLinuxView(engine, view_id));
-  view->window_ =
-      WaylandWindow::Create(engine->display(), view.get(), width, height);
+  view->window_ = WaylandWindow::Create(engine->application()->display(),
+                                        view.get(), width, height);
   if (!view->window_) {
     return nullptr;
   }
@@ -55,7 +55,21 @@ void FlutterLinuxView::OnWindowConfigure() {
 }
 
 void FlutterLinuxView::OnWindowClose() {
-  engine_->OnViewClose(this);
+  // Handle the request outside of Wayland event dispatch so the callback can
+  // destroy the view.
+  engine_->application()->event_loop()->PostTask(
+      [this, alive = std::weak_ptr<bool>(alive_)]() {
+        if (alive.expired()) {
+          return;
+        }
+        if (close_callback_) {
+          // Copy the callback as it may destroy the view.
+          std::function<void()> callback = close_callback_;
+          callback();
+          return;
+        }
+        engine_->OnViewClose(this);
+      });
 }
 
 }  // namespace flutter

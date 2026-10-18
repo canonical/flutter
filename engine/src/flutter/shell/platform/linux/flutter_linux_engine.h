@@ -15,8 +15,7 @@
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
-#include "flutter/shell/platform/linux/event_loop.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/flutter_linux_application.h"
 
 namespace flutter {
 
@@ -27,8 +26,8 @@ constexpr FlutterViewId kImplicitViewId = 0;
 
 // An instance of a Flutter engine, and the platform resources it uses.
 //
-// The engine must be created, run and destroyed on the same thread, which
-// becomes the platform thread.
+// The engine must be created, run and destroyed on the application's platform
+// thread. Multiple engines may share an application.
 class FlutterLinuxEngine {
  public:
   struct Properties {
@@ -39,9 +38,11 @@ class FlutterLinuxEngine {
     std::vector<std::string> dart_entrypoint_arguments;
   };
 
-  // Creates an engine and connects to the display server. Returns nullptr if
-  // the display server or GPU are unavailable.
-  static std::unique_ptr<FlutterLinuxEngine> Create(Properties properties);
+  // Creates an engine in |application|, which must outlive the engine.
+  // Returns nullptr on failure.
+  static std::unique_ptr<FlutterLinuxEngine> Create(
+      FlutterLinuxApplication* application,
+      Properties properties);
 
   ~FlutterLinuxEngine();
 
@@ -55,13 +56,7 @@ class FlutterLinuxEngine {
   // running.
   bool Stop();
 
-  // Processes events until QuitEventLoop is called.
-  void RunEventLoop();
-
-  // Causes RunEventLoop to return. May be called from any thread.
-  void QuitEventLoop();
-
-  WaylandDisplay* display() const { return display_.get(); }
+  FlutterLinuxApplication* application() const { return application_; }
 
   // Creates the view shown in a new window of the given logical size.
   //
@@ -79,7 +74,8 @@ class FlutterLinuxEngine {
   void OnViewClose(FlutterLinuxView* view);
 
  private:
-  explicit FlutterLinuxEngine(Properties properties);
+  FlutterLinuxEngine(FlutterLinuxApplication* application,
+                     Properties properties);
 
   bool Initialize();
 
@@ -94,6 +90,7 @@ class FlutterLinuxEngine {
 
   FlutterRendererConfig GetRendererConfig();
 
+  FlutterLinuxApplication* application_;
   Properties properties_;
   std::vector<std::string> switches_;
 
@@ -101,13 +98,15 @@ class FlutterLinuxEngine {
   FLUTTER_API_SYMBOL(FlutterEngine) engine_ = nullptr;
   FlutterEngineAOTData aot_data_ = nullptr;
 
-  std::unique_ptr<EventLoop> event_loop_;
-  std::unique_ptr<WaylandDisplay> display_;
   std::unique_ptr<EGLManager> egl_;
   std::unique_ptr<CompositorOpenGL> compositor_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;
+
+  // Tasks posted to the shared event loop hold a weak reference to this, so
+  // they don't run after the engine is destroyed.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterLinuxEngine);
 };

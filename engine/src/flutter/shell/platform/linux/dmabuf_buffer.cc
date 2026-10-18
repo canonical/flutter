@@ -83,7 +83,7 @@ DmabufBuffer::~DmabufBuffer() {
     }
   }
   if (image_ != EGL_NO_IMAGE_KHR) {
-    egl_->DestroyImage(egl_->display(), image_);
+    egl_->gpu()->DestroyImage(egl_->gpu()->display(), image_);
   }
   if (bo_ != nullptr) {
     gbm_bo_destroy(bo_);
@@ -97,7 +97,7 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   // this allows the driver to pick an optimal (e.g. compressed or tiled)
   // layout that the compositor can still read.
   std::vector<uint64_t> explicit_modifiers;
-  if (egl_->supports_dmabuf_modifiers()) {
+  if (egl_->gpu()->supports_dmabuf_modifiers()) {
     for (uint64_t modifier : modifiers) {
       if (modifier != DRM_FORMAT_MOD_INVALID) {
         explicit_modifiers.push_back(modifier);
@@ -107,15 +107,15 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
 
   uint64_t modifier = DRM_FORMAT_MOD_INVALID;
   if (!explicit_modifiers.empty()) {
-    bo_ = gbm_bo_create_with_modifiers(egl_->gbm(), width_, height_, kFormat,
-                                       explicit_modifiers.data(),
+    bo_ = gbm_bo_create_with_modifiers(egl_->gpu()->gbm(), width_, height_,
+                                       kFormat, explicit_modifiers.data(),
                                        explicit_modifiers.size());
     if (bo_ != nullptr) {
       modifier = gbm_bo_get_modifier(bo_);
     }
   }
   if (bo_ == nullptr) {
-    bo_ = gbm_bo_create(egl_->gbm(), width_, height_, kFormat,
+    bo_ = gbm_bo_create(egl_->gpu()->gbm(), width_, height_, kFormat,
                         GBM_BO_USE_RENDERING);
   }
   if (bo_ == nullptr) {
@@ -160,8 +160,9 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   }
   attributes.push_back(EGL_NONE);
 
-  image_ = egl_->CreateImage(egl_->display(), EGL_NO_CONTEXT,
-                             EGL_LINUX_DMA_BUF_EXT, nullptr, attributes.data());
+  image_ = egl_->gpu()->CreateImage(egl_->gpu()->display(), EGL_NO_CONTEXT,
+                                    EGL_LINUX_DMA_BUF_EXT, nullptr,
+                                    attributes.data());
   if (image_ == EGL_NO_IMAGE_KHR) {
     FML_LOG(ERROR) << "Failed to import buffer into EGL: 0x" << std::hex
                    << eglGetError();
@@ -170,7 +171,7 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
 
   glGenTextures(1, &texture_);
   glBindTexture(GL_TEXTURE_2D, texture_);
-  egl_->ImageTargetTexture2D(GL_TEXTURE_2D, image_);
+  egl_->gpu()->ImageTargetTexture2D(GL_TEXTURE_2D, image_);
   glBindTexture(GL_TEXTURE_2D, 0);
 
   glGenFramebuffers(1, &framebuffer_);

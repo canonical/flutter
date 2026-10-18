@@ -3,6 +3,12 @@
 #include <cstdio>
 
 int main(int argc, char** argv) {
+  auto application = flutter::FlutterDesktopApplication::create();
+  if (!application) {
+    fprintf(stderr, "Failed to connect to Wayland compositor\n");
+    return 1;
+  }
+
   flutter::FlutterDesktopEngineProperties properties;
   // Paths are relative to the directory containing the executable.
   properties.assets_path = "data/flutter_assets";
@@ -10,7 +16,7 @@ int main(int argc, char** argv) {
   properties.aot_library_path = "lib/libapp.so";
   properties.dart_entrypoint_arguments.assign(argv + 1, argv + argc);
 
-  auto engine = flutter::FlutterDesktopEngine::create(properties);
+  auto engine = flutter::FlutterDesktopEngine::create(application, properties);
   if (!engine) {
     fprintf(stderr, "Failed to create Flutter engine\n");
     return 1;
@@ -30,7 +36,7 @@ int main(int argc, char** argv) {
   }
 
   // Runs until the window is closed.
-  engine->run_event_loop();
+  application->run();
 
   return 0;
 }

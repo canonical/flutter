@@ -8,10 +8,16 @@
 #include <memory>
 
 #include "flutter/shell/platform/common/path_utils.h"
+#include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 
 namespace {
+
+flutter::FlutterLinuxApplication* ToApplication(
+    FlutterLinuxApplication* application) {
+  return reinterpret_cast<flutter::FlutterLinuxApplication*>(application);
+}
 
 flutter::FlutterLinuxEngine* ToEngine(FlutterLinuxEngine* engine) {
   return reinterpret_cast<flutter::FlutterLinuxEngine*>(engine);
@@ -35,7 +41,25 @@ std::filesystem::path ResolvePath(const char* path) {
 
 }  // namespace
 
+FlutterLinuxApplication* flutter_linux_application_new(void) {
+  return reinterpret_cast<FlutterLinuxApplication*>(
+      flutter::FlutterLinuxApplication::Create().release());
+}
+
+void flutter_linux_application_free(FlutterLinuxApplication* application) {
+  delete ToApplication(application);
+}
+
+void flutter_linux_application_run(FlutterLinuxApplication* application) {
+  ToApplication(application)->Run();
+}
+
+void flutter_linux_application_quit(FlutterLinuxApplication* application) {
+  ToApplication(application)->Quit();
+}
+
 FlutterLinuxEngine* flutter_linux_engine_new(
+    FlutterLinuxApplication* application,
     const FlutterLinuxEngineProperties* properties) {
   flutter::FlutterLinuxEngine::Properties engine_properties;
   engine_properties.assets_path = ResolvePath(properties->assets_path);
@@ -51,7 +75,8 @@ FlutterLinuxEngine* flutter_linux_engine_new(
   }
 
   return reinterpret_cast<FlutterLinuxEngine*>(
-      flutter::FlutterLinuxEngine::Create(std::move(engine_properties))
+      flutter::FlutterLinuxEngine::Create(ToApplication(application),
+                                          std::move(engine_properties))
           .release());
 }
 
@@ -65,14 +90,6 @@ bool flutter_linux_engine_run(FlutterLinuxEngine* engine) {
 
 bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine) {
   return ToEngine(engine)->running();
-}
-
-void flutter_linux_engine_run_event_loop(FlutterLinuxEngine* engine) {
-  ToEngine(engine)->RunEventLoop();
-}
-
-void flutter_linux_engine_quit_event_loop(FlutterLinuxEngine* engine) {
-  ToEngine(engine)->QuitEventLoop();
 }
 
 FlutterLinuxView* flutter_linux_view_new(FlutterLinuxEngine* engine,
@@ -101,4 +118,16 @@ void flutter_linux_view_set_title(FlutterLinuxView* view, const char* title) {
 void flutter_linux_view_set_application_id(FlutterLinuxView* view,
                                            const char* application_id) {
   ToView(view)->window()->SetApplicationId(application_id);
+}
+
+void flutter_linux_view_set_close_callback(
+    FlutterLinuxView* view,
+    FlutterLinuxViewCloseCallback callback,
+    void* user_data) {
+  if (callback == nullptr) {
+    ToView(view)->SetCloseCallback(nullptr);
+    return;
+  }
+  ToView(view)->SetCloseCallback(
+      [callback, user_data]() { callback(user_data); });
 }

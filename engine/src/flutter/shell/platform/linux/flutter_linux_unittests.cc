@@ -43,17 +43,13 @@ class ScopedEnvironmentVariable {
 
 }  // namespace
 
-TEST(FlutterLinuxTest, CreateEngineWithoutCompositorFails) {
+TEST(FlutterLinuxTest, CreateApplicationWithoutCompositorFails) {
   ScopedEnvironmentVariable display("WAYLAND_DISPLAY",
                                     "flutter-linux-test-no-such-display");
 
-  FlutterDesktopEngineProperties properties;
-  properties.assets_path = "flutter_assets";
-  properties.icu_data_path = "icudtl.dat";
-  properties.dart_entrypoint_arguments = {"one", "two"};
-  std::shared_ptr<FlutterDesktopEngine> engine =
-      FlutterDesktopEngine::create(properties);
-  EXPECT_EQ(engine, nullptr);
+  std::shared_ptr<FlutterDesktopApplication> application =
+      FlutterDesktopApplication::create();
+  EXPECT_EQ(application, nullptr);
 }
 
 }  // namespace testing

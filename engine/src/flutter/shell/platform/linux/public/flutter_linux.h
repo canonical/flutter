@@ -12,9 +12,19 @@
 //
 // All objects must be created, used and destroyed on the same thread, which
 // becomes the platform thread. The exception is
-// FlutterDesktopEngine::quit_event_loop, which may be called from any thread.
+// FlutterDesktopApplication::quit, which may be called from any thread.
+//
+// An application can contain multiple engines, which share the platform
+// thread, the connection to the compositor and the GPU:
+//
+//   auto application = flutter::FlutterDesktopApplication::create();
+//   auto engine = flutter::FlutterDesktopEngine::create(application, props);
+//   auto view = flutter::FlutterDesktopView::create(engine, 1280, 720);
+//   engine->run();
+//   application->run();
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,6 +33,43 @@
 #include "flutter_linux_abi.h"
 
 namespace flutter {
+
+// The platform resources shared by all engines in a process.
+class FlutterDesktopApplication {
+ public:
+  // Connects to the Wayland compositor. Returns nullptr if no compositor or
+  // GPU is available.
+  static std::shared_ptr<FlutterDesktopApplication> create() {
+    FlutterLinuxApplication* application = flutter_linux_application_new();
+    if (application == nullptr) {
+      return nullptr;
+    }
+    return std::shared_ptr<FlutterDesktopApplication>(
+        new FlutterDesktopApplication(application));
+  }
+
+  ~FlutterDesktopApplication() { flutter_linux_application_free(application_); }
+
+  FlutterDesktopApplication(const FlutterDesktopApplication&) = delete;
+  FlutterDesktopApplication& operator=(const FlutterDesktopApplication&) =
+      delete;
+
+  // Processes events for all engines until quit is called, the connection to
+  // the compositor is lost, or the user closes a view that doesn't have a
+  // close callback.
+  void run() { flutter_linux_application_run(application_); }
+
+  // Causes run to return. May be called from any thread.
+  void quit() { flutter_linux_application_quit(application_); }
+
+ private:
+  friend class FlutterDesktopEngine;
+
+  explicit FlutterDesktopApplication(FlutterLinuxApplication* application)
+      : application_(application) {}
+
+  FlutterLinuxApplication* application_;
+};
 
 // Properties for configuring a Flutter engine.
 struct FlutterDesktopEngineProperties {
@@ -51,9 +98,9 @@ struct FlutterDesktopEngineProperties {
 // An instance of the Flutter engine.
 class FlutterDesktopEngine {
  public:
-  // Creates an engine and connects to the Wayland compositor. Returns nullptr
-  // if no compositor or GPU is available.
+  // Creates an engine in |application|. Returns nullptr on failure.
   static std::shared_ptr<FlutterDesktopEngine> create(
+      std::shared_ptr<FlutterDesktopApplication> application,
       const FlutterDesktopEngineProperties& properties) {
     std::vector<const char*> argv;
     argv.reserve(properties.dart_entrypoint_arguments.size());
@@ -69,12 +116,13 @@ class FlutterDesktopEngine {
     abi_properties.dart_entrypoint_argc = static_cast<int>(argv.size());
     abi_properties.dart_entrypoint_argv = argv.data();
 
-    FlutterLinuxEngine* engine = flutter_linux_engine_new(&abi_properties);
+    FlutterLinuxEngine* engine =
+        flutter_linux_engine_new(application->application_, &abi_properties);
     if (engine == nullptr) {
       return nullptr;
     }
     return std::shared_ptr<FlutterDesktopEngine>(
-        new FlutterDesktopEngine(engine));
+        new FlutterDesktopEngine(std::move(application), engine));
   }
 
   ~FlutterDesktopEngine() { flutter_linux_engine_free(engine_); }
@@ -89,18 +137,20 @@ class FlutterDesktopEngine {
   // Returns true if the engine is running.
   bool is_running() const { return flutter_linux_engine_is_running(engine_); }
 
-  // Processes events until quit_event_loop is called or the user closes the
-  // first view.
-  void run_event_loop() { flutter_linux_engine_run_event_loop(engine_); }
-
-  // Causes run_event_loop to return. May be called from any thread.
-  void quit_event_loop() { flutter_linux_engine_quit_event_loop(engine_); }
+  // The application this engine is in.
+  const std::shared_ptr<FlutterDesktopApplication>& application() const {
+    return application_;
+  }
 
  private:
   friend class FlutterDesktopView;
 
-  explicit FlutterDesktopEngine(FlutterLinuxEngine* engine) : engine_(engine) {}
+  FlutterDesktopEngine(std::shared_ptr<FlutterDesktopApplication> application,
+                       FlutterLinuxEngine* engine)
+      : application_(std::move(application)), engine_(engine) {}
 
+  // Keeps the application alive while the engine exists.
+  std::shared_ptr<FlutterDesktopApplication> application_;
   FlutterLinuxEngine* engine_;
 };
 
@@ -110,7 +160,7 @@ class FlutterDesktopView {
   // Creates a view of |engine| in a new window of the given logical size. The
   // compositor may choose a different size. Returns nullptr on failure.
   //
-  // Only a single view is currently supported.
+  // Only a single view per engine is currently supported.
   static std::shared_ptr<FlutterDesktopView>
   create(std::shared_ptr<FlutterDesktopEngine> engine, int width, int height) {
     FlutterLinuxView* view =
@@ -147,14 +197,34 @@ class FlutterDesktopView {
     flutter_linux_view_set_application_id(view_, application_id.c_str());
   }
 
+  // Sets a function to call when the user requests the window be closed. By
+  // default, the application quits. The view may be destroyed from
+  // |callback|. Pass an empty function to restore the default behavior.
+  void set_close_callback(std::function<void()> callback) {
+    close_callback_ = std::move(callback);
+    if (close_callback_) {
+      flutter_linux_view_set_close_callback(view_, OnClose, this);
+    } else {
+      flutter_linux_view_set_close_callback(view_, nullptr, nullptr);
+    }
+  }
+
  private:
   FlutterDesktopView(std::shared_ptr<FlutterDesktopEngine> engine,
                      FlutterLinuxView* view)
       : engine_(std::move(engine)), view_(view) {}
 
+  static void OnClose(void* user_data) {
+    // Copy the callback as it may destroy the view.
+    std::function<void()> callback =
+        static_cast<FlutterDesktopView*>(user_data)->close_callback_;
+    callback();
+  }
+
   // Keeps the engine alive while the view exists.
   std::shared_ptr<FlutterDesktopEngine> engine_;
   FlutterLinuxView* view_;
+  std::function<void()> close_callback_;
 };
 
 }  // namespace flutter

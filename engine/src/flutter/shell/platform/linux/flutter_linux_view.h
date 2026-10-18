@@ -5,6 +5,7 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_FLUTTER_LINUX_VIEW_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_FLUTTER_LINUX_VIEW_H_
 
+#include <functional>
 #include <memory>
 
 #include "flutter/fml/macros.h"
@@ -32,6 +33,13 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   FlutterLinuxEngine* engine() const { return engine_; }
   WaylandWindow* window() const { return window_.get(); }
 
+  // Sets a function to call when the user requests the window be closed,
+  // replacing the default behavior of quitting the application. The view may
+  // be destroyed from |callback|.
+  void SetCloseCallback(std::function<void()> callback) {
+    close_callback_ = std::move(callback);
+  }
+
   // Returns the current window metrics for this view.
   FlutterWindowMetricsEvent GetWindowMetrics() const;
 
@@ -53,6 +61,11 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   FlutterLinuxEngine* engine_;
   FlutterViewId view_id_;
   std::unique_ptr<WaylandWindow> window_;
+  std::function<void()> close_callback_;
+
+  // Tasks posted by the view hold a weak reference to this, so they don't
+  // run after the view is destroyed.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterLinuxView);
 };

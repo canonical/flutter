@@ -111,8 +111,10 @@ source_set("flutter_linux_sources") {
     "egl_manager.cc",
     "event_loop.cc",
     "flutter_linux_abi.cc",
+    "flutter_linux_application.cc",
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
+    "gpu_device.cc",
     "wayland_display.cc",
     "wayland_window.cc",
   ]

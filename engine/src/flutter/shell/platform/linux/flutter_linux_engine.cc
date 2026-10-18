@@ -30,17 +30,20 @@ EventLoop::TimePoint ToEventLoopTime(uint64_t target_time_nanos,
 }  // namespace
 
 std::unique_ptr<FlutterLinuxEngine> FlutterLinuxEngine::Create(
+    FlutterLinuxApplication* application,
     Properties properties) {
   std::unique_ptr<FlutterLinuxEngine> engine(
-      new FlutterLinuxEngine(std::move(properties)));
+      new FlutterLinuxEngine(application, std::move(properties)));
   if (!engine->Initialize()) {
     return nullptr;
   }
   return engine;
 }
 
-FlutterLinuxEngine::FlutterLinuxEngine(Properties properties)
-    : properties_(std::move(properties)),
+FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
+                                       Properties properties)
+    : application_(application),
+      properties_(std::move(properties)),
       switches_(GetSwitchesFromEnvironment()) {
   embedder_api_.struct_size = sizeof(FlutterEngineProcTable);
   FlutterEngineGetProcAddresses(&embedder_api_);
@@ -52,11 +55,6 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
 
   compositor_.reset();
   egl_.reset();
-  if (display_) {
-    event_loop_->RemoveSource(display_.get());
-    display_.reset();
-  }
-  event_loop_.reset();
 
   if (aot_data_ != nullptr) {
     embedder_api_.CollectAOTData(aot_data_);
@@ -64,22 +62,13 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
 }
 
 bool FlutterLinuxEngine::Initialize() {
-  event_loop_ = std::make_unique<EventLoop>();
-
-  display_ = WaylandDisplay::Create();
-  if (!display_) {
-    return false;
-  }
-  display_->SetErrorCallback([this]() { QuitEventLoop(); });
-  event_loop_->AddSource(display_.get());
-
-  egl_ = EGLManager::Create(display_->main_device());
+  egl_ = EGLManager::Create(application_->gpu());
   if (!egl_) {
     return false;
   }
 
-  compositor_ = std::make_unique<CompositorOpenGL>(egl_.get(), display_.get(),
-                                                   IsImpellerEnabled());
+  compositor_ = std::make_unique<CompositorOpenGL>(
+      egl_.get(), application_->display(), IsImpellerEnabled());
   return true;
 }
 
@@ -128,7 +117,8 @@ bool FlutterLinuxEngine::Run() {
   platform_task_runner.runs_task_on_current_thread_callback =
       [](void* user_data) -> bool {
     return static_cast<FlutterLinuxEngine*>(user_data)
-        ->event_loop_->RunsTasksOnCurrentThread();
+        ->application_->event_loop()
+        ->RunsTasksOnCurrentThread();
   };
   platform_task_runner.post_task_callback =
       [](FlutterTask task, uint64_t target_time_nanos, void* user_data) {
@@ -210,14 +200,6 @@ bool FlutterLinuxEngine::Stop() {
   return result == kSuccess;
 }
 
-void FlutterLinuxEngine::RunEventLoop() {
-  event_loop_->Run();
-}
-
-void FlutterLinuxEngine::QuitEventLoop() {
-  event_loop_->Quit();
-}
-
 std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
                                                                  int height) {
   if (views_.count(kImplicitViewId) != 0) {
@@ -255,7 +237,7 @@ void FlutterLinuxEngine::SendWindowMetrics(
 void FlutterLinuxEngine::OnViewClose(FlutterLinuxView* view) {
   // Closing the implicit view ends the application.
   if (view->view_id() == kImplicitViewId) {
-    QuitEventLoop();
+    application_->Quit();
   }
 }
 
@@ -263,9 +245,9 @@ void FlutterLinuxEngine::PostFlutterTask(FlutterTask task,
                                          uint64_t target_time_nanos) {
   EventLoop::TimePoint target_time =
       ToEventLoopTime(target_time_nanos, embedder_api_.GetCurrentTime());
-  event_loop_->PostTask(
-      [this, task]() {
-        if (engine_ != nullptr) {
+  application_->event_loop()->PostTask(
+      [this, alive = std::weak_ptr<bool>(alive_), task]() {
+        if (!alive.expired() && engine_ != nullptr) {
           embedder_api_.RunTask(engine_, &task);
         }
       },
