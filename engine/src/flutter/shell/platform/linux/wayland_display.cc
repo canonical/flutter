@@ -34,6 +34,7 @@ constexpr uint32_t kMaxShmVersion = 1;
 constexpr uint32_t kMaxSubcompositorVersion = 1;
 constexpr uint32_t kMaxSeatVersion = 5;
 constexpr uint32_t kMaxCursorShapeManagerVersion = 1;
+constexpr uint32_t kMaxTextInputManagerVersion = 1;
 constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
@@ -136,6 +137,9 @@ WaylandDisplay::~WaylandDisplay() {
     zwp_linux_dmabuf_v1_destroy(dmabuf_);
   }
   seat_.reset();
+  if (text_input_manager_ != nullptr) {
+    zwp_text_input_manager_v3_destroy(text_input_manager_);
+  }
   if (cursor_shape_manager_ != nullptr) {
     wp_cursor_shape_manager_v1_destroy(cursor_shape_manager_);
   }
@@ -180,7 +184,7 @@ bool WaylandDisplay::Initialize() {
   }
   if (wl_seat_ != nullptr) {
     seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_,
-                                          event_loop_);
+                                          text_input_manager_, event_loop_);
   }
   if (dmabuf_ == nullptr) {
     return true;
@@ -315,6 +319,10 @@ void WaylandDisplay::RegistryGlobal(void* data,
         &self->protocols_, registry, name,
         &wp_cursor_shape_manager_v1_interface, version,
         kMaxCursorShapeManagerVersion);
+  } else if (strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
+    self->text_input_manager_ = Bind<zwp_text_input_manager_v3>(
+        &self->protocols_, registry, name, &zwp_text_input_manager_v3_interface,
+        version, kMaxTextInputManagerVersion);
   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
     if (version >= kMinDmabufVersion) {
       self->dmabuf_ = Bind<zwp_linux_dmabuf_v1>(

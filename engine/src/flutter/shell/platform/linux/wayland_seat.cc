@@ -94,14 +94,19 @@ const wl_keyboard_listener WaylandSeat::kKeyboardListener = {
 
 WaylandSeat::WaylandSeat(wl_seat* seat,
                          wp_cursor_shape_manager_v1* cursor_shape_manager,
+                         zwp_text_input_manager_v3* text_input_manager,
                          EventLoop* event_loop)
     : seat_(seat),
       cursor_shape_manager_(cursor_shape_manager),
       event_loop_(event_loop) {
   wl_seat_add_listener(seat_, &kSeatListener, this);
+  if (text_input_manager != nullptr) {
+    text_input_ = std::make_unique<WaylandTextInput>(text_input_manager, seat_);
+  }
 }
 
 WaylandSeat::~WaylandSeat() {
+  text_input_.reset();
   ReleaseKeyboard();
   ReleaseTouch();
   ReleasePointer();
@@ -134,6 +139,13 @@ void WaylandSeat::SetKeyboardHandler(wl_surface* surface,
   if (keyboard_focus_ == surface) {
     keyboard_focus_ = nullptr;
     StopRepeat();
+  }
+}
+
+void WaylandSeat::SetInputMethodHandler(wl_surface* surface,
+                                        InputMethodHandler* handler) {
+  if (text_input_ != nullptr) {
+    text_input_->SetHandler(surface, handler);
   }
 }
 

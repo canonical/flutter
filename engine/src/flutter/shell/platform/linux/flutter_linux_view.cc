@@ -29,6 +29,8 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
                           view->pointer_converter_.get());
     seat->SetKeyboardHandler(view->window_->surface(),
                              engine->keyboard_manager());
+    seat->SetInputMethodHandler(view->window_->surface(),
+                                engine->keyboard_manager()->text_input());
   }
   return view;
 }
@@ -42,6 +44,7 @@ FlutterLinuxView::~FlutterLinuxView() {
   if (seat != nullptr && window_) {
     seat->SetInputHandler(window_->surface(), nullptr);
     seat->SetKeyboardHandler(window_->surface(), nullptr);
+    seat->SetInputMethodHandler(window_->surface(), nullptr);
   }
 }
 

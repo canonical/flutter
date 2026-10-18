@@ -45,6 +45,9 @@ class KeyboardManager : public KeyboardHandler {
   // |KeyboardHandler|
   void OnKeyModifiers(uint64_t time, const KeyModifiers& modifiers) override;
 
+  // Edits text fields, with keys and the input method.
+  TextInputPlugin* text_input() { return &text_input_; }
+
  private:
   // Sends |key| on the flutter/keyevent channel. |callback| is called with
   // whether the framework handled it.

@@ -17,6 +17,7 @@
 #include "flutter/shell/platform/linux/key_event_converter.h"
 #include "flutter/shell/platform/linux/protocols/cursor-shape-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland_text_input.h"
 #include "flutter/shell/platform/linux/xkb.h"
 
 namespace flutter {
@@ -104,10 +105,12 @@ class KeyboardHandler {
 class WaylandSeat {
  public:
   // Takes ownership of |seat|. |cursor_shape_manager| may be nullptr, in
-  // which case the cursor can't be changed. |event_loop| is used to repeat
-  // keys and must outlive the seat.
+  // which case the cursor can't be changed. |text_input_manager| may be
+  // nullptr, in which case there is no input method. |event_loop| is used to
+  // repeat keys and must outlive the seat.
   WaylandSeat(wl_seat* seat,
               wp_cursor_shape_manager_v1* cursor_shape_manager,
+              zwp_text_input_manager_v3* text_input_manager,
               EventLoop* event_loop);
   ~WaylandSeat();
 
@@ -120,6 +123,10 @@ class WaylandSeat {
   // Sends keyboard events for |surface| to |handler|, or stops sending them
   // if |handler| is nullptr.
   void SetKeyboardHandler(wl_surface* surface, KeyboardHandler* handler);
+
+  // Sends input method requests for |surface| to |handler|, or stops sending
+  // them if |handler| is nullptr.
+  void SetInputMethodHandler(wl_surface* surface, InputMethodHandler* handler);
 
   // Sets the cursor shown over the surface the pointer is in. |shape| is a
   // wp_cursor_shape_device_v1 shape.
@@ -312,6 +319,9 @@ class WaylandSeat {
   // tasks when it changes.
   uint32_t repeat_keycode_ = 0;
   uint64_t repeat_generation_ = 0;
+
+  // The input method, or nullptr if the compositor doesn't support one.
+  std::unique_ptr<WaylandTextInput> text_input_;
 
   // Repeat tasks hold a weak reference to this, so they don't run after the
   // seat is destroyed.
