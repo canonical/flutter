@@ -74,5 +74,15 @@ TEST(VsyncPredictorTest, IgnoresOutOfOrderPresentation) {
   EXPECT_EQ(predictor.NextVsync(103000).start_time, 110000u);
 }
 
+TEST(VsyncPredictorTest, ReportsRefreshInterval) {
+  VsyncPredictor predictor;
+  EXPECT_EQ(predictor.refresh_interval(),
+            VsyncPredictor::kDefaultRefreshInterval);
+  predictor.OnFramePresented(100000, kInterval);
+  EXPECT_EQ(predictor.refresh_interval(), kInterval);
+  predictor.OnFramePresented(200000, 0);
+  EXPECT_EQ(predictor.refresh_interval(), kInterval);
+}
+
 }  // namespace testing
 }  // namespace flutter

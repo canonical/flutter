@@ -78,4 +78,8 @@ void FlutterLinuxView::OnWindowPresented(uint64_t presentation_time_ns,
   engine_->OnFramePresented(presentation_time_ns, refresh_ns);
 }
 
+void FlutterLinuxView::OnWindowFrameDone() {
+  engine_->OnFrameDone();
+}
+
 }  // namespace flutter

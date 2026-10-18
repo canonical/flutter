@@ -41,6 +41,10 @@ class WaylandWindow {
     // that is unknown.
     virtual void OnWindowPresented(uint64_t presentation_time_ns,
                                    uint64_t refresh_ns) = 0;
+
+    // Called when the compositor indicates it is a good time to draw a new
+    // frame, after a previously presented frame has been handled.
+    virtual void OnWindowFrameDone() = 0;
   };
 
   // Creates a window with the given logical size. This blocks until the
@@ -85,14 +89,22 @@ class WaylandWindow {
   // the buffer instead of implicit synchronization. Once a buffer has been
   // presented with |sync|, all following buffers must also provide it.
   //
-  // If the compositor supports wp_presentation, the delegate is informed
-  // when the frame is shown.
+  // Each frame is shown for at least one display refresh if the compositor
+  // supports wp_fifo_v1, rather than being replaced by the next frame.
+  //
+  // The delegate is informed when the compositor is ready for another frame,
+  // and if the compositor supports wp_presentation, when the frame is shown.
   //
   // May be called from any thread, but only from one thread at a time.
   void Present(wl_buffer* buffer,
                int width,
                int height,
                const SyncPoints* sync);
+
+  // The number of presented frames the compositor hasn't yet indicated it
+  // is ready to follow with another frame. These don't complete while the
+  // window is hidden.
+  size_t frames_in_flight();
 
  private:
   WaylandWindow(WaylandDisplay* display, Delegate* delegate);
@@ -131,6 +143,7 @@ class WaylandWindow {
                                 uint32_t flags);
   static void FeedbackDiscarded(void* data,
                                 struct wp_presentation_feedback* feedback);
+  static void FrameDone(void* data, wl_callback* callback, uint32_t time);
   static void PreferredScale(void* data,
                              wp_fractional_scale_v1* fractional_scale,
                              uint32_t scale);
@@ -140,6 +153,7 @@ class WaylandWindow {
   static const xdg_toplevel_listener kToplevelListener;
   static const wp_fractional_scale_v1_listener kFractionalScaleListener;
   static const wp_presentation_feedback_listener kFeedbackListener;
+  static const wl_callback_listener kFrameListener;
 
   // Destroys |feedback| once it has delivered its result.
   void RemoveFeedback(struct wp_presentation_feedback* feedback);
@@ -152,6 +166,11 @@ class WaylandWindow {
   xdg_toplevel* toplevel_ = nullptr;
   wp_viewport* viewport_ = nullptr;
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
+  wp_fifo_v1* fifo_ = nullptr;
+
+  // True once a commit has set a fifo barrier. Only accessed by the thread
+  // presenting.
+  bool fifo_barrier_set_ = false;
 
   // Created on the first present with explicit synchronization.
   wp_linux_drm_syncobj_surface_v1* syncobj_surface_ = nullptr;
@@ -170,6 +189,11 @@ class WaylandWindow {
   // thread.
   std::mutex feedback_mutex_;
   std::set<struct wp_presentation_feedback*> pending_feedback_;
+
+  // Frame callbacks requested on the raster thread, delivered on the
+  // platform thread.
+  std::mutex frame_mutex_;
+  std::set<wl_callback*> pending_frames_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(WaylandWindow);
 };

@@ -34,6 +34,11 @@ class VsyncPredictor {
   // per refresh interval, as more frames than that would not be shown.
   Vsync NextVsync(uint64_t now);
 
+  // The time between display refreshes.
+  uint64_t refresh_interval() const {
+    return refresh_interval_ != 0 ? refresh_interval_ : kDefaultRefreshInterval;
+  }
+
  private:
   uint64_t last_presentation_time_ = 0;
   uint64_t refresh_interval_ = 0;

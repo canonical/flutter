@@ -15,6 +15,11 @@ namespace flutter {
 
 namespace {
 
+// The number of frames each view may have waiting for the compositor before
+// drawing stops. Allowing more than one causes frames to be discarded on
+// compositors that refresh slower than they report.
+constexpr size_t kMaxFramesInFlight = 1;
+
 // Converts a Flutter task target time to an event loop time.
 EventLoop::TimePoint ToEventLoopTime(uint64_t target_time_nanos,
                                      uint64_t engine_now_nanos) {
@@ -172,12 +177,10 @@ bool FlutterLinuxEngine::Run() {
     static_cast<FlutterLinuxEngine*>(user_data)->HandlePlatformMessage(message);
   };
   // Frames are scheduled using the presentation times reported by the
-  // compositor. Without these, the engine falls back to a 60Hz timer.
-  if (application_->display()->presentation() != nullptr) {
-    args.vsync_callback = [](void* user_data, intptr_t baton) {
-      static_cast<FlutterLinuxEngine*>(user_data)->OnVsyncRequest(baton);
-    };
-  }
+  // compositor, and throttled by its frame callbacks.
+  args.vsync_callback = [](void* user_data, intptr_t baton) {
+    static_cast<FlutterLinuxEngine*>(user_data)->OnVsyncRequest(baton);
+  };
   args.custom_task_runners = &custom_task_runners;
   args.compositor = &compositor;
   args.aot_data = aot_data_;
@@ -231,6 +234,9 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
 void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
   compositor_->RemoveView(view->view_id());
   views_.erase(view->view_id());
+
+  // The removed view may have been the reason drawing was throttled.
+  OnFrameDone();
 }
 
 void FlutterLinuxEngine::SendWindowMetrics(
@@ -253,9 +259,24 @@ void FlutterLinuxEngine::OnFramePresented(uint64_t presentation_time_ns,
   vsync_predictor_.OnFramePresented(presentation_time_ns, refresh_ns);
 }
 
+void FlutterLinuxEngine::OnFrameDone() {
+  if (engine_ == nullptr || !pending_vsync_baton_.has_value() ||
+      IsThrottled()) {
+    return;
+  }
+  intptr_t baton = *pending_vsync_baton_;
+  pending_vsync_baton_.reset();
+
+  // The compositor is ready for a new frame now, so start it immediately
+  // rather than waiting for the next predicted vsync.
+  uint64_t now = embedder_api_.GetCurrentTime();
+  embedder_api_.OnVsync(engine_, baton, now,
+                        now + vsync_predictor_.refresh_interval());
+}
+
 void FlutterLinuxEngine::OnVsyncRequest(intptr_t baton) {
   // The UI and platform threads are merged, so this is on the platform
-  // thread and can access the predictor.
+  // thread and can access the views and predictor.
   FML_DCHECK(application_->event_loop()->RunsTasksOnCurrentThread());
 
   uint64_t now = embedder_api_.GetCurrentTime();
@@ -265,10 +286,31 @@ void FlutterLinuxEngine::OnVsyncRequest(intptr_t baton) {
         if (alive.expired() || engine_ == nullptr) {
           return;
         }
+        // Wait until the compositor is ready for another frame. This stops
+        // drawing while windows are hidden, and when the compositor can't
+        // keep up. This is checked when the vsync occurs, as the engine
+        // requests it before the previous frame has been presented.
+        if (IsThrottled()) {
+          FML_DCHECK(!pending_vsync_baton_.has_value());
+          pending_vsync_baton_ = baton;
+          return;
+        }
         embedder_api_.OnVsync(engine_, baton, vsync.start_time,
                               vsync.target_time);
       },
       ToEventLoopTime(vsync.start_time, now));
+}
+
+bool FlutterLinuxEngine::IsThrottled() const {
+  if (views_.empty()) {
+    return false;
+  }
+  for (const auto& [view_id, view] : views_) {
+    if (view->frames_in_flight() < kMaxFramesInFlight) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void FlutterLinuxEngine::PostFlutterTask(FlutterTask task,

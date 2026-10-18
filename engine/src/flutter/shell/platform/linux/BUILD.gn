@@ -51,6 +51,7 @@ _public_headers = [
 # in-tree scanner so the generated code is compatible with the libwayland in
 # the sysroot.
 _wayland_protocols = [
+  "protocols/fifo-v1.xml",
   "protocols/fractional-scale-v1.xml",
   "protocols/linux-dmabuf-v1.xml",
   "protocols/linux-drm-syncobj-v1.xml",

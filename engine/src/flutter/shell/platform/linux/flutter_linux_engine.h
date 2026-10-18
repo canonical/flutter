@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,9 @@ class FlutterLinuxEngine {
   // are in nanoseconds on CLOCK_MONOTONIC. |refresh_ns| is zero if unknown.
   void OnFramePresented(uint64_t presentation_time_ns, uint64_t refresh_ns);
 
+  // Called when the compositor is ready for another frame from any view.
+  void OnFrameDone();
+
  private:
   FlutterLinuxEngine(FlutterLinuxApplication* application,
                      Properties properties);
@@ -92,6 +96,10 @@ class FlutterLinuxEngine {
 
   // Responds to a request from the engine for the next vsync.
   void OnVsyncRequest(intptr_t baton);
+
+  // True if no view can show a new frame until the compositor has handled
+  // the frames already presented.
+  bool IsThrottled() const;
 
   // Responds to a message from the framework.
   void HandlePlatformMessage(const FlutterPlatformMessage* message);
@@ -111,6 +119,9 @@ class FlutterLinuxEngine {
 
   // Predicts when to draw frames, from when previous frames were shown.
   VsyncPredictor vsync_predictor_;
+
+  // A vsync request waiting for the compositor to be ready for a new frame.
+  std::optional<intptr_t> pending_vsync_baton_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;

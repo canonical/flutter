@@ -61,6 +61,13 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   void OnWindowPresented(uint64_t presentation_time_ns,
                          uint64_t refresh_ns) override;
 
+  // |WaylandWindow::Delegate|
+  void OnWindowFrameDone() override;
+
+  // The number of presented frames the compositor is not yet ready to
+  // follow with another frame.
+  size_t frames_in_flight() const { return window_->frames_in_flight(); }
+
  private:
   FlutterLinuxView(FlutterLinuxEngine* engine, FlutterViewId view_id);
 

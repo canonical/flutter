@@ -19,8 +19,7 @@ void VsyncPredictor::OnFramePresented(uint64_t presentation_time,
 }
 
 VsyncPredictor::Vsync VsyncPredictor::NextVsync(uint64_t now) {
-  uint64_t interval =
-      refresh_interval_ != 0 ? refresh_interval_ : kDefaultRefreshInterval;
+  uint64_t interval = refresh_interval();
 
   // Predict the next display refresh from the last time a frame was shown.
   // Before the first frame is shown, start immediately.

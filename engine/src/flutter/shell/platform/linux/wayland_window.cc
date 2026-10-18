@@ -39,6 +39,10 @@ const wp_presentation_feedback_listener WaylandWindow::kFeedbackListener = {
     .discarded = FeedbackDiscarded,
 };
 
+const wl_callback_listener WaylandWindow::kFrameListener = {
+    .done = FrameDone,
+};
+
 const wp_fractional_scale_v1_listener WaylandWindow::kFractionalScaleListener =
     {
         .preferred_scale = PreferredScale,
@@ -60,11 +64,21 @@ WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
 
 WaylandWindow::~WaylandWindow() {
   {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    for (wl_callback* callback : pending_frames_) {
+      wl_callback_destroy(callback);
+    }
+    pending_frames_.clear();
+  }
+  {
     std::lock_guard<std::mutex> lock(feedback_mutex_);
     for (struct wp_presentation_feedback* feedback : pending_feedback_) {
       wp_presentation_feedback_destroy(feedback);
     }
     pending_feedback_.clear();
+  }
+  if (fifo_ != nullptr) {
+    wp_fifo_v1_destroy(fifo_);
   }
   if (syncobj_surface_ != nullptr) {
     wp_linux_drm_syncobj_surface_v1_destroy(syncobj_surface_);
@@ -108,6 +122,10 @@ bool WaylandWindow::Initialize(int width, int height) {
       wp_fractional_scale_v1_add_listener(fractional_scale_,
                                           &kFractionalScaleListener, this);
     }
+  }
+
+  if (display_->fifo_manager() != nullptr) {
+    fifo_ = wp_fifo_manager_v1_get_fifo(display_->fifo_manager(), surface_);
   }
 
   xdg_surface_ = xdg_wm_base_get_xdg_surface(display_->wm_base(), surface_);
@@ -167,6 +185,23 @@ void WaylandWindow::Present(wl_buffer* buffer,
                                 static_cast<int>(std::round(width / scale)),
                                 static_cast<int>(std::round(height / scale)));
   }
+  if (fifo_ != nullptr) {
+    // Keep the previous frame on screen for at least one refresh, so frames
+    // are not discarded if they are drawn faster than the display refreshes.
+    if (fifo_barrier_set_) {
+      wp_fifo_v1_wait_barrier(fifo_);
+    }
+    wp_fifo_v1_set_barrier(fifo_);
+    fifo_barrier_set_ = true;
+  }
+  {
+    // As with presentation feedback, the callback is on the default queue
+    // and no events are sent before the commit.
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    wl_callback* callback = wl_surface_frame(surface_);
+    wl_callback_add_listener(callback, &kFrameListener, this);
+    pending_frames_.insert(callback);
+  }
   if (display_->presentation() != nullptr) {
     // The feedback is created on the default queue, so its events are
     // delivered on the platform thread. No events are sent before the commit,
@@ -179,6 +214,23 @@ void WaylandWindow::Present(wl_buffer* buffer,
   }
   wl_surface_commit(surface_);
   wl_display_flush(display_->display());
+}
+
+size_t WaylandWindow::frames_in_flight() {
+  std::lock_guard<std::mutex> lock(frame_mutex_);
+  return pending_frames_.size();
+}
+
+void WaylandWindow::FrameDone(void* data,
+                              wl_callback* callback,
+                              uint32_t time) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  {
+    std::lock_guard<std::mutex> lock(self->frame_mutex_);
+    self->pending_frames_.erase(callback);
+    wl_callback_destroy(callback);
+  }
+  self->delegate_->OnWindowFrameDone();
 }
 
 void WaylandWindow::RemoveFeedback(struct wp_presentation_feedback* feedback) {
