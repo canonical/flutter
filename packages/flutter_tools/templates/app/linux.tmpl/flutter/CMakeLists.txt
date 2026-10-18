@@ -31,6 +31,7 @@ set(AOT_LIBRARY "${PROJECT_DIR}/build/lib/libapp.so" PARENT_SCOPE)
 list(APPEND FLUTTER_LIBRARY_HEADERS
   "flutter_export.h"
   "flutter_linux.h"
+  "flutter_linux_abi.h"
 )
 list_prepend(FLUTTER_LIBRARY_HEADERS "${EPHEMERAL_DIR}/flutter_linux/")
 add_library(flutter INTERFACE)

@@ -9,7 +9,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "flutter/fml/macros.h"
@@ -46,9 +45,8 @@ class FlutterLinuxEngine {
 
   ~FlutterLinuxEngine();
 
-  // Starts running the engine with the given entrypoint. If empty, the
-  // entrypoint in the properties is used, or 'main' if that is also empty.
-  bool Run(std::string_view entrypoint);
+  // Starts running the engine.
+  bool Run();
 
   // Returns true if the engine is running.
   bool running() const { return engine_ != nullptr; }

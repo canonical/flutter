@@ -90,21 +90,11 @@ bool FlutterLinuxEngine::IsImpellerEnabled() const {
       });
 }
 
-bool FlutterLinuxEngine::Run(std::string_view entrypoint) {
+bool FlutterLinuxEngine::Run() {
   if (running()) {
     FML_LOG(ERROR) << "Engine is already running";
     return false;
   }
-
-  if (!properties_.dart_entrypoint.empty() && !entrypoint.empty() &&
-      properties_.dart_entrypoint != entrypoint) {
-    FML_LOG(ERROR) << "Conflicting entrypoints were specified in "
-                      "FlutterDesktopEngineProperties.dart_entrypoint and "
-                      "FlutterDesktopEngineRun(engine, entry_point).";
-    return false;
-  }
-  std::string custom_entrypoint(entrypoint.empty() ? properties_.dart_entrypoint
-                                                   : entrypoint);
 
   if (embedder_api_.RunsAOTCompiledDartCode() && aot_data_ == nullptr) {
     std::string elf_path = properties_.aot_library_path.string();
@@ -181,8 +171,8 @@ bool FlutterLinuxEngine::Run(std::string_view entrypoint) {
   args.command_line_argc = static_cast<int>(argv.size());
   args.command_line_argv = argv.data();
   args.engine_id = reinterpret_cast<int64_t>(this);
-  if (!custom_entrypoint.empty()) {
-    args.custom_dart_entrypoint = custom_entrypoint.c_str();
+  if (!properties_.dart_entrypoint.empty()) {
+    args.custom_dart_entrypoint = properties_.dart_entrypoint.c_str();
   }
   args.dart_entrypoint_argc = static_cast<int>(entrypoint_argv.size());
   args.dart_entrypoint_argv =

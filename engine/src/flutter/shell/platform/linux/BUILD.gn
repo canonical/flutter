@@ -42,7 +42,10 @@ if (build_glfw_shell) {
   }
 }
 
-_public_headers = [ "public/flutter_linux.h" ]
+_public_headers = [
+  "public/flutter_linux.h",
+  "public/flutter_linux_abi.h",
+]
 
 # Wayland protocols used by the embedder. The bindings are generated with an
 # in-tree scanner so the generated code is compatible with the libwayland in
@@ -107,7 +110,7 @@ source_set("flutter_linux_sources") {
     "dmabuf_buffer.cc",
     "egl_manager.cc",
     "event_loop.cc",
-    "flutter_linux.cc",
+    "flutter_linux_abi.cc",
     "flutter_linux_engine.cc",
     "flutter_linux_view.cc",
     "wayland_display.cc",
@@ -161,7 +164,10 @@ test_fixtures("flutter_linux_fixtures") {
 executable("flutter_linux_unittests") {
   testonly = true
 
-  sources = [ "event_loop_unittests.cc" ]
+  sources = [
+    "event_loop_unittests.cc",
+    "flutter_linux_unittests.cc",
+  ]
 
   public_configs = [ "//flutter:config" ]
 

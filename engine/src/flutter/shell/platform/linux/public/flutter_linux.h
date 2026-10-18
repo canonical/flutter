@@ -5,177 +5,158 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_PUBLIC_FLUTTER_LINUX_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_PUBLIC_FLUTTER_LINUX_H_
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+// The C++ API for embedding Flutter in a Linux application.
+//
+// This is header-only so it is compiled with the application's C++ standard
+// library. It is a thin layer over flutter_linux_abi.h.
+//
+// All objects must be created, used and destroyed on the same thread, which
+// becomes the platform thread. The exception is
+// FlutterDesktopEngine::quit_event_loop, which may be called from any thread.
 
-#include "flutter_export.h"
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
+#include "flutter_linux_abi.h"
 
-// Opaque reference to a Flutter engine instance.
-struct FlutterDesktopEngine;
-typedef struct FlutterDesktopEngine* FlutterDesktopEngineRef;
+namespace flutter {
 
-// Opaque reference to a Flutter view controller.
-struct FlutterDesktopViewController;
-typedef struct FlutterDesktopViewController* FlutterDesktopViewControllerRef;
-
-// Opaque reference to a Flutter view.
-struct FlutterDesktopView;
-typedef struct FlutterDesktopView* FlutterDesktopViewRef;
-
-// The unique identifier for a view.
-typedef int64_t FlutterDesktopViewId;
-
-// Properties for configuring a Flutter engine instance.
-typedef struct {
+// Properties for configuring a Flutter engine.
+struct FlutterDesktopEngineProperties {
   // The path to the flutter_assets folder for the application to be run.
-  // This can either be an absolute path or a path relative to the directory
+  // Relative paths are relative to the directory containing the executable.
+  std::string assets_path;
+
+  // The path to the icudtl.dat file for the version of Flutter being used.
+  // Relative paths are relative to the directory containing the executable.
+  std::string icu_data_path;
+
+  // The path to the AOT library for the application. This is ignored for
+  // non-AOT (debug) builds. Relative paths are relative to the directory
   // containing the executable.
-  const char* assets_path;
+  std::string aot_library_path;
 
-  // The path to the icudtl.dat file for the version of Flutter you are using.
-  // This can either be an absolute path or a path relative to the directory
-  // containing the executable.
-  const char* icu_data_path;
+  // The name of the top-level Dart entrypoint function. If empty, 'main' is
+  // used. Custom entrypoints must be in the same library as main() and be
+  // decorated with `@pragma('vm:entry-point')`.
+  std::string dart_entrypoint;
 
-  // The path to the AOT library file for your application, if any.
-  // This can either be an absolute path or a path relative to the directory
-  // containing the executable. This can be NULL for a non-AOT build, as it
-  // will be ignored in that case.
-  const char* aot_library_path;
+  // Arguments passed to the Dart entrypoint.
+  std::vector<std::string> dart_entrypoint_arguments;
+};
 
-  // The name of the top-level Dart entrypoint function. If NULL or the empty
-  // string, 'main' is assumed. If a custom entrypoint is used, this parameter
-  // must specify the name of a top-level function in the same Dart library as
-  // the app's main() function. Custom entrypoint functions must be decorated
-  // with `@pragma('vm:entry-point')` to ensure the method is not tree-shaken
-  // by the Dart compiler.
-  const char* dart_entrypoint;
+// An instance of the Flutter engine.
+class FlutterDesktopEngine {
+ public:
+  // Creates an engine and connects to the Wayland compositor. Returns nullptr
+  // if no compositor or GPU is available.
+  static std::shared_ptr<FlutterDesktopEngine> create(
+      const FlutterDesktopEngineProperties& properties) {
+    std::vector<const char*> argv;
+    argv.reserve(properties.dart_entrypoint_arguments.size());
+    for (const std::string& argument : properties.dart_entrypoint_arguments) {
+      argv.push_back(argument.c_str());
+    }
 
-  // Number of elements in the array passed in as dart_entrypoint_argv.
-  int dart_entrypoint_argc;
+    FlutterLinuxEngineProperties abi_properties = {};
+    abi_properties.assets_path = properties.assets_path.c_str();
+    abi_properties.icu_data_path = properties.icu_data_path.c_str();
+    abi_properties.aot_library_path = properties.aot_library_path.c_str();
+    abi_properties.dart_entrypoint = properties.dart_entrypoint.c_str();
+    abi_properties.dart_entrypoint_argc = static_cast<int>(argv.size());
+    abi_properties.dart_entrypoint_argv = argv.data();
 
-  // Array of Dart entrypoint arguments. This is deep copied during the call
-  // to FlutterDesktopEngineCreate.
-  const char** dart_entrypoint_argv;
-} FlutterDesktopEngineProperties;
+    FlutterLinuxEngine* engine = flutter_linux_engine_new(&abi_properties);
+    if (engine == nullptr) {
+      return nullptr;
+    }
+    return std::shared_ptr<FlutterDesktopEngine>(
+        new FlutterDesktopEngine(engine));
+  }
 
-// ========== Engine ==========
+  ~FlutterDesktopEngine() { flutter_linux_engine_free(engine_); }
 
-// Creates a Flutter engine with the given properties.
-//
-// This connects to the Wayland compositor and initializes rendering. Returns
-// NULL if this fails, e.g. if no Wayland compositor is available.
-//
-// The caller owns the returned reference, and is responsible for calling
-// FlutterDesktopEngineDestroy. The lifetime of |engine_properties| is
-// required to extend only until the end of this call.
-FLUTTER_EXPORT FlutterDesktopEngineRef FlutterDesktopEngineCreate(
-    const FlutterDesktopEngineProperties* engine_properties);
+  FlutterDesktopEngine(const FlutterDesktopEngine&) = delete;
+  FlutterDesktopEngine& operator=(const FlutterDesktopEngine&) = delete;
 
-// Shuts down and destroys the given engine instance. Returns true if the
-// shutdown was successful, or if the engine was not running.
-//
-// |engine| is no longer valid after this call.
-FLUTTER_EXPORT bool FlutterDesktopEngineDestroy(FlutterDesktopEngineRef engine);
+  // Starts running Dart code. Views can be created before or after this is
+  // called. Returns false on failure.
+  bool run() { return flutter_linux_engine_run(engine_); }
 
-// Starts running the given engine instance.
-//
-// The entry_point parameter is deprecated but preserved for backward
-// compatibility. If desired, a custom Dart entrypoint function can be set in
-// the dart_entrypoint field of the FlutterDesktopEngineProperties struct
-// passed to FlutterDesktopEngineCreate.
-//
-// If specified, entry_point must be the name of a top-level function from the
-// same Dart library that contains the app's main() function, and must be
-// decorated with `@pragma(vm:entry-point)` to ensure the method is not
-// tree-shaken by the Dart compiler. If conflicting non-null values are passed
-// to this function and via the FlutterDesktopEngineProperties struct, the run
-// will fail.
-//
-// The engine must be run on the thread that created it, and this thread
-// becomes the platform thread.
-//
-// Returns false if running the engine failed.
-FLUTTER_EXPORT bool FlutterDesktopEngineRun(FlutterDesktopEngineRef engine,
-                                            const char* entry_point);
+  // Returns true if the engine is running.
+  bool is_running() const { return flutter_linux_engine_is_running(engine_); }
 
-// Runs the engine's event loop on the current thread, which must be the
-// thread that created the engine.
-//
-// This processes Wayland events and Flutter tasks until
-// FlutterDesktopEngineQuitEventLoop is called or the last view is closed by
-// the user.
-FLUTTER_EXPORT void FlutterDesktopEngineRunEventLoop(
-    FlutterDesktopEngineRef engine);
+  // Processes events until quit_event_loop is called or the user closes the
+  // first view.
+  void run_event_loop() { flutter_linux_engine_run_event_loop(engine_); }
 
-// Causes FlutterDesktopEngineRunEventLoop to return.
-//
-// This may be called from any thread.
-FLUTTER_EXPORT void FlutterDesktopEngineQuitEventLoop(
-    FlutterDesktopEngineRef engine);
+  // Causes run_event_loop to return. May be called from any thread.
+  void quit_event_loop() { flutter_linux_engine_quit_event_loop(engine_); }
 
-// ========== View Controller ==========
+ private:
+  friend class FlutterDesktopView;
 
-// Creates a view that hosts and displays the given engine instance in a new
-// top-level window.
-//
-// This takes ownership of |engine|, so FlutterDesktopEngineDestroy should no
-// longer be called on it, as it will be called internally when the view
-// controller is destroyed. If the engine is not already running, the view
-// controller will start running it automatically before displaying the
-// window.
-//
-// |width| and |height| are the initial logical size of the window. The
-// compositor may choose a different size.
-//
-// The caller owns the returned reference, and is responsible for calling
-// FlutterDesktopViewControllerDestroy. Returns NULL on failure.
-FLUTTER_EXPORT FlutterDesktopViewControllerRef
-FlutterDesktopViewControllerCreate(int width,
-                                   int height,
-                                   FlutterDesktopEngineRef engine);
+  explicit FlutterDesktopEngine(FlutterLinuxEngine* engine) : engine_(engine) {}
 
-// Shuts down the engine instance associated with |controller|, and cleans up
-// associated state.
-//
-// |controller| is no longer valid after this call.
-FLUTTER_EXPORT void FlutterDesktopViewControllerDestroy(
-    FlutterDesktopViewControllerRef controller);
+  FlutterLinuxEngine* engine_;
+};
 
-// Returns the view controller's view ID.
-FLUTTER_EXPORT FlutterDesktopViewId FlutterDesktopViewControllerGetViewId(
-    FlutterDesktopViewControllerRef controller);
+// A view showing Flutter content in a top-level window.
+class FlutterDesktopView {
+ public:
+  // Creates a view of |engine| in a new window of the given logical size. The
+  // compositor may choose a different size. Returns nullptr on failure.
+  //
+  // Only a single view is currently supported.
+  static std::shared_ptr<FlutterDesktopView>
+  create(std::shared_ptr<FlutterDesktopEngine> engine, int width, int height) {
+    FlutterLinuxView* view =
+        flutter_linux_view_new(engine->engine_, width, height);
+    if (view == nullptr) {
+      return nullptr;
+    }
+    return std::shared_ptr<FlutterDesktopView>(
+        new FlutterDesktopView(std::move(engine), view));
+  }
 
-// Returns the handle for the engine running in |controller|.
-//
-// Its lifetime is the same as the |controller|'s.
-FLUTTER_EXPORT FlutterDesktopEngineRef FlutterDesktopViewControllerGetEngine(
-    FlutterDesktopViewControllerRef controller);
+  ~FlutterDesktopView() { flutter_linux_view_free(view_); }
 
-// Returns the view managed by the given controller.
-FLUTTER_EXPORT FlutterDesktopViewRef
-FlutterDesktopViewControllerGetView(FlutterDesktopViewControllerRef controller);
+  FlutterDesktopView(const FlutterDesktopView&) = delete;
+  FlutterDesktopView& operator=(const FlutterDesktopView&) = delete;
 
-// ========== View ==========
+  // The ID Flutter uses for this view.
+  int64_t id() const { return flutter_linux_view_get_id(view_); }
 
-// Sets the title of the window containing |view|.
-FLUTTER_EXPORT void FlutterDesktopViewSetTitle(FlutterDesktopViewRef view,
-                                               const char* title);
+  // The engine this view shows.
+  const std::shared_ptr<FlutterDesktopEngine>& engine() const {
+    return engine_;
+  }
 
-// Sets the application ID of the window containing |view|. This is used by
-// the compositor to group windows and to find the application's .desktop
-// file, so should match the name of that file.
-FLUTTER_EXPORT void FlutterDesktopViewSetApplicationId(
-    FlutterDesktopViewRef view,
-    const char* application_id);
+  // Sets the window title.
+  void set_title(const std::string& title) {
+    flutter_linux_view_set_title(view_, title.c_str());
+  }
 
-#if defined(__cplusplus)
-}  // extern "C"
-#endif
+  // Sets the application ID of the window. The compositor uses this to group
+  // windows and find the application's .desktop file, so it should match the
+  // name of that file.
+  void set_application_id(const std::string& application_id) {
+    flutter_linux_view_set_application_id(view_, application_id.c_str());
+  }
+
+ private:
+  FlutterDesktopView(std::shared_ptr<FlutterDesktopEngine> engine,
+                     FlutterLinuxView* view)
+      : engine_(std::move(engine)), view_(view) {}
+
+  // Keeps the engine alive while the view exists.
+  std::shared_ptr<FlutterDesktopEngine> engine_;
+  FlutterLinuxView* view_;
+};
+
+}  // namespace flutter
 
 #endif  // FLUTTER_SHELL_PLATFORM_LINUX_PUBLIC_FLUTTER_LINUX_H_
