@@ -7,6 +7,7 @@
 
 #include <wayland-client.h>
 
+#include <atomic>
 #include <cstdint>
 
 #include "flutter/fml/macros.h"
@@ -72,7 +73,7 @@ class RenderBuffer {
   GLuint depth_stencil_ = 0;
   GLuint framebuffer_ = 0;
   wl_buffer* buffer_ = nullptr;
-  bool busy_ = false;
+  std::atomic<bool> busy_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(RenderBuffer);
 };

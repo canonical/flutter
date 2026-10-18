@@ -25,6 +25,7 @@
 #include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland_seat.h"
 
 namespace flutter {
 
@@ -56,6 +57,7 @@ class WaylandDisplay : public EventLoop::Source {
   wl_shm* shm() const { return shm_; }
 
   // Optional globals, may be nullptr.
+  wl_subcompositor* subcompositor() const { return subcompositor_; }
   zwp_linux_dmabuf_v1* dmabuf() const { return dmabuf_; }
   wp_viewporter* viewporter() const { return viewporter_; }
   wp_fractional_scale_manager_v1* fractional_scale_manager() const {
@@ -66,6 +68,9 @@ class WaylandDisplay : public EventLoop::Source {
   wp_linux_drm_syncobj_manager_v1* syncobj_manager() const {
     return syncobj_manager_;
   }
+
+  // The first seat the compositor advertised, or nullptr if it has none.
+  WaylandSeat* seat() const { return seat_.get(); }
 
   // Converts a timestamp from wp_presentation to nanoseconds on
   // CLOCK_MONOTONIC, the clock the engine and event loop use.
@@ -166,6 +171,10 @@ class WaylandDisplay : public EventLoop::Source {
   wl_compositor* compositor_ = nullptr;
   xdg_wm_base* wm_base_ = nullptr;
   wl_shm* shm_ = nullptr;
+  wl_subcompositor* subcompositor_ = nullptr;
+  wl_seat* wl_seat_ = nullptr;
+  wp_cursor_shape_manager_v1* cursor_shape_manager_ = nullptr;
+  std::unique_ptr<WaylandSeat> seat_;
   zwp_linux_dmabuf_v1* dmabuf_ = nullptr;
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;

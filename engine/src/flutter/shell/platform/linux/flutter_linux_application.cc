@@ -4,6 +4,9 @@
 
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 
+#include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/decoration_renderer.h"
+
 namespace flutter {
 
 std::unique_ptr<FlutterLinuxApplication> FlutterLinuxApplication::Create() {
@@ -16,6 +19,7 @@ std::unique_ptr<FlutterLinuxApplication> FlutterLinuxApplication::Create() {
 }
 
 FlutterLinuxApplication::~FlutterLinuxApplication() {
+  decoration_renderer_.reset();
   gpu_.reset();
   if (display_) {
     event_loop_->RemoveSource(display_.get());
@@ -36,6 +40,18 @@ bool FlutterLinuxApplication::Initialize() {
 
   gpu_ = GpuDevice::Create(display_->main_device());
   return gpu_ != nullptr;
+}
+
+DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {
+  if (!decoration_renderer_created_) {
+    decoration_renderer_created_ = true;
+    decoration_renderer_ =
+        DecorationRenderer::Create(gpu_.get(), display_.get());
+    if (!decoration_renderer_) {
+      FML_LOG(ERROR) << "Failed to create window decoration renderer";
+    }
+  }
+  return decoration_renderer_.get();
 }
 
 void FlutterLinuxApplication::Run() {

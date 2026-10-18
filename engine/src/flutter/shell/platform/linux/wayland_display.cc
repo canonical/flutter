@@ -31,6 +31,9 @@ constexpr uint32_t kMinDmabufVersion = 3;
 constexpr uint32_t kMaxCompositorVersion = 4;
 constexpr uint32_t kMaxWmBaseVersion = 7;
 constexpr uint32_t kMaxShmVersion = 1;
+constexpr uint32_t kMaxSubcompositorVersion = 1;
+constexpr uint32_t kMaxSeatVersion = 5;
+constexpr uint32_t kMaxCursorShapeManagerVersion = 1;
 constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
@@ -130,6 +133,13 @@ WaylandDisplay::~WaylandDisplay() {
   if (dmabuf_ != nullptr) {
     zwp_linux_dmabuf_v1_destroy(dmabuf_);
   }
+  seat_.reset();
+  if (cursor_shape_manager_ != nullptr) {
+    wp_cursor_shape_manager_v1_destroy(cursor_shape_manager_);
+  }
+  if (subcompositor_ != nullptr) {
+    wl_subcompositor_destroy(subcompositor_);
+  }
   if (shm_ != nullptr) {
     wl_shm_destroy(shm_);
   }
@@ -165,6 +175,9 @@ bool WaylandDisplay::Initialize() {
   if (shm_ == nullptr) {
     FML_LOG(ERROR) << "Wayland compositor does not support wl_shm";
     return false;
+  }
+  if (wl_seat_ != nullptr) {
+    seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_);
   }
   if (dmabuf_ == nullptr) {
     return true;
@@ -283,6 +296,22 @@ void WaylandDisplay::RegistryGlobal(void* data,
   } else if (strcmp(interface, wl_shm_interface.name) == 0) {
     self->shm_ = Bind<wl_shm>(&self->protocols_, registry, name,
                               &wl_shm_interface, version, kMaxShmVersion);
+  } else if (strcmp(interface, wl_subcompositor_interface.name) == 0) {
+    self->subcompositor_ = Bind<wl_subcompositor>(
+        &self->protocols_, registry, name, &wl_subcompositor_interface, version,
+        kMaxSubcompositorVersion);
+  } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+    if (self->wl_seat_ == nullptr) {
+      self->wl_seat_ =
+          Bind<wl_seat>(&self->protocols_, registry, name, &wl_seat_interface,
+                        version, kMaxSeatVersion);
+    }
+  } else if (strcmp(interface, wp_cursor_shape_manager_v1_interface.name) ==
+             0) {
+    self->cursor_shape_manager_ = Bind<wp_cursor_shape_manager_v1>(
+        &self->protocols_, registry, name,
+        &wp_cursor_shape_manager_v1_interface, version,
+        kMaxCursorShapeManagerVersion);
   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
     if (version >= kMinDmabufVersion) {
       self->dmabuf_ = Bind<zwp_linux_dmabuf_v1>(

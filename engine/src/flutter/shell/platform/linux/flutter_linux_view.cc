@@ -14,7 +14,9 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
     int width,
     int height) {
   std::unique_ptr<FlutterLinuxView> view(new FlutterLinuxView(engine, view_id));
-  view->window_ = WaylandWindow::Create(engine->application()->display(),
+  FlutterLinuxApplication* application = engine->application();
+  view->window_ = WaylandWindow::Create(application->display(),
+                                        application->decoration_renderer(),
                                         view.get(), width, height);
   if (!view->window_) {
     return nullptr;

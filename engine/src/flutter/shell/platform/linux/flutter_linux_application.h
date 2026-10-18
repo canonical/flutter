@@ -20,6 +20,8 @@ namespace flutter {
 // The application must be created, run and destroyed on the same thread,
 // which becomes the platform thread for all engines. It must outlive all
 // engines.
+class DecorationRenderer;
+
 class FlutterLinuxApplication {
  public:
   // Connects to the Wayland compositor and opens the GPU it uses. Returns
@@ -31,6 +33,10 @@ class FlutterLinuxApplication {
   EventLoop* event_loop() const { return event_loop_.get(); }
   WaylandDisplay* display() const { return display_.get(); }
   GpuDevice* gpu() const { return gpu_.get(); }
+
+  // Draws window decorations, created on first use. Returns nullptr if
+  // decorations can't be drawn. Must be called on the platform thread.
+  DecorationRenderer* decoration_renderer();
 
   // Processes events until Quit is called or the connection to the
   // compositor is lost.
@@ -47,6 +53,8 @@ class FlutterLinuxApplication {
   std::unique_ptr<EventLoop> event_loop_;
   std::unique_ptr<WaylandDisplay> display_;
   std::unique_ptr<GpuDevice> gpu_;
+  std::unique_ptr<DecorationRenderer> decoration_renderer_;
+  bool decoration_renderer_created_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterLinuxApplication);
 };

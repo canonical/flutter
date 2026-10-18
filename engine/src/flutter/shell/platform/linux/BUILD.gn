@@ -51,11 +51,13 @@ _public_headers = [
 # in-tree scanner so the generated code is compatible with the libwayland in
 # the sysroot.
 _wayland_protocols = [
+  "protocols/cursor-shape-v1.xml",
   "protocols/fifo-v1.xml",
   "protocols/fractional-scale-v1.xml",
   "protocols/linux-dmabuf-v1.xml",
   "protocols/linux-drm-syncobj-v1.xml",
   "protocols/presentation-time.xml",
+  "protocols/tablet-v2.xml",
   "protocols/viewporter.xml",
   "protocols/xdg-shell.xml",
 ]
@@ -99,6 +101,7 @@ source_set("flutter_linux_headers") {
 source_set("flutter_linux_sources") {
   public = [
     "compositor_opengl.h",
+    "decoration_renderer.h",
     "dmabuf_buffer.h",
     "drm_timeline.h",
     "egl_manager.h",
@@ -108,11 +111,14 @@ source_set("flutter_linux_sources") {
     "render_buffer.h",
     "shm_buffer.h",
     "wayland_display.h",
+    "wayland_seat.h",
     "wayland_window.h",
+    "window_decoration.h",
   ]
 
   sources = [
     "compositor_opengl.cc",
+    "decoration_renderer.cc",
     "dmabuf_buffer.cc",
     "drm_timeline.cc",
     "egl_manager.cc",
@@ -126,7 +132,9 @@ source_set("flutter_linux_sources") {
     "shm_buffer.cc",
     "vsync_predictor.cc",
     "wayland_display.cc",
+    "wayland_seat.cc",
     "wayland_window.cc",
+    "window_decoration.cc",
   ]
 
   configs += [

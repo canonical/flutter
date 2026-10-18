@@ -4,6 +4,7 @@
 
 #include "flutter/shell/platform/linux/wayland_window.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "flutter/fml/logging.h"
@@ -14,6 +15,19 @@ namespace {
 
 // The fractional scale protocol expresses scales in 120ths.
 constexpr double kFractionalScaleDenominator = 120.0;
+
+// The smallest decorated window, in logical pixels.
+constexpr int kMinimumWidth = 160;
+constexpr int kMinimumContentHeight = 20;
+
+// Calls |callback| with each uint32_t in |array|.
+template <typename Callback>
+void ForEachUint32(wl_array* array, Callback callback) {
+  const auto* values = static_cast<const uint32_t*>(array->data);
+  for (size_t i = 0; i < array->size / sizeof(uint32_t); i++) {
+    callback(values[i]);
+  }
+}
 
 }  // namespace
 
@@ -48,12 +62,14 @@ const wp_fractional_scale_v1_listener WaylandWindow::kFractionalScaleListener =
         .preferred_scale = PreferredScale,
 };
 
-std::unique_ptr<WaylandWindow> WaylandWindow::Create(WaylandDisplay* display,
-                                                     Delegate* delegate,
-                                                     int width,
-                                                     int height) {
+std::unique_ptr<WaylandWindow> WaylandWindow::Create(
+    WaylandDisplay* display,
+    DecorationRenderer* decoration_renderer,
+    Delegate* delegate,
+    int width,
+    int height) {
   std::unique_ptr<WaylandWindow> window(new WaylandWindow(display, delegate));
-  if (!window->Initialize(width, height)) {
+  if (!window->Initialize(decoration_renderer, width, height)) {
     return nullptr;
   }
   return window;
@@ -63,6 +79,7 @@ WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
     : display_(display), delegate_(delegate) {}
 
 WaylandWindow::~WaylandWindow() {
+  decoration_.reset();
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     for (wl_callback* callback : pending_frames_) {
@@ -101,9 +118,13 @@ WaylandWindow::~WaylandWindow() {
   wl_display_flush(display_->display());
 }
 
-bool WaylandWindow::Initialize(int width, int height) {
+bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
+                               int width,
+                               int height) {
   width_ = width;
   height_ = height;
+  floating_width_ = width;
+  floating_height_ = height;
 
   surface_ = wl_compositor_create_surface(display_->compositor());
   wl_surface_add_listener(surface_, &kSurfaceListener, this);
@@ -133,6 +154,14 @@ bool WaylandWindow::Initialize(int width, int height) {
   toplevel_ = xdg_surface_get_toplevel(xdg_surface_);
   xdg_toplevel_add_listener(toplevel_, &kToplevelListener, this);
 
+  if (decoration_renderer != nullptr && display_->subcompositor() != nullptr) {
+    decoration_ = std::make_unique<WindowDecoration>(
+        display_, decoration_renderer, this, surface_, toplevel_);
+    xdg_toplevel_set_min_size(
+        toplevel_, kMinimumWidth,
+        WindowDecoration::kTitleBarHeight + kMinimumContentHeight);
+  }
+
   // Commit without a buffer to have the compositor configure the window.
   wl_surface_commit(surface_);
   while (!configured_) {
@@ -155,6 +184,58 @@ int WaylandWindow::physical_height() const {
 
 void WaylandWindow::SetTitle(const std::string& title) {
   xdg_toplevel_set_title(toplevel_, title.c_str());
+  title_ = title;
+  UpdateDecoration();
+}
+
+void WaylandWindow::UpdateDecoration() {
+  if (!decoration_ || !configured_) {
+    return;
+  }
+  WindowDecoration::State state;
+  state.width = width_;
+  state.height = height_;
+  state.scale = scale_;
+  state.maximized = maximized_;
+  state.fullscreen = fullscreen_;
+  state.tiled = tiled_;
+  state.activated = activated_;
+  state.can_minimize = can_minimize_;
+  state.can_maximize = can_maximize_;
+  state.title = title_;
+  decoration_->SetState(state);
+}
+
+void WaylandWindow::ApplyDecorationFrame(const DecorationFrame& frame) {
+  decoration_->Apply(frame);
+  xdg_surface_set_window_geometry(xdg_surface_, frame.geometry.x,
+                                  frame.geometry.y, frame.geometry.width,
+                                  frame.geometry.height);
+}
+
+void WaylandWindow::OnDecorationFrame(const DecorationFrame& frame) {
+  std::lock_guard<std::mutex> lock(surface_mutex_);
+  // If the content already matches, show the decorations now. Otherwise
+  // wait for content of the new size so the two change together.
+  if (frame.content_width == presented_width_ &&
+      frame.content_height == presented_height_) {
+    pending_decoration_.reset();
+    ApplyDecorationFrame(frame);
+    wl_surface_commit(surface_);
+    wl_display_flush(display_->display());
+  } else {
+    pending_decoration_ = frame;
+  }
+}
+
+void WaylandWindow::OnDecorationClose() {
+  delegate_->OnWindowClose();
+}
+
+bool WaylandWindow::IsDecorationBufferPending(RenderBuffer* buffer) {
+  std::lock_guard<std::mutex> lock(surface_mutex_);
+  return pending_decoration_.has_value() &&
+         pending_decoration_->buffer == buffer;
 }
 
 void WaylandWindow::SetApplicationId(const std::string& application_id) {
@@ -165,6 +246,16 @@ void WaylandWindow::Present(wl_buffer* buffer,
                             int width,
                             int height,
                             const SyncPoints* sync) {
+  std::lock_guard<std::mutex> surface_lock(surface_mutex_);
+  if (pending_decoration_.has_value() &&
+      pending_decoration_->content_width == width &&
+      pending_decoration_->content_height == height) {
+    ApplyDecorationFrame(*pending_decoration_);
+    pending_decoration_.reset();
+  }
+  presented_width_ = width;
+  presented_height_ = height;
+
   if (sync != nullptr) {
     if (syncobj_surface_ == nullptr) {
       syncobj_surface_ = wp_linux_drm_syncobj_manager_v1_get_surface(
@@ -280,19 +371,39 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
   auto* self = static_cast<WaylandWindow*>(data);
   xdg_surface_ack_configure(xdg_surface, serial);
 
-  // A size of zero means the client chooses, so keep the current size.
-  bool changed = false;
-  if (self->pending_width_ > 0 && self->pending_width_ != self->width_) {
-    self->width_ = self->pending_width_;
-    changed = true;
+  self->maximized_ = self->pending_maximized_;
+  self->fullscreen_ = self->pending_fullscreen_;
+  self->tiled_ = self->pending_tiled_;
+  self->activated_ = self->pending_activated_;
+  bool floating = !self->maximized_ && !self->fullscreen_ && !self->tiled_;
+
+  // The configured size is the window geometry, which includes the title
+  // bar. A size of zero means the client chooses.
+  int width = self->pending_width_;
+  int height = self->pending_height_;
+  if (self->decoration_ && height > 0) {
+    int title_bar_height =
+        self->fullscreen_ ? 0 : WindowDecoration::kTitleBarHeight;
+    height = std::max(height - title_bar_height, 1);
   }
-  if (self->pending_height_ > 0 && self->pending_height_ != self->height_) {
-    self->height_ = self->pending_height_;
-    changed = true;
+  if (width <= 0) {
+    width = floating ? self->floating_width_ : self->width_.load();
   }
+  if (height <= 0) {
+    height = floating ? self->floating_height_ : self->height_.load();
+  }
+  if (floating) {
+    self->floating_width_ = width;
+    self->floating_height_ = height;
+  }
+
+  bool changed = width != self->width_ || height != self->height_;
+  self->width_ = width;
+  self->height_ = height;
 
   bool first_configure = !self->configured_;
   self->configured_ = true;
+  self->UpdateDecoration();
   if (changed || first_configure) {
     self->delegate_->OnWindowConfigure();
   }
@@ -306,6 +417,29 @@ void WaylandWindow::ToplevelConfigure(void* data,
   auto* self = static_cast<WaylandWindow*>(data);
   self->pending_width_ = width;
   self->pending_height_ = height;
+  self->pending_maximized_ = false;
+  self->pending_fullscreen_ = false;
+  self->pending_tiled_ = false;
+  self->pending_activated_ = false;
+  ForEachUint32(states, [self](uint32_t state) {
+    switch (state) {
+      case XDG_TOPLEVEL_STATE_MAXIMIZED:
+        self->pending_maximized_ = true;
+        break;
+      case XDG_TOPLEVEL_STATE_FULLSCREEN:
+        self->pending_fullscreen_ = true;
+        break;
+      case XDG_TOPLEVEL_STATE_ACTIVATED:
+        self->pending_activated_ = true;
+        break;
+      case XDG_TOPLEVEL_STATE_TILED_LEFT:
+      case XDG_TOPLEVEL_STATE_TILED_RIGHT:
+      case XDG_TOPLEVEL_STATE_TILED_TOP:
+      case XDG_TOPLEVEL_STATE_TILED_BOTTOM:
+        self->pending_tiled_ = true;
+        break;
+    }
+  });
 }
 
 void WaylandWindow::ToplevelClose(void* data, xdg_toplevel* toplevel) {
@@ -319,7 +453,19 @@ void WaylandWindow::ToplevelConfigureBounds(void* data,
 
 void WaylandWindow::ToplevelWmCapabilities(void* data,
                                            xdg_toplevel* toplevel,
-                                           wl_array* capabilities) {}
+                                           wl_array* capabilities) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  self->can_minimize_ = false;
+  self->can_maximize_ = false;
+  ForEachUint32(capabilities, [self](uint32_t capability) {
+    if (capability == XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE) {
+      self->can_minimize_ = true;
+    } else if (capability == XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE) {
+      self->can_maximize_ = true;
+    }
+  });
+  self->UpdateDecoration();
+}
 
 void WaylandWindow::PreferredScale(void* data,
                                    wp_fractional_scale_v1* fractional_scale,
@@ -331,6 +477,7 @@ void WaylandWindow::PreferredScale(void* data,
   }
   self->scale_ = new_scale;
   if (self->configured_) {
+    self->UpdateDecoration();
     self->delegate_->OnWindowConfigure();
   }
 }

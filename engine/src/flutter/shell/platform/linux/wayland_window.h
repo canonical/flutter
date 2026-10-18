@@ -10,20 +10,28 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/decoration_renderer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/window_decoration.h"
 
 namespace flutter {
 
 // A top-level window on a Wayland compositor.
 //
 // The window is configured on the platform thread, but contents are presented
-// from the raster thread. After creation the platform thread never commits
-// the surface, so the two threads don't conflict.
-class WaylandWindow {
+// from the raster thread. The platform thread only commits the surface to
+// update the decorations, synchronized with presentation by a lock.
+//
+// If |decoration_renderer| is provided the window draws its own title bar
+// and shadow in a subsurface below the content. Decorations of a new size
+// are shown with the first content buffer of the matching size, so resizing
+// is atomic and presenting content doesn't redraw the decorations.
+class WaylandWindow : public WindowDecoration::Delegate {
  public:
   class Delegate {
    public:
@@ -47,23 +55,27 @@ class WaylandWindow {
     virtual void OnWindowFrameDone() = 0;
   };
 
-  // Creates a window with the given logical size. This blocks until the
-  // compositor has configured the window. Returns nullptr on failure.
-  static std::unique_ptr<WaylandWindow> Create(WaylandDisplay* display,
-                                               Delegate* delegate,
-                                               int width,
-                                               int height);
+  // Creates a window with content of the given logical size. This blocks
+  // until the compositor has configured the window. |decoration_renderer|
+  // may be nullptr, in which case the window is undecorated. Returns nullptr
+  // on failure.
+  static std::unique_ptr<WaylandWindow> Create(
+      WaylandDisplay* display,
+      DecorationRenderer* decoration_renderer,
+      Delegate* delegate,
+      int width,
+      int height);
 
-  ~WaylandWindow();
+  ~WaylandWindow() override;
 
-  // The logical size of the window.
+  // The logical size of the window content, excluding decorations.
   int width() const { return width_; }
   int height() const { return height_; }
 
   // The number of physical pixels per logical pixel.
   double scale() const { return scale_; }
 
-  // The size of the window in physical pixels.
+  // The size of the window content in physical pixels.
   int physical_width() const;
   int physical_height() const;
 
@@ -106,10 +118,24 @@ class WaylandWindow {
   // window is hidden.
   size_t frames_in_flight();
 
+  // |WindowDecoration::Delegate|
+  void OnDecorationFrame(const DecorationFrame& frame) override;
+  void OnDecorationClose() override;
+  bool IsDecorationBufferPending(RenderBuffer* buffer) override;
+
  private:
   WaylandWindow(WaylandDisplay* display, Delegate* delegate);
 
-  bool Initialize(int width, int height);
+  bool Initialize(DecorationRenderer* decoration_renderer,
+                  int width,
+                  int height);
+
+  // Redraws the decorations if the window state has changed.
+  void UpdateDecoration();
+
+  // Applies |frame| and sets the window geometry. The changes are shown on
+  // the next commit of the surface. Called with |surface_mutex_| held.
+  void ApplyDecorationFrame(const DecorationFrame& frame);
 
   static void SurfaceEnter(void* data, wl_surface* surface, wl_output* output);
   static void SurfaceLeave(void* data, wl_surface* surface, wl_output* output);
@@ -168,6 +194,18 @@ class WaylandWindow {
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
   wp_fifo_v1* fifo_ = nullptr;
 
+  std::unique_ptr<WindowDecoration> decoration_;
+
+  // Held while changing and committing the surfaces.
+  std::mutex surface_mutex_;
+
+  // Decorations waiting for content of the size they were drawn for.
+  std::optional<DecorationFrame> pending_decoration_;
+
+  // The size of the last content buffer presented, in physical pixels.
+  int presented_width_ = 0;
+  int presented_height_ = 0;
+
   // True once a commit has set a fifo barrier. Only accessed by the thread
   // presenting.
   bool fifo_barrier_set_ = false;
@@ -180,6 +218,23 @@ class WaylandWindow {
   // State from the current configure sequence, applied when it completes.
   int pending_width_ = 0;
   int pending_height_ = 0;
+  bool pending_maximized_ = false;
+  bool pending_fullscreen_ = false;
+  bool pending_tiled_ = false;
+  bool pending_activated_ = false;
+
+  bool maximized_ = false;
+  bool fullscreen_ = false;
+  bool tiled_ = false;
+  bool activated_ = false;
+  bool can_minimize_ = true;
+  bool can_maximize_ = true;
+  std::string title_;
+
+  // The content size to return to when the window stops being maximized,
+  // fullscreen or tiled.
+  int floating_width_ = 0;
+  int floating_height_ = 0;
 
   std::atomic<int> width_ = 0;
   std::atomic<int> height_ = 0;
