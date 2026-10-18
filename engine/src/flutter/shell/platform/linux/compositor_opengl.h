@@ -5,8 +5,6 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
 
-#include <wayland-client.h>
-
 #include <atomic>
 #include <map>
 #include <memory>
@@ -17,6 +15,7 @@
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 

@@ -5,8 +5,6 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
 
-#include <wayland-client.h>
-
 #include <chrono>
 #include <memory>
 #include <optional>
@@ -15,6 +13,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
 

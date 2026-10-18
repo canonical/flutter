@@ -5,12 +5,11 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_SHM_BUFFER_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_SHM_BUFFER_H_
 
-#include <wayland-client.h>
-
 #include <cstddef>
 #include <memory>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 
 namespace flutter {

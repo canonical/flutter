@@ -7,7 +7,6 @@
 
 #include <sys/types.h>
 #include <time.h>
-#include <wayland-client.h>
 
 #include <cstdint>
 #include <functional>
@@ -24,6 +23,7 @@
 #include "flutter/shell/platform/linux/protocols/linux-drm-syncobj-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
 

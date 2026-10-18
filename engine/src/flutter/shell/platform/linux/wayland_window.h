@@ -5,8 +5,6 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_H_
 
-#include <wayland-client.h>
-
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -16,6 +14,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 #include "flutter/shell/platform/linux/window_decoration.h"
 

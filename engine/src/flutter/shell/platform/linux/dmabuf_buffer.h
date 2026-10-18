@@ -6,7 +6,6 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_DMABUF_BUFFER_H_
 
 #include <gbm.h>
-#include <wayland-client.h>
 
 #include <cstdint>
 #include <memory>
@@ -14,6 +13,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 
 namespace flutter {

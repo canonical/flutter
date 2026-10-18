@@ -5,13 +5,12 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_RENDER_BUFFER_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_RENDER_BUFFER_H_
 
-#include <wayland-client.h>
-
 #include <atomic>
 #include <cstdint>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 
 namespace flutter {
 
