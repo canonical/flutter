@@ -2,6 +2,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 set(EPHEMERAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ephemeral")
+set(WRAPPER_ROOT "${EPHEMERAL_DIR}/cpp_client_wrapper")
 
 # Configuration provided via flutter tool.
 include(${EPHEMERAL_DIR}/generated_config.cmake)
@@ -32,14 +33,44 @@ list(APPEND FLUTTER_LIBRARY_HEADERS
   "flutter_export.h"
   "flutter_linux.h"
   "flutter_linux_abi.h"
+  "flutter_messenger.h"
+  "flutter_plugin_registrar.h"
+  "flutter_texture_registrar.h"
 )
 list_prepend(FLUTTER_LIBRARY_HEADERS "${EPHEMERAL_DIR}/flutter_linux/")
 add_library(flutter INTERFACE)
 target_include_directories(flutter INTERFACE
   "${EPHEMERAL_DIR}"
+  "${EPHEMERAL_DIR}/flutter_linux"
+  # flutter_linux.h uses <flutter/plugin_registry.h>.
+  "${WRAPPER_ROOT}/include"
 )
 target_link_libraries(flutter INTERFACE "${FLUTTER_LIBRARY}")
 add_dependencies(flutter flutter_assemble)
+
+# === Wrapper ===
+list(APPEND CPP_WRAPPER_SOURCES_CORE
+  "core_implementations.cc"
+  "standard_codec.cc"
+)
+list_prepend(CPP_WRAPPER_SOURCES_CORE "${WRAPPER_ROOT}/")
+list(APPEND CPP_WRAPPER_SOURCES_PLUGIN
+  "plugin_registrar.cc"
+)
+list_prepend(CPP_WRAPPER_SOURCES_PLUGIN "${WRAPPER_ROOT}/")
+
+# Wrapper sources needed for a plugin.
+add_library(flutter_wrapper_plugin STATIC
+  ${CPP_WRAPPER_SOURCES_CORE}
+  ${CPP_WRAPPER_SOURCES_PLUGIN}
+)
+apply_standard_settings(flutter_wrapper_plugin)
+set_target_properties(flutter_wrapper_plugin PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+set_target_properties(flutter_wrapper_plugin PROPERTIES
+  CXX_VISIBILITY_PRESET hidden)
+target_link_libraries(flutter_wrapper_plugin PUBLIC flutter)
+add_dependencies(flutter_wrapper_plugin flutter_assemble)
 
 # === Flutter tool backend ===
 # _phony_ is a non-existent file to force this command to run every time,
@@ -47,6 +78,7 @@ add_dependencies(flutter flutter_assemble)
 # flutter tool.
 add_custom_command(
   OUTPUT ${FLUTTER_LIBRARY} ${FLUTTER_LIBRARY_HEADERS}
+    ${CPP_WRAPPER_SOURCES_CORE} ${CPP_WRAPPER_SOURCES_PLUGIN}
     ${CMAKE_CURRENT_BINARY_DIR}/_phony_
   COMMAND ${CMAKE_COMMAND} -E env
     ${FLUTTER_TOOL_ENVIRONMENT}
@@ -57,4 +89,6 @@ add_custom_command(
 add_custom_target(flutter_assemble DEPENDS
   "${FLUTTER_LIBRARY}"
   ${FLUTTER_LIBRARY_HEADERS}
+  ${CPP_WRAPPER_SOURCES_CORE}
+  ${CPP_WRAPPER_SOURCES_PLUGIN}
 )

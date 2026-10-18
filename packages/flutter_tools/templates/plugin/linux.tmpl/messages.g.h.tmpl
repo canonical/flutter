@@ -3,70 +3,101 @@
 
 #ifndef PIGEON_MESSAGES_G_H_
 #define PIGEON_MESSAGES_G_H_
+#include <flutter/basic_message_channel.h>
+#include <flutter/binary_messenger.h>
+#include <flutter/encodable_value.h>
+#include <flutter/standard_message_codec.h>
 
-#include <flutter_linux/flutter_linux.h>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <string>
 
-G_BEGIN_DECLS
+namespace {{projectName}} {
 
-G_DECLARE_FINAL_TYPE({{projectNameUpperCamelCase}}MessageCodec, {{projectName}}_message_codec, {{projectNameCapitalSnakeCase}}, MESSAGE_CODEC, FlStandardMessageCodec)
 
-G_DECLARE_FINAL_TYPE({{projectNameUpperCamelCase}}{{pluginClass}}Api, {{projectName}}_{{pluginClassSnakeCase}}_api, {{projectNameCapitalSnakeCase}}, {{pluginClassCapitalSnakeCase}}_API, GObject)
+// Generated class from Pigeon.
 
-G_DECLARE_FINAL_TYPE({{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse, {{projectName}}_{{pluginClassSnakeCase}}_api_get_platform_version_response, {{projectNameCapitalSnakeCase}}, {{pluginClassCapitalSnakeCase}}_API_GET_PLATFORM_VERSION_RESPONSE, GObject)
+class FlutterError {
+ public:
+  explicit FlutterError(const std::string& code)
+    : code_(code) {}
+  explicit FlutterError(const std::string& code, const std::string& message)
+    : code_(code), message_(message) {}
+  explicit FlutterError(const std::string& code, const std::string& message, const ::flutter::EncodableValue& details)
+    : code_(code), message_(message), details_(details) {}
 
-/**
- * {{projectName}}_{{pluginClassSnakeCase}}_api_get_platform_version_response_new:
- *
- * Creates a new response to {{pluginClass}}Api.getPlatformVersion.
- *
- * Returns: a new #{{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse
- */
-{{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse* {{projectName}}_{{pluginClassSnakeCase}}_api_get_platform_version_response_new(const gchar* return_value);
+  const std::string& code() const { return code_; }
+  const std::string& message() const { return message_; }
+  const ::flutter::EncodableValue& details() const { return details_; }
 
-/**
- * {{projectName}}_{{pluginClassSnakeCase}}_api_get_platform_version_response_new_error:
- * @code: error code.
- * @message: error message.
- * @details: (allow-none): error details or %NULL.
- *
- * Creates a new error response to {{pluginClass}}Api.getPlatformVersion.
- *
- * Returns: a new #{{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse
- */
-{{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse* {{projectName}}_{{pluginClassSnakeCase}}_api_get_platform_version_response_new_error(const gchar* code, const gchar* message, FlValue* details);
+ private:
+  std::string code_;
+  std::string message_;
+  ::flutter::EncodableValue details_;
+};
 
-/**
- * {{projectNameUpperCamelCase}}{{pluginClass}}ApiVTable:
- *
- * Table of functions exposed by {{pluginClass}}Api to be implemented by the API provider.
- */
-typedef struct {
-  {{projectNameUpperCamelCase}}{{pluginClass}}ApiGetPlatformVersionResponse* (*get_platform_version)(gpointer user_data);
-} {{projectNameUpperCamelCase}}{{pluginClass}}ApiVTable;
+template<class T> class ErrorOr {
+ public:
+  ErrorOr(const T& rhs) : v_(rhs) {}
+  ErrorOr(const T&& rhs) : v_(std::move(rhs)) {}
+  ErrorOr(const FlutterError& rhs) : v_(rhs) {}
+  ErrorOr(const FlutterError&& rhs) : v_(std::move(rhs)) {}
 
-/**
- * {{projectName}}_{{pluginClassSnakeCase}}_api_set_method_handlers:
- *
- * @messenger: an #FlBinaryMessenger.
- * @suffix: (allow-none): a suffix to add to the API or %NULL for none.
- * @vtable: implementations of the methods in this API.
- * @user_data: (closure): user data to pass to the functions in @vtable.
- * @user_data_free_func: (allow-none): a function which gets called to free @user_data, or %NULL.
- *
- * Connects the method handlers in the {{pluginClass}}Api API.
- */
-void {{projectName}}_{{pluginClassSnakeCase}}_api_set_method_handlers(FlBinaryMessenger* messenger, const gchar* suffix, const {{projectNameUpperCamelCase}}{{pluginClass}}ApiVTable* vtable, gpointer user_data, GDestroyNotify user_data_free_func);
+  bool has_error() const { return std::holds_alternative<FlutterError>(v_); }
+  const T& value() const { return std::get<T>(v_); };
+  const FlutterError& error() const { return std::get<FlutterError>(v_); };
 
-/**
- * {{projectName}}_{{pluginClassSnakeCase}}_api_clear_method_handlers:
- *
- * @messenger: an #FlBinaryMessenger.
- * @suffix: (allow-none): a suffix to add to the API or %NULL for none.
- *
- * Clears the method handlers in the {{pluginClass}}Api API.
- */
-void {{projectName}}_{{pluginClassSnakeCase}}_api_clear_method_handlers(FlBinaryMessenger* messenger, const gchar* suffix);
+ private:
+  friend class {{pluginClass}}Api;
+  ErrorOr() = default;
+  T TakeValue() && { return std::get<T>(std::move(v_)); }
 
-G_END_DECLS
+  std::variant<T, FlutterError> v_;
+};
 
+
+
+class PigeonInternalCodecSerializer : public ::flutter::StandardCodecSerializer {
+ public:
+  PigeonInternalCodecSerializer();
+  inline static PigeonInternalCodecSerializer& GetInstance() {
+    static PigeonInternalCodecSerializer sInstance;
+    return sInstance;
+  }
+
+  void WriteValue(
+    const ::flutter::EncodableValue& value,
+    ::flutter::ByteStreamWriter* stream) const override;
+ protected:
+  ::flutter::EncodableValue ReadValueOfType(
+    uint8_t type,
+    ::flutter::ByteStreamReader* stream) const override;
+};
+
+// Generated interface from Pigeon that represents a handler of messages from Flutter.
+class {{pluginClass}}Api {
+ public:
+  {{pluginClass}}Api(const {{pluginClass}}Api&) = delete;
+  {{pluginClass}}Api& operator=(const {{pluginClass}}Api&) = delete;
+  virtual ~{{pluginClass}}Api() {}
+  // Returns the system version of the host platform.
+  virtual ErrorOr<std::string> GetPlatformVersion() = 0;
+
+  // The codec used by {{pluginClass}}Api.
+  static const ::flutter::StandardMessageCodec& GetCodec();
+  // Sets up an instance of `{{pluginClass}}Api` to handle messages through the `binary_messenger`.
+  static void SetUp(
+    ::flutter::BinaryMessenger* binary_messenger,
+    {{pluginClass}}Api* api);
+  static void SetUp(
+    ::flutter::BinaryMessenger* binary_messenger,
+    {{pluginClass}}Api* api,
+    const std::string& message_channel_suffix);
+  static ::flutter::EncodableValue WrapError(std::string_view error_message);
+  static ::flutter::EncodableValue WrapError(const FlutterError& error);
+ protected:
+  {{pluginClass}}Api() = default;
+};
+}  // namespace {{projectName}}
 #endif  // PIGEON_MESSAGES_G_H_

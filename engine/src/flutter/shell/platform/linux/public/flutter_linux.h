@@ -20,8 +20,12 @@
 //   auto application = flutter::FlutterDesktopApplication::create();
 //   auto engine = flutter::FlutterDesktopEngine::create(application, props);
 //   auto view = flutter::FlutterDesktopView::create(engine, 1280, 720);
+//   RegisterPlugins(engine.get());
 //   engine->run();
 //   application->run();
+//
+// Plugins are registered separately with each engine (see
+// flutter/plugin_registrar_linux.h).
 
 #include <cstdint>
 #include <functional>
@@ -29,6 +33,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <flutter/plugin_registry.h>
 
 #include "flutter_linux_abi.h"
 
@@ -198,7 +204,7 @@ struct FlutterDesktopEngineProperties {
 };
 
 // An instance of the Flutter engine.
-class FlutterDesktopEngine {
+class FlutterDesktopEngine : public PluginRegistry {
  public:
   // Creates an engine in |application|. Returns nullptr on failure.
   static std::shared_ptr<FlutterDesktopEngine> create(
@@ -227,7 +233,7 @@ class FlutterDesktopEngine {
         new FlutterDesktopEngine(std::move(application), engine));
   }
 
-  ~FlutterDesktopEngine() { flutter_linux_engine_free(engine_); }
+  ~FlutterDesktopEngine() override { flutter_linux_engine_free(engine_); }
 
   FlutterDesktopEngine(const FlutterDesktopEngine&) = delete;
   FlutterDesktopEngine& operator=(const FlutterDesktopEngine&) = delete;
@@ -238,6 +244,15 @@ class FlutterDesktopEngine {
 
   // Returns true if the engine is running.
   bool is_running() const { return flutter_linux_engine_is_running(engine_); }
+
+  // |PluginRegistry|
+  // Returns the registrar for the plugin called |plugin_name| in this
+  // engine. The plugin is destroyed with the engine.
+  FlutterDesktopPluginRegistrarRef GetRegistrarForPlugin(
+      const std::string& plugin_name) override {
+    return flutter_linux_engine_get_plugin_registrar(engine_,
+                                                     plugin_name.c_str());
+  }
 
   // The application this engine is in.
   const std::shared_ptr<FlutterDesktopApplication>& application() const {

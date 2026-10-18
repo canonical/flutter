@@ -63,6 +63,11 @@ class UnpackLinux extends Target {
       mode: buildMode,
       platform: targetPlatform,
     );
+    final String clientWrapperPath = environment.artifacts.getArtifactPath(
+      Artifact.linuxCppClientWrapper,
+      mode: buildMode,
+      platform: targetPlatform,
+    );
     final Directory outputDirectory = environment.fileSystem.directory(
       environment.fileSystem.path.join(
         environment.projectDir.path,
@@ -76,7 +81,7 @@ class UnpackLinux extends Target {
       engineSourcePath: engineSourcePath,
       outputDirectory: outputDirectory,
       artifacts: _kLinuxArtifacts,
-      clientSourcePaths: <String>[headersPath],
+      clientSourcePaths: <String>[headersPath, clientWrapperPath],
       icuDataPath: environment.artifacts.getArtifactPath(
         Artifact.icuData,
         platform: targetPlatform,

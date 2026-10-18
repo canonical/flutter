@@ -67,6 +67,9 @@ enum Artifact {
   // The root of the cpp headers for Linux desktop.
   linuxHeaders('flutter_linux'),
 
+  /// The C++ wrapper used by the Linux runner and plugins.
+  linuxCppClientWrapper('cpp_client_wrapper'),
+
   /// The root of the Windows desktop sources.
   windowsDesktopPath.directory(),
 
@@ -533,6 +536,7 @@ class CachedArtifacts implements Artifacts {
       case Artifact.isolateSnapshotData:
       case Artifact.linuxDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
       case Artifact.platformKernelDill:
       case Artifact.platformLibrariesJson:
       case Artifact.skyEnginePath:
@@ -582,6 +586,7 @@ class CachedArtifacts implements Artifacts {
       case Artifact.isolateSnapshotData:
       case Artifact.linuxDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
       case Artifact.platformKernelDill:
       case Artifact.platformLibrariesJson:
       case Artifact.skyEnginePath:
@@ -630,6 +635,7 @@ class CachedArtifacts implements Artifacts {
       case Artifact.isolateSnapshotData:
       case Artifact.linuxDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
       case Artifact.platformKernelDill:
       case Artifact.platformLibrariesJson:
       case Artifact.skyEnginePath:
@@ -685,6 +691,7 @@ class CachedArtifacts implements Artifacts {
       case Artifact.isolateSnapshotData:
       case Artifact.linuxDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
       case Artifact.platformLibrariesJson:
       case Artifact.skyEnginePath:
       case Artifact.vmSnapshotData:
@@ -779,6 +786,7 @@ class CachedArtifacts implements Artifacts {
       case Artifact.linuxDesktopPath:
       case Artifact.windowsDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
         // TODO(zanderso): remove once debug desktop artifacts are uploaded
         // under a separate directory from the host artifacts.
         // https://github.com/flutter/flutter/issues/38935
@@ -1176,6 +1184,7 @@ class CachedLocalEngineArtifacts implements Artifacts {
         return _fileSystem.path.join(_hostEngineOutPath, artifactFileName);
       case Artifact.linuxDesktopPath:
       case Artifact.linuxHeaders:
+      case Artifact.linuxCppClientWrapper:
       case Artifact.windowsDesktopPath:
       case Artifact.windowsCppClientWrapper:
         return _fileSystem.path.join(_hostEngineOutPath, artifactFileName);
@@ -1318,6 +1327,7 @@ class CachedLocalWebSdkArtifacts implements Artifacts {
         case Artifact.flutterPatchedSdkPath:
         case Artifact.linuxDesktopPath:
         case Artifact.linuxHeaders:
+        case Artifact.linuxCppClientWrapper:
         case Artifact.windowsDesktopPath:
         case Artifact.windowsCppClientWrapper:
         case Artifact.skyEnginePath:

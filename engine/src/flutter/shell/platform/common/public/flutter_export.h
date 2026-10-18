@@ -5,6 +5,10 @@
 #ifndef FLUTTER_SHELL_PLATFORM_COMMON_PUBLIC_FLUTTER_EXPORT_H_
 #define FLUTTER_SHELL_PLATFORM_COMMON_PUBLIC_FLUTTER_EXPORT_H_
 
+// embedder.h defines an empty FLUTTER_EXPORT if it is included first, which
+// would otherwise hide the desktop library's symbols.
+#undef FLUTTER_EXPORT
+
 #ifdef FLUTTER_DESKTOP_LIBRARY
 
 // Add visibility/export annotations when building the library.

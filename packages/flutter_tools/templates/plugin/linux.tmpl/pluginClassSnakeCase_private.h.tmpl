@@ -1,13 +1,30 @@
-#include <flutter_linux/flutter_linux.h>
+#ifndef FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_PRIVATE_H_
+#define FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_PRIVATE_H_
 
-#include "include/{{projectName}}/{{pluginClassSnakeCase}}.h"
+#include <flutter/plugin_registrar_linux.h>
 
-// This file exposes some plugin internals for unit testing. See
-// https://github.com/flutter/flutter/issues/88724 for current limitations
-// in the unit-testable API.
+#include <string>
 
-// Handles the getPlatformVersion method call, and returns the response as a
-// gchar* so that it can be inspected in tests.
-//
-// The caller is responsible for freeing the return value.
-gchar* {{pluginClassSnakeCase}}_get_platform_version();
+#include "messages.g.h"
+
+namespace {{projectName}} {
+
+// The plugin. An instance is created for each engine, and destroyed with it.
+class {{pluginClass}} : public flutter::Plugin, public {{pluginClass}}Api {
+ public:
+  static void RegisterWithRegistrar(flutter::PluginRegistrarLinux* registrar);
+
+  {{pluginClass}}();
+
+  ~{{pluginClass}}() override;
+
+  // Disallow copy and assign.
+  {{pluginClass}}(const {{pluginClass}}&) = delete;
+  {{pluginClass}}& operator=(const {{pluginClass}}&) = delete;
+
+  ErrorOr<std::string> GetPlatformVersion() override;
+};
+
+}  // namespace {{projectName}}
+
+#endif  // FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_PRIVATE_H_

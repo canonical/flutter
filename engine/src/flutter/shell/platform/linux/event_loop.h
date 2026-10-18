@@ -9,6 +9,8 @@
 #include <chrono>
 #include <deque>
 #include <functional>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -46,6 +48,10 @@ class EventLoop {
     virtual void Dispatch(bool readable) = 0;
   };
 
+  // Events a file descriptor watch waits for, or that have occurred
+  // (EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLHUP...).
+  using WatchCallback = std::function<void(uint32_t events)>;
+
   EventLoop();
   ~EventLoop();
 
@@ -64,6 +70,18 @@ class EventLoop {
 
   // Stops waiting on |source|.
   void RemoveSource(Source* source);
+
+  // Calls |callback| on the loop thread when any of |events| (epoll events)
+  // occur on |fd|. Errors and hang ups are always reported. Returns an ID for
+  // the watch, or zero on failure. The callback may remove any watch.
+  uint64_t AddWatch(int fd, uint32_t events, WatchCallback callback);
+
+  // Changes the events the watch with |id| waits for.
+  bool SetWatchEvents(uint64_t id, uint32_t events);
+
+  // Stops the watch with |id|. The callback is destroyed once it is no longer
+  // running.
+  void RemoveWatch(uint64_t id);
 
   // Runs the loop until Quit is called. If Quit was called before Run, this
   // returns immediately.
@@ -95,6 +113,11 @@ class EventLoop {
     };
   };
 
+  // The epoll IDs of the wake and timer file descriptors.
+  static constexpr uint64_t kWakeId = 1;
+  static constexpr uint64_t kTimerId = 2;
+  static constexpr uint64_t kFirstId = 3;
+
   // Wakes the loop if it is waiting.
   void WakeUp();
 
@@ -109,7 +132,16 @@ class EventLoop {
   fml::UniqueFD wake_fd_;
   fml::UniqueFD timer_fd_;
   TimePoint timer_time_ = TimePoint::max();
-  std::vector<Source*> sources_;
+  struct Watch {
+    int fd;
+    std::shared_ptr<WatchCallback> callback;
+  };
+
+  // The IDs epoll reports for each source and watch. IDs aren't reused, so
+  // events for something removed while dispatching are ignored.
+  std::vector<std::pair<uint64_t, Source*>> sources_;
+  std::map<uint64_t, Watch> watches_;
+  uint64_t next_id_ = kFirstId;
   std::atomic<bool> quit_ = false;
 
   std::mutex tasks_mutex_;

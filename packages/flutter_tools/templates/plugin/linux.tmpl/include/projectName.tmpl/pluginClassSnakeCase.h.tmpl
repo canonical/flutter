@@ -1,9 +1,7 @@
 #ifndef FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_H_
 #define FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_H_
 
-#include <flutter_linux/flutter_linux.h>
-
-G_BEGIN_DECLS
+#include <flutter_plugin_registrar.h>
 
 #ifdef FLUTTER_PLUGIN_IMPL
 #define FLUTTER_PLUGIN_EXPORT __attribute__((visibility("default")))
@@ -11,16 +9,17 @@ G_BEGIN_DECLS
 #define FLUTTER_PLUGIN_EXPORT
 #endif
 
-typedef struct _{{pluginClass}} {{pluginClass}};
-typedef struct {
-  GObjectClass parent_class;
-} {{pluginClass}}Class;
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
-FLUTTER_PLUGIN_EXPORT GType {{pluginClassSnakeCase}}_get_type();
+// Registers the plugin with an engine. Called by the generated plugin
+// registrant once for each engine the application creates.
+FLUTTER_PLUGIN_EXPORT void {{pluginClass}}RegisterWithRegistrar(
+    FlutterDesktopPluginRegistrarRef registrar);
 
-FLUTTER_PLUGIN_EXPORT void {{pluginClassSnakeCase}}_register_with_registrar(
-    FlPluginRegistrar* registrar);
-
-G_END_DECLS
+#if defined(__cplusplus)
+}  // extern "C"
+#endif
 
 #endif  // FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_H_

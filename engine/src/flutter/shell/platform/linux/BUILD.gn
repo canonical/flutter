@@ -5,6 +5,7 @@
 assert(is_linux)
 
 import("//flutter/build/zip_bundle.gni")
+import("//flutter/shell/platform/common/client_wrapper/core_wrapper_files.gni")
 import("//flutter/shell/platform/glfw/config.gni")
 import("//flutter/testing/testing.gni")
 
@@ -12,6 +13,7 @@ group("linux") {
   deps = [
     ":flutter_linux",
     ":publish_headers_linux",
+    "//flutter/shell/platform/linux/client_wrapper:publish_wrapper_linux",
   ]
   if (build_glfw_shell) {
     deps += [
@@ -97,8 +99,19 @@ source_set("flutter_linux_headers") {
   configs +=
       [ "//flutter/shell/platform/common:desktop_library_implementation" ]
 
-  public_configs =
-      [ "//flutter/shell/platform/common:relative_flutter_library_headers" ]
+  public_configs = [
+    ":relative_flutter_linux_headers",
+    "//flutter/shell/platform/common:relative_flutter_library_headers",
+  ]
+}
+
+config("relative_flutter_linux_headers") {
+  include_dirs = [
+    "public",
+
+    # flutter_linux.h includes <flutter/plugin_registry.h>.
+    "//flutter/shell/platform/common/client_wrapper/include",
+  ]
 }
 
 # Stops the EGL headers including Xlib, which defines macros that conflict
@@ -115,6 +128,8 @@ source_set("flutter_linux_sources") {
     "drm_timeline.h",
     "egl_manager.h",
     "event_loop.h",
+    "flutter_desktop_messenger.h",
+    "flutter_desktop_plugin_registrar.h",
     "flutter_linux_engine.h",
     "flutter_linux_view.h",
     "input_method.h",
@@ -141,6 +156,8 @@ source_set("flutter_linux_sources") {
     "drm_timeline.cc",
     "egl_manager.cc",
     "event_loop.cc",
+    "flutter_desktop_messenger.cc",
+    "flutter_desktop_plugin_registrar.cc",
     "flutter_linux_abi.cc",
     "flutter_linux_application.cc",
     "flutter_linux_engine.cc",
@@ -209,8 +226,13 @@ shared_library("flutter_linux") {
 }
 
 copy("publish_headers_linux") {
-  sources = _public_headers +
-            [ "//flutter/shell/platform/common/public/flutter_export.h" ]
+  sources =
+      _public_headers + [
+        "//flutter/shell/platform/common/public/flutter_export.h",
+        "//flutter/shell/platform/common/public/flutter_messenger.h",
+        "//flutter/shell/platform/common/public/flutter_plugin_registrar.h",
+        "//flutter/shell/platform/common/public/flutter_texture_registrar.h",
+      ]
   outputs = [ "$root_out_dir/flutter_linux/{{source_file_part}}" ]
 }
 
@@ -228,6 +250,7 @@ executable("flutter_linux_unittests") {
     "key_event_converter_unittests.cc",
     "keyboard_manager_unittests.cc",
     "mouse_cursor_plugin_unittests.cc",
+    "plugin_registrar_linux_unittests.cc",
     "pointer_event_converter_unittests.cc",
     "text_input_plugin_unittests.cc",
     "title_renderer_unittests.cc",
@@ -244,6 +267,7 @@ executable("flutter_linux_unittests") {
     "//flutter/shell/platform/common:common_cpp_json",
     "//flutter/shell/platform/common/client_wrapper:standard_codec",
     "//flutter/shell/platform/embedder:embedder_as_internal_library",
+    "//flutter/shell/platform/linux/client_wrapper:client_wrapper_linux",
     "//flutter/testing",
   ]
 }
@@ -256,6 +280,7 @@ zip_bundle("flutter_linux_archive") {
     ":flutter_linux",
     ":publish_headers_linux",
     "$dart_src/runtime/bin:gen_snapshot",
+    "//flutter/shell/platform/linux/client_wrapper:publish_wrapper_linux",
   ]
   sources = get_target_outputs(":publish_headers_linux")
   tmp_files = []
@@ -277,5 +302,30 @@ zip_bundle("flutter_linux_archive") {
       destination = "gen_snapshot"
     },
   ]
+
+  # The C++ wrapper the runner and plugins are built with.
+  foreach(source,
+          core_cpp_client_wrapper_sources +
+              core_cpp_client_wrapper_internal_headers + temporary_shim_files) {
+    tmp_files += [
+      {
+        source = source
+        destination = "cpp_client_wrapper/" + get_path_info(source, "file")
+      },
+    ]
+  }
+  foreach(source,
+          core_cpp_client_wrapper_includes + [
+                "client_wrapper/include/flutter/flutter_view.h",
+                "client_wrapper/include/flutter/plugin_registrar_linux.h",
+              ]) {
+    tmp_files += [
+      {
+        source = source
+        destination = "cpp_client_wrapper/include/flutter/" +
+                      get_path_info(source, "file")
+      },
+    ]
+  }
   files = tmp_files
 }

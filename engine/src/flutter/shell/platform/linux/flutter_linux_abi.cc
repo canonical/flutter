@@ -190,3 +190,80 @@ void flutter_linux_view_set_close_callback(
   ToView(view)->SetCloseCallback(
       [callback, user_data]() { callback(user_data); });
 }
+
+FlutterDesktopPluginRegistrarRef flutter_linux_engine_get_plugin_registrar(
+    FlutterLinuxEngine* engine,
+    const char* plugin_name) {
+  return ToEngine(engine)->GetPluginRegistrar(plugin_name)->ToRef();
+}
+
+wl_display* flutter_linux_plugin_registrar_get_wl_display(
+    FlutterDesktopPluginRegistrarRef registrar) {
+  return registrar->display();
+}
+
+FlutterLinuxView* flutter_linux_plugin_registrar_get_view(
+    FlutterDesktopPluginRegistrarRef registrar,
+    int64_t view_id) {
+  return reinterpret_cast<FlutterLinuxView*>(registrar->GetView(view_id));
+}
+
+void flutter_linux_plugin_registrar_set_view_callbacks(
+    FlutterDesktopPluginRegistrarRef registrar,
+    FlutterLinuxViewCallback added,
+    FlutterLinuxViewCallback removed,
+    void* user_data) {
+  registrar->SetViewCallbacks(added, removed, user_data);
+}
+
+void flutter_linux_plugin_registrar_post_task(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t delay_ns,
+    FlutterLinuxCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data) {
+  registrar->PostTask(delay_ns, callback, destroy, user_data);
+}
+
+uint64_t flutter_linux_plugin_registrar_add_fd_watch(
+    FlutterDesktopPluginRegistrarRef registrar,
+    int fd,
+    uint32_t events,
+    FlutterLinuxFdCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data) {
+  return registrar->AddFdWatch(fd, events, callback, destroy, user_data);
+}
+
+bool flutter_linux_plugin_registrar_set_fd_watch_events(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t watch_id,
+    uint32_t events) {
+  return registrar->SetFdWatchEvents(watch_id, events);
+}
+
+void flutter_linux_plugin_registrar_remove_fd_watch(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t watch_id) {
+  registrar->RemoveFdWatch(watch_id);
+}
+
+wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {
+  return ToView(view)->window()->surface();
+}
+
+void flutter_linux_view_get_size(FlutterLinuxView* view,
+                                 int* width,
+                                 int* height) {
+  flutter::WaylandWindow* window = ToView(view)->window();
+  if (width != nullptr) {
+    *width = window->width();
+  }
+  if (height != nullptr) {
+    *height = window->height();
+  }
+}
+
+double flutter_linux_view_get_scale(FlutterLinuxView* view) {
+  return ToView(view)->window()->scale();
+}

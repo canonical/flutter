@@ -20,8 +20,16 @@ import 'package:pigeon/pigeon.dart';
     cppOptions: CppOptions(namespace: '{{projectName}}'),
 {{/windows}}
 {{#linux}}
-    gobjectHeaderOut: 'linux/messages.g.h',
-    gobjectSourceOut: 'linux/messages.g.cc',
+{{#windows}}
+    // Windows and Linux share the same C++ API. After regenerating, copy
+    // windows/messages.g.cpp and windows/messages.g.h to linux/messages.g.cc
+    // and linux/messages.g.h.
+{{/windows}}
+{{^windows}}
+    cppHeaderOut: 'linux/messages.g.h',
+    cppSourceOut: 'linux/messages.g.cc',
+    cppOptions: CppOptions(namespace: '{{projectName}}'),
+{{/windows}}
 {{/linux}}
 {{#android}}
 {{#withJava}}

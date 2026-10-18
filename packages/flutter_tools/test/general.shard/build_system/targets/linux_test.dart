@@ -55,6 +55,12 @@ void main() {
         mode: BuildMode.debug,
       );
       expect(fileSystem.file('linux/flutter/ephemeral/$headersPathForX64/foo.h'), exists);
+      final String wrapperPathForX64 = artifacts.getArtifactPath(
+        Artifact.linuxCppClientWrapper,
+        platform: TargetPlatform.linux_x64,
+        mode: BuildMode.debug,
+      );
+      expect(fileSystem.file('linux/flutter/ephemeral/$wrapperPathForX64/foo.cc'), exists);
       expect(fileSystem.file('linux/flutter/ephemeral/$headersPathForArm64/foo.h'), isNot(exists));
 
       final String icuDataPathForX64 = artifacts.getArtifactPath(
@@ -107,6 +113,12 @@ void main() {
       );
       expect(fileSystem.file('linux/flutter/ephemeral/$headersPathForX64/foo.h'), isNot(exists));
       expect(fileSystem.file('linux/flutter/ephemeral/$headersPathForArm64/foo.h'), exists);
+      final String wrapperPathForArm64 = artifacts.getArtifactPath(
+        Artifact.linuxCppClientWrapper,
+        platform: TargetPlatform.linux_arm64,
+        mode: BuildMode.debug,
+      );
+      expect(fileSystem.file('linux/flutter/ephemeral/$wrapperPathForArm64/foo.cc'), exists);
 
       final String icuDataPathForX64 = artifacts.getArtifactPath(
         Artifact.icuData,
@@ -355,6 +367,15 @@ void setUpCacheDirectory(FileSystem fileSystem, Artifacts artifacts) {
   );
   fileSystem.file('$headersPathForX64/foo.h').createSync(recursive: true);
   fileSystem.file('$headersPathForArm64/foo.h').createSync(recursive: true);
+
+  for (final platform in <TargetPlatform>[TargetPlatform.linux_x64, TargetPlatform.linux_arm64]) {
+    final String wrapperPath = artifacts.getArtifactPath(
+      Artifact.linuxCppClientWrapper,
+      platform: platform,
+      mode: BuildMode.debug,
+    );
+    fileSystem.file('$wrapperPath/foo.cc').createSync(recursive: true);
+  }
 
   fileSystem
       .file(artifacts.getArtifactPath(Artifact.icuData, platform: TargetPlatform.linux_x64))

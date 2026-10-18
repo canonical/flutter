@@ -41,10 +41,10 @@ EventLoop::EventLoop()
 
   epoll_event event = {};
   event.events = EPOLLIN;
-  event.data.ptr = &wake_fd_;
+  event.data.u64 = kWakeId;
   FML_CHECK(epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, wake_fd_.get(), &event) ==
             0);
-  event.data.ptr = &timer_fd_;
+  event.data.u64 = kTimerId;
   FML_CHECK(
       epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, timer_fd_.get(), &event) == 0);
 }
@@ -72,24 +72,63 @@ void EventLoop::PostTask(Task task, TimePoint target_time) {
 
 void EventLoop::AddSource(Source* source) {
   FML_DCHECK(RunsTasksOnCurrentThread());
+  uint64_t id = next_id_++;
   epoll_event event = {};
   event.events = EPOLLIN;
-  event.data.ptr = source;
+  event.data.u64 = id;
   if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, source->GetFd(), &event) != 0) {
     FML_LOG(ERROR) << "Failed to add event loop source: " << strerror(errno);
     return;
   }
-  sources_.push_back(source);
+  sources_.emplace_back(id, source);
 }
 
 void EventLoop::RemoveSource(Source* source) {
   FML_DCHECK(RunsTasksOnCurrentThread());
-  auto it = std::find(sources_.begin(), sources_.end(), source);
+  auto it =
+      std::find_if(sources_.begin(), sources_.end(),
+                   [source](const auto& s) { return s.second == source; });
   if (it == sources_.end()) {
     return;
   }
   sources_.erase(it);
   epoll_ctl(epoll_fd_.get(), EPOLL_CTL_DEL, source->GetFd(), nullptr);
+}
+
+uint64_t EventLoop::AddWatch(int fd, uint32_t events, WatchCallback callback) {
+  FML_DCHECK(RunsTasksOnCurrentThread());
+  uint64_t id = next_id_++;
+  epoll_event event = {};
+  event.events = events;
+  event.data.u64 = id;
+  if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, fd, &event) != 0) {
+    FML_LOG(ERROR) << "Failed to watch file descriptor: " << strerror(errno);
+    return 0;
+  }
+  watches_[id] = {fd, std::make_shared<WatchCallback>(std::move(callback))};
+  return id;
+}
+
+bool EventLoop::SetWatchEvents(uint64_t id, uint32_t events) {
+  FML_DCHECK(RunsTasksOnCurrentThread());
+  auto it = watches_.find(id);
+  if (it == watches_.end()) {
+    return false;
+  }
+  epoll_event event = {};
+  event.events = events;
+  event.data.u64 = id;
+  return epoll_ctl(epoll_fd_.get(), EPOLL_CTL_MOD, it->second.fd, &event) == 0;
+}
+
+void EventLoop::RemoveWatch(uint64_t id) {
+  FML_DCHECK(RunsTasksOnCurrentThread());
+  auto it = watches_.find(id);
+  if (it == watches_.end()) {
+    return;
+  }
+  epoll_ctl(epoll_fd_.get(), EPOLL_CTL_DEL, it->second.fd, nullptr);
+  watches_.erase(it);
 }
 
 void EventLoop::Run() {
@@ -109,8 +148,8 @@ void EventLoop::Iterate(bool may_block) {
   FML_DCHECK(RunsTasksOnCurrentThread());
 
   // Copy the sources so they can be removed while dispatching.
-  std::vector<Source*> sources = sources_;
-  for (Source* source : sources) {
+  std::vector<std::pair<uint64_t, Source*>> sources = sources_;
+  for (const auto& [id, source] : sources) {
     source->Prepare();
   }
 
@@ -138,26 +177,36 @@ void EventLoop::Iterate(bool may_block) {
     n_events = 0;
   }
 
-  std::vector<Source*> readable_sources;
+  std::map<uint64_t, uint32_t> ready;
   for (int i = 0; i < n_events; i++) {
-    void* data = events[i].data.ptr;
-    if (data == &wake_fd_) {
+    uint64_t id = events[i].data.u64;
+    if (id == kWakeId) {
       DrainFd(wake_fd_.get());
-    } else if (data == &timer_fd_) {
+    } else if (id == kTimerId) {
       DrainFd(timer_fd_.get());
     } else {
-      readable_sources.push_back(static_cast<Source*>(data));
+      ready[id] = events[i].events;
     }
   }
 
-  for (Source* source : sources) {
+  for (const auto& [id, source] : sources) {
     // Skip any source removed while dispatching an earlier source.
-    if (std::find(sources_.begin(), sources_.end(), source) == sources_.end()) {
+    if (std::find(sources_.begin(), sources_.end(),
+                  std::make_pair(id, source)) == sources_.end()) {
       continue;
     }
-    bool readable = std::find(readable_sources.begin(), readable_sources.end(),
-                              source) != readable_sources.end();
-    source->Dispatch(readable);
+    source->Dispatch(ready.count(id) != 0);
+  }
+
+  for (const auto& [id, ready_events] : ready) {
+    // Skip any watch removed by an earlier callback. The callback is kept
+    // alive in case it removes its own watch.
+    auto it = watches_.find(id);
+    if (it == watches_.end()) {
+      continue;
+    }
+    std::shared_ptr<WatchCallback> callback = it->second.callback;
+    (*callback)(ready_events);
   }
 
   RunExpiredTasks();

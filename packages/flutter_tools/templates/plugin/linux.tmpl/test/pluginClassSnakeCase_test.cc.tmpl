@@ -1,11 +1,12 @@
-#include <flutter_linux/flutter_linux.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "include/{{projectName}}/{{pluginClassSnakeCase}}.h"
+#include <string>
+
+#include "messages.g.h"
 #include "{{pluginClassSnakeCase}}_private.h"
 
-// This demonstrates a simple unit test of the C portion of this plugin's
+// This demonstrates a simple unit test of the C++ portion of this plugin's
 // implementation.
 //
 // Once you have built the plugin's example app, you can run these tests
@@ -16,10 +17,12 @@ namespace {{projectName}} {
 namespace test {
 
 TEST({{pluginClass}}, GetPlatformVersion) {
-  g_autofree gchar* result = {{pluginClassSnakeCase}}_get_platform_version();
-  ASSERT_NE(result, nullptr);
+  {{pluginClass}} plugin;
+  ErrorOr<std::string> result = plugin.GetPlatformVersion();
+
+  EXPECT_FALSE(result.has_error());
   // The full string varies, so just validate that it has the right format.
-  EXPECT_THAT(result, testing::StartsWith("Linux "));
+  EXPECT_THAT(result.value(), testing::StartsWith("Linux "));
 }
 
 }  // namespace test

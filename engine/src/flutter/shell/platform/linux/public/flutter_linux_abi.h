@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "flutter_export.h"
+#include "flutter_plugin_registrar.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -28,6 +29,10 @@ extern "C" {
 typedef struct _FlutterLinuxApplication FlutterLinuxApplication;
 typedef struct _FlutterLinuxEngine FlutterLinuxEngine;
 typedef struct _FlutterLinuxView FlutterLinuxView;
+
+// Wayland objects, from libwayland-client.
+struct wl_display;
+struct wl_surface;
 
 typedef struct {
   const char* assets_path;
@@ -137,6 +142,105 @@ FLUTTER_EXPORT void flutter_linux_view_set_close_callback(
     FlutterLinuxView* view,
     FlutterLinuxViewCloseCallback callback,
     void* user_data);
+
+// Plugins.
+//
+// Each plugin has its own registrar in each engine, which is destroyed with
+// the engine. Registrars are used on the platform thread, except where noted.
+// Plugins are expected to stop any threads they use before their registrar's
+// destruction handler returns.
+
+// File descriptor events.
+typedef enum {
+  FLUTTER_LINUX_FD_EVENT_READABLE = 1 << 0,
+  FLUTTER_LINUX_FD_EVENT_WRITABLE = 1 << 1,
+  // Always reported, even if not requested.
+  FLUTTER_LINUX_FD_EVENT_ERROR = 1 << 2,
+  FLUTTER_LINUX_FD_EVENT_HANG_UP = 1 << 3,
+} FlutterLinuxFdEvent;
+
+typedef void (*FlutterLinuxCallback)(void* user_data);
+typedef void (*FlutterLinuxFdCallback)(int fd,
+                                       uint32_t events,
+                                       void* user_data);
+typedef void (*FlutterLinuxViewCallback)(int64_t view_id, void* user_data);
+
+// Returns the registrar for the plugin called |plugin_name| in |engine|,
+// creating it if necessary. The registrar remains valid until the engine is
+// freed.
+FLUTTER_EXPORT FlutterDesktopPluginRegistrarRef
+flutter_linux_engine_get_plugin_registrar(FlutterLinuxEngine* engine,
+                                          const char* plugin_name);
+
+// Returns the connection to the Wayland compositor shared by all engines.
+// Plugins may create their own event queues on it to use it from other
+// threads.
+FLUTTER_EXPORT struct wl_display* flutter_linux_plugin_registrar_get_wl_display(
+    FlutterDesktopPluginRegistrarRef registrar);
+
+// Returns the view with |view_id| in the registrar's engine, or NULL if it
+// doesn't exist. The view remains valid until the view removed callback is
+// called for it.
+FLUTTER_EXPORT FlutterLinuxView* flutter_linux_plugin_registrar_get_view(
+    FlutterDesktopPluginRegistrarRef registrar,
+    int64_t view_id);
+
+// Sets callbacks for when views are added to and removed from the
+// registrar's engine. |added| is called for existing views before this
+// returns. Pass NULL callbacks to stop receiving them.
+FLUTTER_EXPORT void flutter_linux_plugin_registrar_set_view_callbacks(
+    FlutterDesktopPluginRegistrarRef registrar,
+    FlutterLinuxViewCallback added,
+    FlutterLinuxViewCallback removed,
+    void* user_data);
+
+// Calls |callback| on the platform thread after |delay_ns| nanoseconds.
+// |destroy|, which may be NULL, is called on the platform thread after the
+// callback, or instead of it if the registrar is destroyed first. May be
+// called from any thread while the registrar exists.
+FLUTTER_EXPORT void flutter_linux_plugin_registrar_post_task(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t delay_ns,
+    FlutterLinuxCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data);
+
+// Calls |callback| on the platform thread when any of |events|
+// (FlutterLinuxFdEvent flags) occur on |fd|. |destroy|, which may be NULL, is
+// called when the watch is removed or the registrar is destroyed. Returns an
+// ID for the watch, or zero on failure.
+FLUTTER_EXPORT uint64_t flutter_linux_plugin_registrar_add_fd_watch(
+    FlutterDesktopPluginRegistrarRef registrar,
+    int fd,
+    uint32_t events,
+    FlutterLinuxFdCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data);
+
+// Changes the events the watch with |watch_id| waits for.
+FLUTTER_EXPORT bool flutter_linux_plugin_registrar_set_fd_watch_events(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t watch_id,
+    uint32_t events);
+
+// Removes the watch with |watch_id|. This may be called from its callback.
+FLUTTER_EXPORT void flutter_linux_plugin_registrar_remove_fd_watch(
+    FlutterDesktopPluginRegistrarRef registrar,
+    uint64_t watch_id);
+
+// The surface the view's Flutter content is shown in. Its origin is the
+// origin of the view's content, and it is the root of the window's surface
+// tree, so it can be used to identify the window (e.g. with xdg-foreign).
+FLUTTER_EXPORT struct wl_surface* flutter_linux_view_get_wl_surface(
+    FlutterLinuxView* view);
+
+// Gets the logical size of the view's content.
+FLUTTER_EXPORT void flutter_linux_view_get_size(FlutterLinuxView* view,
+                                                int* width,
+                                                int* height);
+
+// Returns the number of physical pixels per logical pixel.
+FLUTTER_EXPORT double flutter_linux_view_get_scale(FlutterLinuxView* view);
 
 #if defined(__cplusplus)
 }  // extern "C"

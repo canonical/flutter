@@ -1,0 +1,47 @@
+# Copyright 2013 The Flutter Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//flutter/shell/platform/common/client_wrapper/publish.gni")
+
+_wrapper_includes = [
+  "include/flutter/flutter_view.h",
+  "include/flutter/plugin_registrar_linux.h",
+]
+
+# This code will be merged into .../common/client_wrapper for client use,
+# so uses header paths that assume the merged state. Include the header
+# directories of the core wrapper files so these includes will work.
+config("relative_core_wrapper_headers") {
+  include_dirs = [
+    "//flutter/shell/platform/common/client_wrapper/include",
+    "//flutter/shell/platform/common/client_wrapper/include/flutter",
+  ]
+}
+
+# Linux client wrapper build for internal use by the shell implementation.
+source_set("client_wrapper_linux") {
+  public = _wrapper_includes
+
+  public_deps = [
+    "//flutter/shell/platform/common/client_wrapper",
+    "//flutter/shell/platform/linux:flutter_linux_headers",
+  ]
+
+  public_configs = [ ":relative_core_wrapper_headers" ]
+}
+
+publish_client_wrapper_core("publish_wrapper_linux_core") {
+  visibility = [ ":publish_wrapper_linux" ]
+}
+
+# Copies the core and Linux client wrapper code to the output directory. The
+# Linux extension is header only, so publish_client_wrapper_extension (which
+# requires sources) can't be used.
+copy("publish_wrapper_linux") {
+  sources = _wrapper_includes
+  outputs = [
+    "$root_out_dir/cpp_client_wrapper/include/flutter/{{source_file_part}}",
+  ]
+  public_deps = [ ":publish_wrapper_linux_core" ]
+}

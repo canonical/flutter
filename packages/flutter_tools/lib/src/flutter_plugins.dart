@@ -803,10 +803,10 @@ const _linuxPluginRegistryHeaderTemplate = '''
 #ifndef GENERATED_PLUGIN_REGISTRANT_
 #define GENERATED_PLUGIN_REGISTRANT_
 
-#include <flutter_linux/flutter_linux.h>
+#include <flutter/plugin_registry.h>
 
 // Registers Flutter plugins.
-void fl_register_plugins(FlPluginRegistry* registry);
+void RegisterPlugins(flutter::PluginRegistry* registry);
 
 #endif  // GENERATED_PLUGIN_REGISTRANT_
 ''';
@@ -824,11 +824,10 @@ const _linuxPluginRegistryImplementationTemplate = '''
 #include <{{name}}/{{filename}}.h>
 {{/methodChannelPlugins}}
 
-void fl_register_plugins(FlPluginRegistry* registry) {
+void RegisterPlugins(flutter::PluginRegistry* registry) {
 {{#methodChannelPlugins}}
-  g_autoptr(FlPluginRegistrar) {{name}}_registrar =
-      fl_plugin_registry_get_registrar_for_plugin(registry, "{{class}}");
-  {{filename}}_register_with_registrar({{name}}_registrar);
+  {{class}}RegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("{{class}}"));
 {{/methodChannelPlugins}}
 }
 ''';

@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include "flutter/generated_plugin_registrant.h"
+
 int main(int argc, char** argv) {
   auto application = flutter::FlutterDesktopApplication::create();
   if (!application) {
@@ -21,6 +23,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Failed to create Flutter engine\n");
     return 1;
   }
+  RegisterPlugins(engine.get());
 
   auto view = flutter::FlutterDesktopView::create(engine, 1280, 720);
   if (!view) {
