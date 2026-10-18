@@ -22,8 +22,6 @@ constexpr int kButtonDiameter = 32;
 constexpr int kButtonSpacing = 6;
 constexpr int kButtonMargin = 8;
 constexpr double kIconStroke = 1.5;
-constexpr int kTitleCharacterWidth = 7;
-constexpr int kTitleHeight = 12;
 
 constexpr auto kDoubleClickTime = std::chrono::milliseconds(400);
 
@@ -423,7 +421,20 @@ RenderBuffer* WindowDecoration::GetBuffer(int width, int height) {
   return buffers_.back().get();
 }
 
-DecorationScene WindowDecoration::BuildScene() const {
+std::shared_ptr<const AlphaImage> WindowDecoration::GetTitleImage(
+    int max_width) {
+  if (state_.title != title_image_text_ || state_.scale != title_image_scale_ ||
+      max_width != title_image_max_width_) {
+    title_image_ = renderer_->title_renderer()->Render(state_.title,
+                                                       state_.scale, max_width);
+    title_image_text_ = state_.title;
+    title_image_scale_ = state_.scale;
+    title_image_max_width_ = max_width;
+  }
+  return title_image_;
+}
+
+DecorationScene WindowDecoration::BuildScene() {
   float s = state_.scale;
   Rect window = WindowRect();
 
@@ -439,19 +450,21 @@ DecorationScene WindowDecoration::BuildScene() const {
   scene.title_bar_color =
       state_.activated ? kActiveTitleBar : kInactiveTitleBar;
 
-  // TODO: Draw the title text; for now a box shows where it goes.
+  // The title is centred on the window, so leave the same space on the left
+  // as the buttons take on the right.
   std::vector<Button> buttons = Buttons();
   int buttons_width = kButtonMargin + static_cast<int>(buttons.size()) *
                                           (kButtonDiameter + kButtonSpacing);
-  int title_width =
-      std::min(static_cast<int>(state_.title.size()) * kTitleCharacterWidth,
-               std::max(state_.width - 2 * buttons_width, 0));
-  if (title_width > 0) {
-    scene.title_width = title_width * s;
-    scene.title_height = kTitleHeight * s;
-    scene.title_x = (window.x + (window.width - title_width) / 2.0) * s;
-    scene.title_y = (window.y + (kTitleBarHeight - kTitleHeight) / 2.0) * s;
-    scene.title_color = WithAlpha(kOnSurfaceVariant, 0.35);
+  int max_title_width = static_cast<int>(
+      std::floor(std::max(window.width - 2 * buttons_width, 0) * s));
+  scene.title = GetTitleImage(max_title_width);
+  if (scene.title) {
+    scene.title_x = std::round((window.x + window.width / 2.0) * s -
+                               scene.title->width / 2.0);
+    scene.title_y = std::round((window.y + kTitleBarHeight / 2.0) * s -
+                               scene.title->height / 2.0);
+    scene.title_color =
+        state_.activated ? kOnSurface : WithAlpha(kOnSurface, 0.38);
   }
 
   Button highlighted =

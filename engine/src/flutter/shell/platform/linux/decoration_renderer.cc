@@ -35,6 +35,7 @@ uniform float u_title_bar_height;
 uniform vec4 u_title_bar_color;
 uniform vec4 u_title;
 uniform vec4 u_title_color;
+uniform sampler2D u_title_texture;
 uniform vec3 u_circles[3];
 uniform vec4 u_circle_colors[3];
 uniform int u_circle_count;
@@ -106,9 +107,12 @@ void main() {
 
   vec4 bar = premultiply(u_title_bar_color);
 
-  vec2 title_half = u_title.zw * 0.5;
-  float t = box(p, u_title.xy + title_half, title_half, 2.0 * s);
-  bar = over(premultiply(u_title_color) * clamp(0.5 - t, 0.0, 1.0), bar);
+  vec2 title_uv = (p - u_title.xy) / max(u_title.zw, vec2(1.0));
+  if (u_title.z > 0.0 && all(greaterThanEqual(title_uv, vec2(0.0))) &&
+      all(lessThan(title_uv, vec2(1.0)))) {
+    float t = texture2D(u_title_texture, title_uv).a;
+    bar = over(premultiply(u_title_color) * t, bar);
+  }
 
   for (int i = 0; i < 3; i++) {
     if (i >= u_circle_count) {
@@ -178,6 +182,9 @@ DecorationRenderer::~DecorationRenderer() {
     if (program_ != 0) {
       glDeleteProgram(program_);
     }
+    if (title_texture_ != 0) {
+      glDeleteTextures(1, &title_texture_);
+    }
     egl_->ClearCurrent();
   }
 }
@@ -225,6 +232,7 @@ bool DecorationRenderer::Initialize() {
       glGetUniformLocation(program_, "u_title_bar_color");
   title_location_ = glGetUniformLocation(program_, "u_title");
   title_color_location_ = glGetUniformLocation(program_, "u_title_color");
+  title_texture_location_ = glGetUniformLocation(program_, "u_title_texture");
   circles_location_ = glGetUniformLocation(program_, "u_circles");
   circle_colors_location_ = glGetUniformLocation(program_, "u_circle_colors");
   circle_count_location_ = glGetUniformLocation(program_, "u_circle_count");
@@ -240,7 +248,28 @@ bool DecorationRenderer::Initialize() {
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+  glGenTextures(1, &title_texture_);
+  glBindTexture(GL_TEXTURE_2D, title_texture_);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
   return true;
+}
+
+void DecorationRenderer::UploadTitle(
+    const std::shared_ptr<const AlphaImage>& image) {
+  if (!image || uploaded_title_.lock() == image) {
+    return;
+  }
+  glBindTexture(GL_TEXTURE_2D, title_texture_);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, image->width, image->height, 0,
+               GL_ALPHA, GL_UNSIGNED_BYTE, image->pixels.data());
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  uploaded_title_ = image;
 }
 
 bool DecorationRenderer::MakeCurrent() {
@@ -285,8 +314,16 @@ bool DecorationRenderer::Draw(RenderBuffer* buffer,
   glUniform1f(scale_location_, scene.scale);
   glUniform1f(title_bar_height_location_, scene.title_bar_height);
   glUniform4fv(title_bar_color_location_, 1, scene.title_bar_color.data());
-  glUniform4f(title_location_, scene.title_x, scene.title_y, scene.title_width,
-              scene.title_height);
+  UploadTitle(scene.title);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, title_texture_);
+  glUniform1i(title_texture_location_, 0);
+  if (scene.title) {
+    glUniform4f(title_location_, scene.title_x, scene.title_y,
+                scene.title->width, scene.title->height);
+  } else {
+    glUniform4f(title_location_, 0, 0, 0, 0);
+  }
   glUniform4fv(title_color_location_, 1, scene.title_color.data());
 
   GLfloat circles[kMaxCircles * 3] = {};
@@ -323,6 +360,7 @@ bool DecorationRenderer::Draw(RenderBuffer* buffer,
   glDrawArrays(GL_TRIANGLES, 0, 3);
   glDisableVertexAttribArray(position_location_);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindTexture(GL_TEXTURE_2D, 0);
   glUseProgram(0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

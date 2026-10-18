@@ -171,7 +171,11 @@ class WindowDecoration : public InputHandler {
   // Returns a buffer that can be drawn into, or nullptr.
   RenderBuffer* GetBuffer(int width, int height);
 
-  DecorationScene BuildScene() const;
+  DecorationScene BuildScene();
+
+  // Returns the title rendered to fit within |max_width| pixels, reusing the
+  // previous image if nothing has changed.
+  std::shared_ptr<const AlphaImage> GetTitleImage(int max_width);
 
   WaylandDisplay* display_;
   DecorationRenderer* renderer_;
@@ -197,6 +201,12 @@ class WindowDecoration : public InputHandler {
   double touch_x_ = 0;
   double touch_y_ = 0;
   std::chrono::steady_clock::time_point last_title_press_;
+
+  // The cached title image and what it was rendered with.
+  std::shared_ptr<const AlphaImage> title_image_;
+  std::string title_image_text_;
+  double title_image_scale_ = 0;
+  int title_image_max_width_ = -1;
 
   FML_DISALLOW_COPY_AND_ASSIGN(WindowDecoration);
 };

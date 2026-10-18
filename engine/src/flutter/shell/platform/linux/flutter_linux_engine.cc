@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 
+#include "flutter/fml/icu_util.h"
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/common/engine_switches.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
@@ -67,6 +69,13 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
 }
 
 bool FlutterLinuxEngine::Initialize() {
+  // Window titles are laid out with ICU, and may be drawn before the engine
+  // runs. The engine skips its own initialization if this has been done.
+  std::error_code error;
+  if (std::filesystem::is_regular_file(properties_.icu_data_path, error)) {
+    fml::icu::InitializeICU(properties_.icu_data_path.string());
+  }
+
   egl_ = EGLManager::Create(application_->gpu());
   if (!egl_) {
     return false;

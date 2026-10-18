@@ -110,6 +110,7 @@ source_set("flutter_linux_sources") {
     "flutter_linux_view.h",
     "render_buffer.h",
     "shm_buffer.h",
+    "title_renderer.h",
     "wayland_display.h",
     "wayland_seat.h",
     "wayland_window.h",
@@ -131,6 +132,7 @@ source_set("flutter_linux_sources") {
     "pointer_event_converter.cc",
     "render_buffer.cc",
     "shm_buffer.cc",
+    "title_renderer.cc",
     "vsync_predictor.cc",
     "wayland_display.cc",
     "wayland_seat.cc",
@@ -158,6 +160,9 @@ source_set("flutter_linux_sources") {
   deps = [
     "//flutter/shell/platform/common:common_cpp_core",
     "//flutter/shell/platform/common:common_cpp_switches",
+    "//flutter/skia",
+    "//flutter/skia/modules/skparagraph",
+    "//flutter/txt",
   ]
 }
 
@@ -189,6 +194,7 @@ executable("flutter_linux_unittests") {
     "event_loop_unittests.cc",
     "flutter_linux_unittests.cc",
     "pointer_event_converter_unittests.cc",
+    "title_renderer_unittests.cc",
     "vsync_predictor_unittests.cc",
   ]
 

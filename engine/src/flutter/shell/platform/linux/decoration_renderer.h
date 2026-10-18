@@ -12,6 +12,7 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
+#include "flutter/shell/platform/linux/title_renderer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 
 namespace flutter {
@@ -56,11 +57,11 @@ struct DecorationScene {
   float title_bar_height = 0;
   Color title_bar_color = {0, 0, 0, 0};
 
-  // A rounded box where the title will be drawn.
+  // The title text, drawn with its top left corner at |title_x|, |title_y|,
+  // which should be whole pixels.
+  std::shared_ptr<const AlphaImage> title;
   float title_x = 0;
   float title_y = 0;
-  float title_width = 0;
-  float title_height = 0;
   Color title_color = {0, 0, 0, 0};
 
   std::vector<Circle> circles;
@@ -99,14 +100,26 @@ class DecorationRenderer {
   // Draws |scene| into |buffer| and waits for it to complete.
   bool Draw(RenderBuffer* buffer, const DecorationScene& scene);
 
+  // Renders title text for scenes.
+  TitleRenderer* title_renderer() { return &title_renderer_; }
+
  private:
   DecorationRenderer(WaylandDisplay* display, std::unique_ptr<EGLManager> egl);
 
   bool Initialize();
 
+  // Uploads |image| to |title_texture_| if it isn't there already.
+  void UploadTitle(const std::shared_ptr<const AlphaImage>& image);
+
   WaylandDisplay* display_;
   std::unique_ptr<EGLManager> egl_;
   bool use_dmabuf_ = false;
+  TitleRenderer title_renderer_;
+
+  GLuint title_texture_ = 0;
+  // The image in |title_texture_|, weak so it can be compared with new
+  // titles.
+  std::weak_ptr<const AlphaImage> uploaded_title_;
 
   GLuint program_ = 0;
   GLuint vertex_buffer_ = 0;
@@ -120,6 +133,7 @@ class DecorationRenderer {
   GLint title_bar_color_location_ = -1;
   GLint title_location_ = -1;
   GLint title_color_location_ = -1;
+  GLint title_texture_location_ = -1;
   GLint circles_location_ = -1;
   GLint circle_colors_location_ = -1;
   GLint circle_count_location_ = -1;
