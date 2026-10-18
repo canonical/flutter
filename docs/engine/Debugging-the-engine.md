@@ -149,7 +149,7 @@ First, in your Flutter project, build your Flutter app using the local engine:
 flutter build linux --debug --local-engine=host_debug_unopt --local-engine-host=host_debug_unopt lib/main.dart
 ```
 
-Then, replace the library in your Flutter application's build directory: `build/linux/x64/debug/bundle/lib/libflutter_linux_gtk.so` with a copy or symbolic link to the engine build's output file `out/host_debug_unopt/lib.unstripped/libflutter_linux_gtk.so`.
+Then, replace the library in your Flutter application's build directory: `build/linux/x64/debug/bundle/lib/libflutter_linux.so` with a copy or symbolic link to the engine build's output file `out/host_debug_unopt/lib.unstripped/libflutter_linux.so`.
 
 Then you can open it in the debugger with:
 

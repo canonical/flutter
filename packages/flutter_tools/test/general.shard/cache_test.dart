@@ -1357,9 +1357,9 @@ void main() {
     final artifacts = LinuxEngineArtifacts(cache, platform: FakePlatform());
 
     expect(artifacts.getBinaryDirs(), <List<String>>[
-      <String>['linux-x64', 'linux-x64-debug/linux-x64-flutter-gtk.zip'],
-      <String>['linux-x64-profile', 'linux-x64-profile/linux-x64-flutter-gtk.zip'],
-      <String>['linux-x64-release', 'linux-x64-release/linux-x64-flutter-gtk.zip'],
+      <String>['linux-x64', 'linux-x64-debug/linux-x64-flutter.zip'],
+      <String>['linux-x64-profile', 'linux-x64-profile/linux-x64-flutter.zip'],
+      <String>['linux-x64-release', 'linux-x64-release/linux-x64-flutter.zip'],
     ]);
   });
 
@@ -1370,9 +1370,9 @@ void main() {
     final artifacts = LinuxEngineArtifacts(cache, platform: FakePlatform());
 
     expect(artifacts.getBinaryDirs(), <List<String>>[
-      <String>['linux-arm64', 'linux-arm64-debug/linux-arm64-flutter-gtk.zip'],
-      <String>['linux-arm64-profile', 'linux-arm64-profile/linux-arm64-flutter-gtk.zip'],
-      <String>['linux-arm64-release', 'linux-arm64-release/linux-arm64-flutter-gtk.zip'],
+      <String>['linux-arm64', 'linux-arm64-debug/linux-arm64-flutter.zip'],
+      <String>['linux-arm64-profile', 'linux-arm64-profile/linux-arm64-flutter.zip'],
+      <String>['linux-arm64-release', 'linux-arm64-release/linux-arm64-flutter.zip'],
     ]);
   });
 

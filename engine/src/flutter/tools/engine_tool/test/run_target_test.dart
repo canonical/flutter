@@ -122,9 +122,9 @@ void main() {
       TargetPlatform.darwinArm64: [
         Label.parseGn('//flutter/shell/platform/darwin/macos:flutter_framework'),
       ],
-      TargetPlatform.linuxX64: [Label.parseGn('//flutter/shell/platform/linux:flutter_linux_gtk')],
+      TargetPlatform.linuxX64: [Label.parseGn('//flutter/shell/platform/linux:flutter_linux')],
       TargetPlatform.linuxArm64: [
-        Label.parseGn('//flutter/shell/platform/linux:flutter_linux_gtk'),
+        Label.parseGn('//flutter/shell/platform/linux:flutter_linux'),
       ],
       TargetPlatform.windowsX64: [Label.parseGn('//flutter/shell/platform/windows')],
       TargetPlatform.windowsArm64: [Label.parseGn('//flutter/shell/platform/windows')],

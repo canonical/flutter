@@ -350,9 +350,9 @@ class LinuxEngineArtifacts extends EngineCachedArtifact {
     if (_platform.isLinux || ignorePlatformFiltering) {
       final String arch = cache.getHostPlatformArchName();
       return <List<String>>[
-        <String>['linux-$arch', 'linux-$arch-debug/linux-$arch-flutter-gtk.zip'],
-        <String>['linux-$arch-profile', 'linux-$arch-profile/linux-$arch-flutter-gtk.zip'],
-        <String>['linux-$arch-release', 'linux-$arch-release/linux-$arch-flutter-gtk.zip'],
+        <String>['linux-$arch', 'linux-$arch-debug/linux-$arch-flutter.zip'],
+        <String>['linux-$arch-profile', 'linux-$arch-profile/linux-$arch-flutter.zip'],
+        <String>['linux-$arch-release', 'linux-$arch-release/linux-$arch-flutter.zip'],
       ];
     }
     return const <List<String>>[];

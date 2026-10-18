@@ -19,7 +19,7 @@ import 'icon_tree_shaker.dart';
 import 'native_assets.dart';
 
 /// The only files/subdirectories we care out.
-const _kLinuxArtifacts = <String>['libflutter_linux_gtk.so'];
+const _kLinuxArtifacts = <String>['libflutter_linux.so'];
 
 const _kLinuxDepfile = 'linux_engine_sources.d';
 

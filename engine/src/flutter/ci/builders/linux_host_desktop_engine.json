@@ -18,7 +18,7 @@
                     "base_path": "out/ci/host_debug_desktop/zip_archives/",
                     "type": "gcs",
                     "include_paths": [
-                        "out/ci/host_debug_desktop/zip_archives/linux-x64-debug/linux-x64-flutter-gtk.zip"
+                        "out/ci/host_debug_desktop/zip_archives/linux-x64-debug/linux-x64-flutter.zip"
                     ],
                     "realm": "production"
                 }
@@ -47,7 +47,7 @@
             "ninja": {
                 "config": "ci/host_debug_desktop",
                 "targets": [
-                    "flutter/shell/platform/linux:flutter_gtk"
+                    "flutter/shell/platform/linux:flutter_linux_archive"
                 ]
             }
         },
@@ -58,7 +58,7 @@
                     "base_path": "out/ci/host_profile_desktop/zip_archives/",
                     "type": "gcs",
                     "include_paths": [
-                        "out/ci/host_profile_desktop/zip_archives/linux-x64-profile/linux-x64-flutter-gtk.zip"
+                        "out/ci/host_profile_desktop/zip_archives/linux-x64-profile/linux-x64-flutter.zip"
                     ],
                     "realm": "production"
                 }
@@ -87,7 +87,7 @@
             "ninja": {
                 "config": "ci/host_profile_desktop",
                 "targets": [
-                    "flutter/shell/platform/linux:flutter_gtk"
+                    "flutter/shell/platform/linux:flutter_linux_archive"
                 ]
             }
         },
@@ -98,7 +98,7 @@
                     "base_path": "out/ci/host_release_desktop/zip_archives/",
                     "type": "gcs",
                     "include_paths": [
-                        "out/ci/host_release_desktop/zip_archives/linux-x64-release/linux-x64-flutter-gtk.zip"
+                        "out/ci/host_release_desktop/zip_archives/linux-x64-release/linux-x64-flutter.zip"
                     ],
                     "realm": "production"
                 }
@@ -127,7 +127,7 @@
             "ninja": {
                 "config": "ci/host_release_desktop",
                 "targets": [
-                    "flutter/shell/platform/linux:flutter_gtk"
+                    "flutter/shell/platform/linux:flutter_linux_archive"
                 ]
             }
         }
