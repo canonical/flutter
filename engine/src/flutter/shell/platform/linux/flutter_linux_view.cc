@@ -42,8 +42,9 @@ void FlutterLinuxView::SendWindowMetrics() {
   engine_->SendWindowMetrics(GetWindowMetrics());
 }
 
-void FlutterLinuxView::PresentBuffer(DmabufBuffer* buffer) {
-  window_->Present(buffer->buffer(), buffer->width(), buffer->height());
+void FlutterLinuxView::PresentBuffer(DmabufBuffer* buffer,
+                                     const WaylandWindow::SyncPoints* sync) {
+  window_->Present(buffer->buffer(), buffer->width(), buffer->height(), sync);
 }
 
 void FlutterLinuxView::OnWindowConfigure() {

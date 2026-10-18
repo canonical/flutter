@@ -9,10 +9,12 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <ctime>
 
 #include "flutter/fml/eintr_wrapper.h"
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
+#include "flutter/shell/platform/linux/gpu_device.h"
 
 namespace flutter {
 
@@ -27,6 +29,18 @@ constexpr size_t kMaxPoolSize = 4;
 // another one.
 constexpr int kBufferWaitTimeoutMs = 100;
 
+// How long to wait on the CPU for the compositor to finish reading from a
+// released buffer.
+constexpr int64_t kReleaseFenceTimeoutNs = 1000000000;
+
+// Returns the current time on CLOCK_MONOTONIC, the clock DRM syncobj timeouts
+// use.
+int64_t NowNanoseconds() {
+  timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return static_cast<int64_t>(now.tv_sec) * 1000000000 + now.tv_nsec;
+}
+
 }  // namespace
 
 CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
@@ -37,6 +51,11 @@ CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
   dmabuf_wrapper_ = static_cast<zwp_linux_dmabuf_v1*>(
       wl_proxy_create_wrapper(display_->dmabuf()));
   wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(dmabuf_wrapper_), queue_);
+
+  explicit_sync_ = display_->syncobj_manager() != nullptr &&
+                   egl_->gpu()->supports_explicit_sync();
+  FML_DLOG(INFO) << "Using " << (explicit_sync_ ? "explicit" : "implicit")
+                 << " synchronization";
 }
 
 CompositorOpenGL::~CompositorOpenGL() {
@@ -114,18 +133,55 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
   auto* pool_buffer = static_cast<PoolBuffer*>(layer->backing_store->user_data);
   DmabufBuffer* buffer = pool_buffer->buffer.get();
 
-  // Submit the rendering commands. The compositor waits for them to complete
-  // using the implicit fence on the dmabuf.
-  glFlush();
-
   std::scoped_lock lock(views_mutex_);
   auto it = views_.find(view_id);
   if (it == views_.end()) {
     return false;
   }
-  buffer->set_busy(true);
-  it->second->PresentBuffer(buffer);
+
+  if (pool_buffer->timeline == nullptr) {
+    // Submit the rendering commands. The compositor waits for them to
+    // complete using the implicit fence on the dmabuf.
+    glFlush();
+    buffer->set_busy(true);
+    it->second->PresentBuffer(buffer, nullptr);
+    return true;
+  }
+
+  DrmTimeline* timeline = pool_buffer->timeline.get();
+  WaylandWindow::SyncPoints sync = {
+      .timeline = timeline->timeline(),
+      .acquire_point = ++pool_buffer->last_point,
+      .release_point = ++pool_buffer->last_point,
+  };
+  if (!SignalWhenRenderingComplete(timeline, sync.acquire_point)) {
+    return false;
+  }
+  pool_buffer->release_point = sync.release_point;
+  it->second->PresentBuffer(buffer, &sync);
   return true;
+}
+
+bool CompositorOpenGL::SignalWhenRenderingComplete(DrmTimeline* timeline,
+                                                   uint64_t point) {
+  GpuDevice* gpu = egl_->gpu();
+  const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+                               EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
+  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
+                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  // The fence is only created once the commands are submitted.
+  glFlush();
+  if (sync != EGL_NO_SYNC_KHR) {
+    fml::UniqueFD fence(gpu->DupNativeFenceFD(gpu->display(), sync));
+    gpu->DestroySync(gpu->display(), sync);
+    if (fence.is_valid() && timeline->ImportSyncFile(point, fence)) {
+      return true;
+    }
+  }
+
+  FML_DLOG(WARNING) << "Unable to create fence, waiting for rendering";
+  glFinish();
+  return timeline->Signal(point);
 }
 
 CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
@@ -138,6 +194,7 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
 
   PoolBuffer* pool_buffer = FindFreeBuffer(pool, width, height);
   if (pool_buffer != nullptr) {
+    WaitForRelease(pool_buffer);
     return pool_buffer;
   }
 
@@ -148,12 +205,14 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
     while (pool_buffer == nullptr) {
       auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
-      if (remaining.count() <= 0 || !WaitForBufferEvents(remaining.count())) {
+      if (remaining.count() <= 0 ||
+          !WaitForReleasedBuffer(pool, remaining.count())) {
         break;
       }
       pool_buffer = FindFreeBuffer(pool, width, height);
     }
     if (pool_buffer != nullptr) {
+      WaitForRelease(pool_buffer);
       return pool_buffer;
     }
     FML_DLOG(WARNING) << "Timed out waiting for compositor to release buffer";
@@ -171,6 +230,13 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
   }
   auto new_buffer = std::make_unique<PoolBuffer>();
   new_buffer->buffer = std::move(buffer);
+  if (explicit_sync_) {
+    new_buffer->timeline =
+        DrmTimeline::Create(egl_->gpu()->drm_fd(), display_->syncobj_manager());
+    if (!new_buffer->timeline) {
+      return nullptr;
+    }
+  }
   pool.push_back(std::move(new_buffer));
   return pool.back().get();
 }
@@ -179,8 +245,8 @@ void CompositorOpenGL::TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,
                                 int width,
                                 int height) {
   pool.erase(std::remove_if(pool.begin(), pool.end(),
-                            [width, height](const auto& b) {
-                              return !b->in_use && !b->buffer->busy() &&
+                            [this, width, height](const auto& b) {
+                              return IsFree(b.get()) &&
                                      (b->buffer->width() != width ||
                                       b->buffer->height() != height);
                             }),
@@ -192,12 +258,80 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::FindFreeBuffer(
     int width,
     int height) {
   for (auto& b : pool) {
-    if (!b->in_use && !b->buffer->busy() && b->buffer->width() == width &&
+    if (IsFree(b.get()) && b->buffer->width() == width &&
         b->buffer->height() == height) {
       return b.get();
     }
   }
   return nullptr;
+}
+
+bool CompositorOpenGL::IsReleased(const PoolBuffer* pool_buffer) const {
+  if (pool_buffer->timeline == nullptr) {
+    return !pool_buffer->buffer->busy();
+  }
+  return pool_buffer->release_point == 0 ||
+         pool_buffer->timeline->IsAvailable(pool_buffer->release_point);
+}
+
+bool CompositorOpenGL::IsFree(const PoolBuffer* pool_buffer) const {
+  return !pool_buffer->in_use && IsReleased(pool_buffer);
+}
+
+void CompositorOpenGL::WaitForRelease(PoolBuffer* pool_buffer) {
+  if (pool_buffer->timeline == nullptr || pool_buffer->release_point == 0) {
+    return;
+  }
+  DrmTimeline* timeline = pool_buffer->timeline.get();
+  uint64_t point = pool_buffer->release_point;
+  pool_buffer->release_point = 0;
+
+  // Have the GPU wait for the compositor's reads to complete before
+  // rendering, so the CPU doesn't block.
+  GpuDevice* gpu = egl_->gpu();
+  if (gpu->WaitSync != nullptr && egl_->IsRenderContextCurrent()) {
+    fml::UniqueFD fence = timeline->ExportSyncFile(point);
+    if (fence.is_valid()) {
+      const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+                                   fence.get(), EGL_NONE};
+      EGLSyncKHR sync = gpu->CreateSync(
+          gpu->display(), EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+      if (sync != EGL_NO_SYNC_KHR) {
+        // EGL owns the fence now.
+        [[maybe_unused]] int fd = fence.release();
+        bool waited = gpu->WaitSync(gpu->display(), sync, 0) == EGL_TRUE;
+        gpu->DestroySync(gpu->display(), sync);
+        if (waited) {
+          return;
+        }
+      }
+    }
+  }
+
+  if (!timeline->Wait(point, NowNanoseconds() + kReleaseFenceTimeoutNs)) {
+    FML_DLOG(WARNING) << "Timed out waiting for compositor to finish with "
+                         "buffer";
+  }
+}
+
+bool CompositorOpenGL::WaitForReleasedBuffer(
+    std::vector<std::unique_ptr<PoolBuffer>>& pool,
+    int timeout_ms) {
+  if (!explicit_sync_) {
+    return WaitForBufferEvents(timeout_ms);
+  }
+
+  std::vector<DrmTimeline*> timelines;
+  std::vector<uint64_t> points;
+  for (const auto& b : pool) {
+    if (!b->in_use && b->release_point != 0) {
+      timelines.push_back(b->timeline.get());
+      points.push_back(b->release_point);
+    }
+  }
+  return DrmTimeline::WaitAnyAvailable(
+      timelines.data(), points.data(), timelines.size(),
+      NowNanoseconds() + static_cast<int64_t>(timeout_ms) * 1000000);
 }
 
 void CompositorOpenGL::DispatchBufferEvents() {

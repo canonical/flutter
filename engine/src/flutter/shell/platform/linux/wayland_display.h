@@ -20,6 +20,7 @@
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/protocols/fractional-scale-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/linux-drm-syncobj-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
@@ -49,6 +50,9 @@ class WaylandDisplay : public EventLoop::Source {
     return fractional_scale_manager_;
   }
   wp_presentation* presentation() const { return presentation_; }
+  wp_linux_drm_syncobj_manager_v1* syncobj_manager() const {
+    return syncobj_manager_;
+  }
 
   // Converts a timestamp from wp_presentation to nanoseconds on
   // CLOCK_MONOTONIC, the clock the engine and event loop use.
@@ -149,6 +153,7 @@ class WaylandDisplay : public EventLoop::Source {
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;
   wp_presentation* presentation_ = nullptr;
+  wp_linux_drm_syncobj_manager_v1* syncobj_manager_ = nullptr;
 
   // The clock presentation timestamps are in.
   clockid_t presentation_clock_ = CLOCK_MONOTONIC;

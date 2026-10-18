@@ -66,14 +66,33 @@ class WaylandWindow {
   void SetTitle(const std::string& title);
   void SetApplicationId(const std::string& application_id);
 
+  // Timeline points used to explicitly synchronize access to a buffer with
+  // the compositor.
+  struct SyncPoints {
+    wp_linux_drm_syncobj_timeline_v1* timeline;
+
+    // The point the compositor waits for before reading the buffer.
+    uint64_t acquire_point;
+
+    // The point the compositor signals when it has finished with the buffer.
+    uint64_t release_point;
+  };
+
   // Shows |buffer| in the window. The buffer is |width| x |height| pixels
   // and rendered with OpenGL conventions (bottom row first).
+  //
+  // If |sync| is provided, the compositor uses it to synchronize access to
+  // the buffer instead of implicit synchronization. Once a buffer has been
+  // presented with |sync|, all following buffers must also provide it.
   //
   // If the compositor supports wp_presentation, the delegate is informed
   // when the frame is shown.
   //
-  // May be called from any thread.
-  void Present(wl_buffer* buffer, int width, int height);
+  // May be called from any thread, but only from one thread at a time.
+  void Present(wl_buffer* buffer,
+               int width,
+               int height,
+               const SyncPoints* sync);
 
  private:
   WaylandWindow(WaylandDisplay* display, Delegate* delegate);
@@ -133,6 +152,9 @@ class WaylandWindow {
   xdg_toplevel* toplevel_ = nullptr;
   wp_viewport* viewport_ = nullptr;
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
+
+  // Created on the first present with explicit synchronization.
+  wp_linux_drm_syncobj_surface_v1* syncobj_surface_ = nullptr;
 
   bool configured_ = false;
 

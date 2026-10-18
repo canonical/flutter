@@ -46,8 +46,10 @@ class FlutterLinuxView : public WaylandWindow::Delegate {
   // Sends the current window metrics to the engine.
   void SendWindowMetrics();
 
-  // Shows a rendered frame. Called on the raster thread.
-  void PresentBuffer(DmabufBuffer* buffer);
+  // Shows a rendered frame, synchronized with |sync| if provided. Called on
+  // the raster thread.
+  void PresentBuffer(DmabufBuffer* buffer,
+                     const WaylandWindow::SyncPoints* sync);
 
   // |WaylandWindow::Delegate|
   void OnWindowConfigure() override;

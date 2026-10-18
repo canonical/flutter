@@ -162,8 +162,36 @@ bool GpuDevice::Initialize(std::optional<dev_t> device) {
     return false;
   }
 
+  InitializeExplicitSync(extensions);
+
   FML_DLOG(INFO) << "Rendering with " << path;
   return true;
+}
+
+void GpuDevice::InitializeExplicitSync(const char* extensions) {
+  uint64_t timeline_supported = 0;
+  if (drmGetCap(drm_fd_.get(), DRM_CAP_SYNCOBJ_TIMELINE, &timeline_supported) !=
+          0 ||
+      timeline_supported == 0) {
+    return;
+  }
+  if (!HasExtension(extensions, "EGL_KHR_fence_sync") ||
+      !HasExtension(extensions, "EGL_ANDROID_native_fence_sync")) {
+    return;
+  }
+
+  CreateSync = reinterpret_cast<PFNEGLCREATESYNCKHRPROC>(
+      eglGetProcAddress("eglCreateSyncKHR"));
+  DestroySync = reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(
+      eglGetProcAddress("eglDestroySyncKHR"));
+  DupNativeFenceFD = reinterpret_cast<PFNEGLDUPNATIVEFENCEFDANDROIDPROC>(
+      eglGetProcAddress("eglDupNativeFenceFDANDROID"));
+  if (HasExtension(extensions, "EGL_KHR_wait_sync")) {
+    WaitSync = reinterpret_cast<PFNEGLWAITSYNCKHRPROC>(
+        eglGetProcAddress("eglWaitSyncKHR"));
+  }
+  supports_explicit_sync_ = CreateSync != nullptr && DestroySync != nullptr &&
+                            DupNativeFenceFD != nullptr;
 }
 
 }  // namespace flutter

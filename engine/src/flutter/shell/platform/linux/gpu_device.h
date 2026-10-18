@@ -35,6 +35,7 @@ class GpuDevice {
 
   ~GpuDevice();
 
+  int drm_fd() const { return drm_fd_.get(); }
   gbm_device* gbm() const { return gbm_; }
   EGLDisplay display() const { return display_; }
 
@@ -42,20 +43,37 @@ class GpuDevice {
   // modifiers.
   bool supports_dmabuf_modifiers() const { return supports_dmabuf_modifiers_; }
 
+  // True if the GPU can produce and consume fences for explicit
+  // synchronization with the compositor, using DRM timeline syncobjs and EGL
+  // native fences.
+  bool supports_explicit_sync() const { return supports_explicit_sync_; }
+
   // Extension functions used to import dmabufs.
   PFNEGLCREATEIMAGEKHRPROC CreateImage = nullptr;
   PFNEGLDESTROYIMAGEKHRPROC DestroyImage = nullptr;
   PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2D = nullptr;
+
+  // Extension functions used for explicit synchronization. Only set if
+  // supports_explicit_sync() is true. WaitSync may be nullptr if the GPU
+  // can't wait for fences, in which case they must be waited for on the CPU.
+  PFNEGLCREATESYNCKHRPROC CreateSync = nullptr;
+  PFNEGLDESTROYSYNCKHRPROC DestroySync = nullptr;
+  PFNEGLDUPNATIVEFENCEFDANDROIDPROC DupNativeFenceFD = nullptr;
+  PFNEGLWAITSYNCKHRPROC WaitSync = nullptr;
 
  private:
   GpuDevice() = default;
 
   bool Initialize(std::optional<dev_t> device);
 
+  // Checks for and loads the functions used for explicit synchronization.
+  void InitializeExplicitSync(const char* extensions);
+
   fml::UniqueFD drm_fd_;
   gbm_device* gbm_ = nullptr;
   EGLDisplay display_ = EGL_NO_DISPLAY;
   bool supports_dmabuf_modifiers_ = false;
+  bool supports_explicit_sync_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(GpuDevice);
 };

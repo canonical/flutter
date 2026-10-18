@@ -34,6 +34,7 @@ constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
 constexpr uint32_t kMaxPresentationVersion = 2;
+constexpr uint32_t kMaxSyncobjManagerVersion = 1;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
@@ -108,6 +109,9 @@ WaylandDisplay::~WaylandDisplay() {
   }
   if (fractional_scale_manager_ != nullptr) {
     wp_fractional_scale_manager_v1_destroy(fractional_scale_manager_);
+  }
+  if (syncobj_manager_ != nullptr) {
+    wp_linux_drm_syncobj_manager_v1_destroy(syncobj_manager_);
   }
   if (presentation_ != nullptr) {
     wp_presentation_destroy(presentation_);
@@ -284,6 +288,11 @@ void WaylandDisplay::RegistryGlobal(void* data,
                               version, kMaxPresentationVersion);
     wp_presentation_add_listener(self->presentation_, &kPresentationListener,
                                  self);
+  } else if (strcmp(interface,
+                    wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
+    self->syncobj_manager_ = Bind<wp_linux_drm_syncobj_manager_v1>(
+        registry, name, &wp_linux_drm_syncobj_manager_v1_interface, version,
+        kMaxSyncobjManagerVersion);
   }
 }
 

@@ -66,6 +66,9 @@ WaylandWindow::~WaylandWindow() {
     }
     pending_feedback_.clear();
   }
+  if (syncobj_surface_ != nullptr) {
+    wp_linux_drm_syncobj_surface_v1_destroy(syncobj_surface_);
+  }
   if (fractional_scale_ != nullptr) {
     wp_fractional_scale_v1_destroy(fractional_scale_);
   }
@@ -140,7 +143,22 @@ void WaylandWindow::SetApplicationId(const std::string& application_id) {
   xdg_toplevel_set_app_id(toplevel_, application_id.c_str());
 }
 
-void WaylandWindow::Present(wl_buffer* buffer, int width, int height) {
+void WaylandWindow::Present(wl_buffer* buffer,
+                            int width,
+                            int height,
+                            const SyncPoints* sync) {
+  if (sync != nullptr) {
+    if (syncobj_surface_ == nullptr) {
+      syncobj_surface_ = wp_linux_drm_syncobj_manager_v1_get_surface(
+          display_->syncobj_manager(), surface_);
+    }
+    wp_linux_drm_syncobj_surface_v1_set_acquire_point(
+        syncobj_surface_, sync->timeline, sync->acquire_point >> 32,
+        sync->acquire_point & 0xffffffff);
+    wp_linux_drm_syncobj_surface_v1_set_release_point(
+        syncobj_surface_, sync->timeline, sync->release_point >> 32,
+        sync->release_point & 0xffffffff);
+  }
   wl_surface_attach(surface_, buffer, 0, 0);
   wl_surface_damage_buffer(surface_, 0, 0, width, height);
   if (viewport_ != nullptr) {
