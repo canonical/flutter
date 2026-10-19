@@ -242,6 +242,11 @@ class WaylandWindow : public WindowDecoration::Delegate {
                int height,
                const SyncPoints* sync);
 
+  // The radius in physical pixels to round the bottom corners of a buffer
+  // of |width| x |height| pixels to, so it matches the decorations it will
+  // be shown with. Zero if the corners are square.
+  double ContentCornerRadius(int width, int height);
+
   // The number of presented frames the compositor hasn't yet indicated it
   // is ready to follow with another frame. These don't complete while the
   // window is hidden.
@@ -374,6 +379,9 @@ class WaylandWindow : public WindowDecoration::Delegate {
 
   // Decorations waiting for content of the size they were drawn for.
   std::optional<DecorationFrame> pending_decoration_;
+
+  // The corner radius of the decorations shown, in logical pixels.
+  int content_corner_radius_ = 0;
 
   // The size of the last content buffer presented, in physical pixels.
   int presented_width_ = 0;

@@ -45,7 +45,7 @@ struct DecorationScene {
   float window_width = 0;
   float window_height = 0;
 
-  // The radius of the top corners of the window.
+  // The radius of the corners of the window.
   float corner_radius = 0;
 
   // True to draw a drop shadow around the window.

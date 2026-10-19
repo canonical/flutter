@@ -15,6 +15,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
+#include "flutter/shell/platform/linux/corner_mask.h"
 #include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
@@ -193,6 +194,9 @@ class CompositorOpenGL {
   std::condition_variable presented_condition_;
 
   bool warned_multiple_layers_ = false;
+
+  // Rounds the corners of decorated windows. Only used on the raster thread.
+  std::unique_ptr<CornerMask> corner_mask_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(CompositorOpenGL);
 };

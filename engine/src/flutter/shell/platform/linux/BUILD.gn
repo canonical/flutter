@@ -125,6 +125,7 @@ config("no_x11") {
 source_set("flutter_linux_sources") {
   public = [
     "compositor_opengl.h",
+    "corner_mask.h",
     "decoration_renderer.h",
     "dmabuf_buffer.h",
     "drm_timeline.h",
@@ -154,6 +155,7 @@ source_set("flutter_linux_sources") {
 
   sources = [
     "compositor_opengl.cc",
+    "corner_mask.cc",
     "decoration_renderer.cc",
     "dmabuf_buffer.cc",
     "drm_timeline.cc",

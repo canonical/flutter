@@ -51,12 +51,10 @@ float box(vec2 p, vec2 c, vec2 h, float r) {
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
-// The window has rounded top corners and square bottom corners.
 float window_shape(vec2 p, vec2 offset) {
   vec2 h = u_window.zw * 0.5;
   vec2 c = u_window.xy + h + offset;
-  float r = p.y < c.y ? u_corner_radius : 0.0;
-  return box(p, c, h, r);
+  return box(p, c, h, u_corner_radius);
 }
 
 float line(vec2 p, vec4 l) {

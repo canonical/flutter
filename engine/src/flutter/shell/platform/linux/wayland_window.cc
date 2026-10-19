@@ -607,6 +607,7 @@ void WaylandWindow::UpdateDecoration() {
 
 void WaylandWindow::ApplyDecorationFrame(const DecorationFrame& frame) {
   decoration_->Apply(frame);
+  content_corner_radius_ = frame.content_corner_radius;
   xdg_surface_set_window_geometry(xdg_surface_, frame.geometry.x,
                                   frame.geometry.y, frame.geometry.width,
                                   frame.geometry.height);
@@ -715,6 +716,17 @@ void WaylandWindow::Present(wl_buffer* buffer,
   }
   wl_surface_commit(surface_);
   wl_display_flush(display_->display());
+}
+
+double WaylandWindow::ContentCornerRadius(int width, int height) {
+  std::lock_guard<std::mutex> lock(surface_mutex_);
+  int radius = content_corner_radius_;
+  if (pending_decoration_.has_value() &&
+      pending_decoration_->content_width == width &&
+      pending_decoration_->content_height == height) {
+    radius = pending_decoration_->content_corner_radius;
+  }
+  return radius * scale_;
 }
 
 size_t WaylandWindow::frames_in_flight() {

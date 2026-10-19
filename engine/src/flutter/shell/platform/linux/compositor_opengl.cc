@@ -100,6 +100,7 @@ CompositorOpenGL::~CompositorOpenGL() {
   // render context and it can be used to free the buffers.
   bool made_current = egl_->MakeRenderContextCurrent();
   pools_.clear();
+  corner_mask_.reset();
   if (made_current) {
     egl_->ClearCurrent();
   }
@@ -196,6 +197,15 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
 bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
                                      PoolBuffer* pool_buffer) {
   RenderBuffer* buffer = pool_buffer->buffer.get();
+  double corner_radius =
+      view->window()->ContentCornerRadius(buffer->width(), buffer->height());
+  if (corner_radius > 0) {
+    if (!corner_mask_) {
+      corner_mask_ = std::make_unique<CornerMask>();
+    }
+    corner_mask_->Apply(buffer->framebuffer(), buffer->width(),
+                        buffer->height(), corner_radius);
+  }
   if (!buffer->PrepareToPresent()) {
     return false;
   }

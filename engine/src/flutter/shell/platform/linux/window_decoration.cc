@@ -14,7 +14,6 @@ namespace flutter {
 namespace {
 
 // Layout in logical pixels, following Material 3.
-constexpr int kCornerRadius = 12;
 constexpr int kResizeOutset = 10;
 constexpr int kResizeCorner = 20;
 constexpr int kTopResizeInset = 4;
@@ -549,6 +548,7 @@ void WindowDecoration::Redraw() {
 
   Rect window = WindowRect();
   if (floating()) {
+    frame.content_corner_radius = kCornerRadius;
     frame.input.push_back({window.x - kResizeOutset, window.y - kResizeOutset,
                            window.width + 2 * kResizeOutset,
                            window.height + 2 * kResizeOutset});

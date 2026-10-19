@@ -48,6 +48,10 @@ struct DecorationFrame {
   // The size of the content buffer this frame matches, in physical pixels.
   int content_width = 0;
   int content_height = 0;
+
+  // The radius the bottom corners of the content are rounded to, in logical
+  // pixels.
+  int content_corner_radius = 0;
 };
 
 // Client-side window decorations: a title bar with window controls and a
@@ -92,6 +96,9 @@ class WindowDecoration : public InputHandler {
 
   // The height of the title bar in logical pixels.
   static constexpr int kTitleBarHeight = 44;
+
+  // The radius of a floating window's corners in logical pixels.
+  static constexpr int kCornerRadius = 12;
 
   // The space around a floating window used to draw its shadow.
   static constexpr int kShadowMargin = 28;
