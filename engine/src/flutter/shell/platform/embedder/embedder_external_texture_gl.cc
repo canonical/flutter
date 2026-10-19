@@ -150,7 +150,10 @@ sk_sp<DlImage> EmbedderExternalTextureGL::ResolveTextureImpeller(
     }
   });
 
-  if (texture->format != GL_RGBA8) {
+  // External textures are sampled through an EGLImage, which converts from
+  // the image's format (e.g. YUV), so their format is not used.
+  bool is_external = texture->target == GL_TEXTURE_EXTERNAL_OES;
+  if (!is_external && texture->format != GL_RGBA8) {
     FML_LOG(ERROR) << "Only support GL_RGBA8 format now";
     return nullptr;
   }
@@ -158,6 +161,9 @@ sk_sp<DlImage> EmbedderExternalTextureGL::ResolveTextureImpeller(
   impeller::TextureDescriptor desc;
   desc.size = impeller::ISize(texture->width, texture->height);
   desc.format = impeller::PixelFormat::kR8G8B8A8UNormInt;
+  if (is_external) {
+    desc.type = impeller::TextureType::kTextureExternalOES;
+  }
 
   impeller::ContextGLES& context =
       impeller::ContextGLES::Cast(*aiks_context->GetContext());

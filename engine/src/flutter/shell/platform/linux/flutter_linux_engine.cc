@@ -122,6 +122,9 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
 
   Stop();
 
+  // Plugins may not have unregistered their textures.
+  texture_registrar_.reset();
+
   mouse_cursor_plugin_.reset();
   keyboard_manager_.reset();
 
@@ -148,6 +151,7 @@ bool FlutterLinuxEngine::Initialize() {
 
   compositor_ = std::make_unique<CompositorOpenGL>(
       egl_.get(), application_->display(), IsImpellerEnabled());
+  texture_registrar_ = std::make_unique<TextureRegistrar>(this);
   return true;
 }
 
@@ -276,6 +280,8 @@ bool FlutterLinuxEngine::Run() {
     engine_ = nullptr;
     return false;
   }
+
+  texture_registrar_->OnEngineStarted();
 
   // Views refer to the displays, so they must be known first.
   SendDisplays();
@@ -758,6 +764,64 @@ void FlutterLinuxEngine::HandleAccessibilityMessage(const uint8_t* data,
                                        assertive);
 }
 
+bool FlutterLinuxEngine::IsEngineRunning() const {
+  return running();
+}
+
+bool FlutterLinuxEngine::RegisterExternalTexture(int64_t texture_id) {
+  return embedder_api_.RegisterExternalTexture(engine_, texture_id) == kSuccess;
+}
+
+void FlutterLinuxEngine::UnregisterExternalTexture(int64_t texture_id) {
+  embedder_api_.UnregisterExternalTexture(engine_, texture_id);
+}
+
+void FlutterLinuxEngine::MarkExternalTextureFrameAvailable(int64_t texture_id) {
+  embedder_api_.MarkExternalTextureFrameAvailable(engine_, texture_id);
+}
+
+bool FlutterLinuxEngine::PostRasterTask(std::function<void()> task) {
+  struct RasterTask {
+    EGLManager* egl;
+    std::function<void()> task;
+  };
+  auto* raster_task = new RasterTask{egl_.get(), std::move(task)};
+  FlutterEngineResult result = embedder_api_.PostRenderThreadTask(
+      engine_,
+      [](void* user_data) {
+        std::unique_ptr<RasterTask> raster_task(
+            static_cast<RasterTask*>(user_data));
+        // The renderer only has its context current while drawing.
+        bool made_current = !raster_task->egl->IsContextCurrent() &&
+                            raster_task->egl->MakeRenderContextCurrent();
+        raster_task->task();
+        if (made_current) {
+          raster_task->egl->ClearCurrent();
+        }
+      },
+      raster_task);
+  if (result != kSuccess) {
+    delete raster_task;
+    return false;
+  }
+  return true;
+}
+
+void FlutterLinuxEngine::PostPlatformTask(std::function<void()> task) {
+  application_->event_loop()->PostTask(std::move(task));
+}
+
+void FlutterLinuxEngine::RunWithContext(const std::function<void()>& task) {
+  // Only called when the engine isn't running, so the raster thread isn't
+  // using the render context.
+  bool made_current =
+      !egl_->IsContextCurrent() && egl_->MakeRenderContextCurrent();
+  task();
+  if (made_current) {
+    egl_->ClearCurrent();
+  }
+}
+
 FlutterRendererConfig FlutterLinuxEngine::GetRendererConfig() {
   FlutterRendererConfig config = {};
   config.type = kOpenGL;
@@ -779,6 +843,13 @@ FlutterRendererConfig FlutterLinuxEngine::GetRendererConfig() {
   config.open_gl.gl_proc_resolver = [](void* user_data,
                                        const char* name) -> void* {
     return reinterpret_cast<void*>(eglGetProcAddress(name));
+  };
+  config.open_gl.gl_external_texture_frame_callback =
+      [](void* user_data, int64_t texture_id, size_t width, size_t height,
+         FlutterOpenGLTexture* texture) -> bool {
+    return static_cast<FlutterLinuxEngine*>(user_data)
+        ->texture_registrar_->PopulateTexture(texture_id, width, height,
+                                              texture);
   };
   return config;
 }

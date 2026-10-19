@@ -24,6 +24,7 @@
 #include "flutter/shell/platform/linux/platform_messenger.h"
 #include "flutter/shell/platform/linux/plugin_messenger.h"
 #include "flutter/shell/platform/linux/scoped_event_loop.h"
+#include "flutter/shell/platform/linux/texture_registrar.h"
 #include "flutter/shell/platform/linux/vsync_predictor.h"
 
 namespace flutter {
@@ -39,7 +40,8 @@ constexpr FlutterViewId kImplicitViewId = 0;
 // thread. Multiple engines may share an application.
 class FlutterLinuxEngine : public PlatformMessenger,
                            public AtspiApplication::Observer,
-                           public WaylandDisplay::OutputObserver {
+                           public WaylandDisplay::OutputObserver,
+                           public TextureRegistrar::Delegate {
  public:
   struct Properties {
     std::filesystem::path assets_path;
@@ -160,6 +162,30 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |WaylandDisplay::OutputObserver|
   void OnOutputsChanged() override;
 
+  // The textures plugins have registered.
+  TextureRegistrar* texture_registrar() { return texture_registrar_.get(); }
+
+  // |TextureRegistrar::Delegate|
+  bool IsEngineRunning() const override;
+
+  // |TextureRegistrar::Delegate|
+  bool RegisterExternalTexture(int64_t texture_id) override;
+
+  // |TextureRegistrar::Delegate|
+  void UnregisterExternalTexture(int64_t texture_id) override;
+
+  // |TextureRegistrar::Delegate|
+  void MarkExternalTextureFrameAvailable(int64_t texture_id) override;
+
+  // |TextureRegistrar::Delegate|
+  bool PostRasterTask(std::function<void()> task) override;
+
+  // |TextureRegistrar::Delegate|
+  void PostPlatformTask(std::function<void()> task) override;
+
+  // |TextureRegistrar::Delegate|
+  void RunWithContext(const std::function<void()>& task) override;
+
  private:
   FlutterLinuxEngine(FlutterLinuxApplication* application,
                      Properties properties);
@@ -210,6 +236,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
 
   std::unique_ptr<EGLManager> egl_;
   std::unique_ptr<CompositorOpenGL> compositor_;
+  std::unique_ptr<TextureRegistrar> texture_registrar_;
 
   // Predicts when to draw frames, from when previous frames were shown.
   VsyncPredictor vsync_predictor_;

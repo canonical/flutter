@@ -4,6 +4,8 @@
 
 #include "flutter/shell/platform/linux/egl_manager.h"
 
+#include <cstdio>
+
 #include "flutter/fml/logging.h"
 
 namespace flutter {
@@ -88,8 +90,16 @@ void EGLManager::QueryGLStrings() {
   gl_renderer_ = get_string(GL_RENDERER);
   gl_version_ = get_string(GL_VERSION);
   std::string extensions = " " + get_string(GL_EXTENSIONS) + " ";
-  supports_read_bgra_ =
-      extensions.find(" GL_EXT_read_format_bgra ") != std::string::npos;
+  auto has_extension = [&extensions](const char* name) {
+    return extensions.find(" " + std::string(name) + " ") != std::string::npos;
+  };
+  supports_read_bgra_ = has_extension("GL_EXT_read_format_bgra");
+  supports_external_textures_ = has_extension("GL_OES_EGL_image_external");
+  // The version string is "OpenGL ES <major>.<minor> <vendor information>".
+  int major_version = 0;
+  sscanf(gl_version_.c_str(), "OpenGL ES %d", &major_version);
+  supports_unpack_row_length_ =
+      major_version >= 3 || has_extension("GL_EXT_unpack_subimage");
   if (previous_context != EGL_NO_CONTEXT) {
     eglMakeCurrent(previous_display, previous_draw, previous_read,
                    previous_context);
@@ -115,6 +125,11 @@ bool EGLManager::ClearCurrent() {
 
 bool EGLManager::IsRenderContextCurrent() const {
   return eglGetCurrentContext() == render_context_;
+}
+
+bool EGLManager::IsContextCurrent() const {
+  EGLContext context = eglGetCurrentContext();
+  return context == render_context_ || context == resource_context_;
 }
 
 }  // namespace flutter

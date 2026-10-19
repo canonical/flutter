@@ -169,6 +169,12 @@ struct FlutterDesktopFdEvents {
   static constexpr uint32_t kHangUp = FLUTTER_LINUX_FD_EVENT_HANG_UP;
 };
 
+// A frame for a pixel buffer texture. See FlutterLinuxPixelBuffer.
+using FlutterDesktopPixelBuffer = FlutterLinuxPixelBuffer;
+
+// A frame for a dmabuf texture. See FlutterLinuxDmabuf.
+using FlutterDesktopDmabuf = FlutterLinuxDmabuf;
+
 // Sends and receives messages on platform channels with the framework
 // running in an engine.
 //
@@ -496,6 +502,58 @@ class FlutterDesktopEngine {
     flutter_linux_engine_remove_fd_watch(engine_, watch_id);
   }
 
+  // Registers a texture that copies frames from CPU memory, and returns its
+  // ID for use in a Texture widget, or -1 on failure. |callback| is called on
+  // the raster thread with the size the texture is drawn at, and returns the
+  // latest frame or nullptr. The returned frame only needs to remain valid
+  // until the callback returns.
+  int64_t register_pixel_buffer_texture(
+      std::function<const FlutterDesktopPixelBuffer*(size_t width,
+                                                     size_t height)> callback) {
+    return RegisterTexture(flutter_linux_engine_register_pixel_buffer_texture,
+                           std::move(callback));
+  }
+
+  // Registers a texture that shows frames from dmabufs without copying them,
+  // and returns its ID for use in a Texture widget, or -1 on failure.
+  // |callback| is called on the raster thread with the size the texture is
+  // drawn at, and returns the latest frame or nullptr. The returned frame
+  // only needs to remain valid until the callback returns.
+  int64_t register_dmabuf_texture(
+      std::function<const FlutterDesktopDmabuf*(size_t width, size_t height)>
+          callback) {
+    return RegisterTexture(flutter_linux_engine_register_dmabuf_texture,
+                           std::move(callback));
+  }
+
+  // Tells the engine the texture with |texture_id| has a new frame. May be
+  // called from any thread while the engine exists. Returns false if there
+  // is no such texture.
+  bool mark_texture_frame_available(int64_t texture_id) {
+    return flutter_linux_engine_mark_texture_frame_available(engine_,
+                                                             texture_id);
+  }
+
+  // Unregisters the texture with |texture_id|. Its callback may be called
+  // until |done| is called on the platform thread, which may be after the
+  // engine is destroyed.
+  void unregister_texture(int64_t texture_id,
+                          std::function<void()> done = nullptr) {
+    if (!done) {
+      flutter_linux_engine_unregister_texture(engine_, texture_id, nullptr,
+                                              nullptr);
+      return;
+    }
+    flutter_linux_engine_unregister_texture(
+        engine_, texture_id,
+        [](void* user_data) {
+          std::unique_ptr<std::function<void()>> done(
+              static_cast<std::function<void()>*>(user_data));
+          (*done)();
+        },
+        new std::function<void()>(std::move(done)));
+  }
+
   // The application this engine is in.
   const std::shared_ptr<FlutterDesktopApplication>& application() const {
     return application_;
@@ -570,6 +628,22 @@ class FlutterDesktopEngine {
       }
     }
     views_.erase(view_id);
+  }
+
+  // Registers a texture with |register_function|, which takes a C callback
+  // that returns a |Frame|.
+  template <typename Frame, typename RegisterFunction>
+  int64_t RegisterTexture(
+      RegisterFunction register_function,
+      std::function<const Frame*(size_t width, size_t height)> callback) {
+    using Callback = std::function<const Frame*(size_t, size_t)>;
+    return register_function(
+        engine_,
+        [](size_t width, size_t height, void* user_data) -> const Frame* {
+          return (*static_cast<Callback*>(user_data))(width, height);
+        },
+        [](void* user_data) { delete static_cast<Callback*>(user_data); },
+        new Callback(std::move(callback)));
   }
 
   // Keeps the application alive while the engine exists.

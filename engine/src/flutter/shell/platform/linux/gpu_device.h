@@ -12,9 +12,12 @@
 #include <gbm.h>
 #include <sys/types.h>
 
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
@@ -51,6 +54,35 @@ class GpuDevice {
   // modifiers.
   bool supports_dmabuf_modifiers() const { return supports_dmabuf_modifiers_; }
 
+  // A plane of a dmabuf.
+  struct DmabufPlane {
+    int fd;
+    uint32_t offset;
+    uint32_t stride;
+  };
+
+  // Imports a dmabuf as an EGLImage, which must be destroyed with
+  // DestroyImage. |modifier| is DRM_FORMAT_MOD_INVALID if the layout is
+  // implied by the driver. |extra_attributes|, which may be nullptr, are
+  // EGL_NONE terminated attributes added to the import. Returns
+  // EGL_NO_IMAGE_KHR on failure. Must only be called if
+  // supports_dmabuf_import() is true.
+  EGLImageKHR ImportDmabuf(int width,
+                           int height,
+                           uint32_t format,
+                           uint64_t modifier,
+                           const DmabufPlane* planes,
+                           size_t n_planes,
+                           const EGLint* extra_attributes = nullptr);
+
+  // The maximum number of planes a dmabuf can have.
+  static constexpr size_t kMaxDmabufPlanes = 4;
+
+  // Returns true if dmabufs with |format| (a DRM fourcc) and |modifier| can
+  // only be sampled as GL_TEXTURE_EXTERNAL_OES, e.g. YUV formats. May be
+  // called from any thread.
+  bool IsExternalOnly(uint32_t format, uint64_t modifier);
+
   // True if the GPU can produce and consume fences for explicit
   // synchronization with the compositor, using DRM timeline syncobjs and EGL
   // native fences.
@@ -61,6 +93,7 @@ class GpuDevice {
   PFNEGLCREATEIMAGEKHRPROC CreateImage = nullptr;
   PFNEGLDESTROYIMAGEKHRPROC DestroyImage = nullptr;
   PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2D = nullptr;
+  PFNEGLQUERYDMABUFMODIFIERSEXTPROC QueryDmaBufModifiers = nullptr;
 
   // Extension functions used for explicit synchronization. Only set if
   // supports_explicit_sync() is true. WaitSync may be nullptr if the GPU
@@ -88,6 +121,10 @@ class GpuDevice {
   bool supports_dmabuf_import_ = false;
   bool supports_dmabuf_modifiers_ = false;
   bool supports_explicit_sync_ = false;
+
+  // Whether each format and modifier is external only, as reported by EGL.
+  std::mutex external_only_mutex_;
+  std::map<std::pair<uint32_t, uint64_t>, bool> external_only_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(GpuDevice);
 };

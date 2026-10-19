@@ -36,6 +36,18 @@ class EGLManager {
   // True if pixels can be read in BGRA order (GL_EXT_read_format_bgra).
   bool supports_read_bgra() const { return supports_read_bgra_; }
 
+  // True if EGLImages can be sampled as GL_TEXTURE_EXTERNAL_OES
+  // (GL_OES_EGL_image_external).
+  bool supports_external_textures() const {
+    return supports_external_textures_;
+  }
+
+  // True if textures can be uploaded from rows that aren't tightly packed
+  // (GL_UNPACK_ROW_LENGTH).
+  bool supports_unpack_row_length() const {
+    return supports_unpack_row_length_;
+  }
+
   // Makes the render context current on the calling thread.
   bool MakeRenderContextCurrent();
 
@@ -47,6 +59,10 @@ class EGLManager {
 
   // Returns true if the render context is current on the calling thread.
   bool IsRenderContextCurrent() const;
+
+  // Returns true if the render or resource context is current on the calling
+  // thread. They share GL objects, so either can be used to delete them.
+  bool IsContextCurrent() const;
 
  private:
   explicit EGLManager(GpuDevice* gpu);
@@ -64,6 +80,8 @@ class EGLManager {
   std::string gl_renderer_;
   std::string gl_version_;
   bool supports_read_bgra_ = false;
+  bool supports_external_textures_ = false;
+  bool supports_unpack_row_length_ = false;
 
   FML_DISALLOW_COPY_AND_ASSIGN(EGLManager);
 };

@@ -12,36 +12,6 @@
 
 namespace flutter {
 
-namespace {
-
-// The EGL attributes for each dmabuf plane.
-struct PlaneAttributes {
-  EGLint fd;
-  EGLint offset;
-  EGLint pitch;
-  EGLint modifier_lo;
-  EGLint modifier_hi;
-};
-
-constexpr PlaneAttributes kPlaneAttributes[] = {
-    {EGL_DMA_BUF_PLANE0_FD_EXT, EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-     EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
-     EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT},
-    {EGL_DMA_BUF_PLANE1_FD_EXT, EGL_DMA_BUF_PLANE1_OFFSET_EXT,
-     EGL_DMA_BUF_PLANE1_PITCH_EXT, EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
-     EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT},
-    {EGL_DMA_BUF_PLANE2_FD_EXT, EGL_DMA_BUF_PLANE2_OFFSET_EXT,
-     EGL_DMA_BUF_PLANE2_PITCH_EXT, EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
-     EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT},
-    {EGL_DMA_BUF_PLANE3_FD_EXT, EGL_DMA_BUF_PLANE3_OFFSET_EXT,
-     EGL_DMA_BUF_PLANE3_PITCH_EXT, EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
-     EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT},
-};
-
-constexpr int kMaxPlanes = 4;
-
-}  // namespace
-
 const uint32_t DmabufBuffer::kFormat = DRM_FORMAT_ARGB8888;
 
 std::unique_ptr<DmabufBuffer> DmabufBuffer::Create(
@@ -108,7 +78,8 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   }
 
   int n_planes = gbm_bo_get_plane_count(bo_);
-  if (n_planes < 1 || n_planes > kMaxPlanes) {
+  if (n_planes < 1 ||
+      n_planes > static_cast<int>(GpuDevice::kMaxDmabufPlanes)) {
     FML_LOG(ERROR) << "Unsupported buffer plane count " << n_planes;
     return false;
   }
@@ -121,32 +92,13 @@ bool DmabufBuffer::Initialize(zwp_linux_dmabuf_v1* dmabuf,
   }
 
   modifier_ = modifier;
-  bool has_modifier = modifier != DRM_FORMAT_MOD_INVALID;
-  std::vector<EGLint> attributes = {EGL_WIDTH,
-                                    width(),
-                                    EGL_HEIGHT,
-                                    height(),
-                                    EGL_LINUX_DRM_FOURCC_EXT,
-                                    static_cast<EGLint>(kFormat)};
+  GpuDevice::DmabufPlane planes[GpuDevice::kMaxDmabufPlanes];
   for (int i = 0; i < n_planes; i++) {
-    const PlaneAttributes& plane = kPlaneAttributes[i];
-    attributes.insert(
-        attributes.end(),
-        {plane.fd, fd.get(), plane.offset,
-         static_cast<EGLint>(gbm_bo_get_offset(bo_, i)), plane.pitch,
-         static_cast<EGLint>(gbm_bo_get_stride_for_plane(bo_, i))});
-    if (has_modifier) {
-      attributes.insert(
-          attributes.end(),
-          {plane.modifier_lo, static_cast<EGLint>(modifier & 0xffffffff),
-           plane.modifier_hi, static_cast<EGLint>(modifier >> 32)});
-    }
+    planes[i] = {fd.get(), gbm_bo_get_offset(bo_, i),
+                 gbm_bo_get_stride_for_plane(bo_, i)};
   }
-  attributes.push_back(EGL_NONE);
-
-  image_ = egl()->gpu()->CreateImage(egl()->gpu()->display(), EGL_NO_CONTEXT,
-                                     EGL_LINUX_DMA_BUF_EXT, nullptr,
-                                     attributes.data());
+  image_ = egl()->gpu()->ImportDmabuf(width(), height(), kFormat, modifier,
+                                      planes, n_planes);
   if (image_ == EGL_NO_IMAGE_KHR) {
     FML_LOG(ERROR) << "Failed to import buffer into EGL: 0x" << std::hex
                    << eglGetError();

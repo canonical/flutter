@@ -10,8 +10,10 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "flutter/fml/macros.h"
@@ -19,6 +21,7 @@
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/dmabuf_buffer.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/external_texture.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
@@ -65,6 +68,30 @@ class DestroyNotify {
 
   FML_DISALLOW_COPY_AND_ASSIGN(DestroyNotify);
 };
+
+flutter::YuvColorSpace ToYuvColorSpace(FlutterLinuxYuvColorSpace space) {
+  switch (space) {
+    case FLUTTER_LINUX_YUV_COLOR_SPACE_BT601:
+      return flutter::YuvColorSpace::kBt601;
+    case FLUTTER_LINUX_YUV_COLOR_SPACE_BT709:
+      return flutter::YuvColorSpace::kBt709;
+    case FLUTTER_LINUX_YUV_COLOR_SPACE_BT2020:
+      return flutter::YuvColorSpace::kBt2020;
+    default:
+      return flutter::YuvColorSpace::kDefault;
+  }
+}
+
+flutter::YuvRange ToYuvRange(FlutterLinuxYuvRange range) {
+  switch (range) {
+    case FLUTTER_LINUX_YUV_RANGE_NARROW:
+      return flutter::YuvRange::kNarrow;
+    case FLUTTER_LINUX_YUV_RANGE_FULL:
+      return flutter::YuvRange::kFull;
+    default:
+      return flutter::YuvRange::kDefault;
+  }
+}
 
 uint32_t ToEpollEvents(uint32_t events) {
   uint32_t result = 0;
@@ -364,6 +391,112 @@ bool flutter_linux_engine_set_fd_watch_events(FlutterLinuxEngine* engine,
 void flutter_linux_engine_remove_fd_watch(FlutterLinuxEngine* engine,
                                           uint64_t watch_id) {
   ToEngine(engine)->plugin_event_loop()->RemoveWatch(watch_id);
+}
+
+int64_t flutter_linux_engine_register_pixel_buffer_texture(
+    FlutterLinuxEngine* engine,
+    FlutterLinuxPixelBufferCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  flutter::FlutterLinuxEngine* e = ToEngine(engine);
+  return e->texture_registrar()->RegisterTexture(
+      std::make_unique<flutter::PixelBufferTexture>(
+          e->egl(),
+          [notify = std::move(notify), callback, user_data](
+              size_t width,
+              size_t height) -> std::optional<flutter::PixelBufferFrame> {
+            const FlutterLinuxPixelBuffer* buffer =
+                callback(width, height, user_data);
+            if (buffer == nullptr) {
+              return std::nullopt;
+            }
+            if (buffer->struct_size < sizeof(FlutterLinuxPixelBuffer)) {
+              FML_LOG(ERROR) << "Invalid FlutterLinuxPixelBuffer struct_size";
+              return std::nullopt;
+            }
+            flutter::PixelBufferFrame frame;
+            frame.pixels = buffer->buffer;
+            frame.width = buffer->width;
+            frame.height = buffer->height;
+            frame.row_bytes = buffer->row_bytes;
+            if (buffer->release_callback != nullptr) {
+              frame.release = [release = buffer->release_callback,
+                               release_user_data =
+                                   buffer->release_user_data]() {
+                release(release_user_data);
+              };
+            }
+            return frame;
+          }));
+}
+
+int64_t flutter_linux_engine_register_dmabuf_texture(
+    FlutterLinuxEngine* engine,
+    FlutterLinuxDmabufCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  flutter::FlutterLinuxEngine* e = ToEngine(engine);
+  return e->texture_registrar()->RegisterTexture(
+      std::make_unique<flutter::DmabufTexture>(
+          e->egl(),
+          [notify = std::move(notify), callback, user_data](
+              size_t width,
+              size_t height) -> std::optional<flutter::DmabufFrame> {
+            const FlutterLinuxDmabuf* dmabuf =
+                callback(width, height, user_data);
+            if (dmabuf == nullptr) {
+              return std::nullopt;
+            }
+            flutter::DmabufFrame frame;
+            if (dmabuf->release_callback != nullptr) {
+              frame.release = [release = dmabuf->release_callback,
+                               release_user_data =
+                                   dmabuf->release_user_data]() {
+                release(release_user_data);
+              };
+            }
+            if (dmabuf->struct_size < sizeof(FlutterLinuxDmabuf) ||
+                dmabuf->n_planes > FLUTTER_LINUX_DMABUF_MAX_PLANES) {
+              FML_LOG(ERROR) << "Invalid FlutterLinuxDmabuf";
+              if (frame.release) {
+                frame.release();
+              }
+              return std::nullopt;
+            }
+            frame.width = dmabuf->width;
+            frame.height = dmabuf->height;
+            frame.format = dmabuf->format;
+            frame.modifier = dmabuf->modifier;
+            for (uint32_t i = 0; i < dmabuf->n_planes; i++) {
+              frame.planes.push_back({dmabuf->planes[i].fd,
+                                      dmabuf->planes[i].offset,
+                                      dmabuf->planes[i].stride});
+            }
+            frame.color_space = ToYuvColorSpace(dmabuf->color_space);
+            frame.range = ToYuvRange(dmabuf->range);
+            return frame;
+          }));
+}
+
+bool flutter_linux_engine_mark_texture_frame_available(
+    FlutterLinuxEngine* engine,
+    int64_t texture_id) {
+  return ToEngine(engine)->texture_registrar()->MarkTextureFrameAvailable(
+      texture_id);
+}
+
+void flutter_linux_engine_unregister_texture(FlutterLinuxEngine* engine,
+                                             int64_t texture_id,
+                                             FlutterLinuxCallback done,
+                                             void* user_data) {
+  std::function<void()> callback;
+  if (done != nullptr) {
+    callback = [done, user_data]() { done(user_data); };
+  }
+  ToEngine(engine)->texture_registrar()->UnregisterTexture(texture_id,
+                                                           std::move(callback));
 }
 
 wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {

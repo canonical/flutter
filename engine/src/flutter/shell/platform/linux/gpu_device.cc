@@ -8,9 +8,12 @@
 #include <sys/stat.h>
 #include <xf86drm.h>
 
+#include <drm_fourcc.h>
+
 #include <cerrno>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "flutter/fml/logging.h"
 
@@ -172,6 +175,145 @@ void GpuDevice::InitializeDmabufImport(const char* extensions) {
   supports_dmabuf_modifiers_ =
       supports_dmabuf_import_ &&
       HasExtension(extensions, "EGL_EXT_image_dma_buf_import_modifiers");
+  if (supports_dmabuf_modifiers_) {
+    QueryDmaBufModifiers = reinterpret_cast<PFNEGLQUERYDMABUFMODIFIERSEXTPROC>(
+        eglGetProcAddress("eglQueryDmaBufModifiersEXT"));
+  }
+}
+
+namespace {
+
+// The EGL attributes for each dmabuf plane.
+struct PlaneAttributes {
+  EGLint fd;
+  EGLint offset;
+  EGLint pitch;
+  EGLint modifier_lo;
+  EGLint modifier_hi;
+};
+
+constexpr PlaneAttributes kPlaneAttributes[GpuDevice::kMaxDmabufPlanes] = {
+    {EGL_DMA_BUF_PLANE0_FD_EXT, EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+     EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
+     EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT},
+    {EGL_DMA_BUF_PLANE1_FD_EXT, EGL_DMA_BUF_PLANE1_OFFSET_EXT,
+     EGL_DMA_BUF_PLANE1_PITCH_EXT, EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
+     EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT},
+    {EGL_DMA_BUF_PLANE2_FD_EXT, EGL_DMA_BUF_PLANE2_OFFSET_EXT,
+     EGL_DMA_BUF_PLANE2_PITCH_EXT, EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
+     EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT},
+    {EGL_DMA_BUF_PLANE3_FD_EXT, EGL_DMA_BUF_PLANE3_OFFSET_EXT,
+     EGL_DMA_BUF_PLANE3_PITCH_EXT, EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
+     EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT},
+};
+
+}  // namespace
+
+EGLImageKHR GpuDevice::ImportDmabuf(int width,
+                                    int height,
+                                    uint32_t format,
+                                    uint64_t modifier,
+                                    const DmabufPlane* planes,
+                                    size_t n_planes,
+                                    const EGLint* extra_attributes) {
+  if (n_planes < 1 || n_planes > kMaxDmabufPlanes) {
+    return EGL_NO_IMAGE_KHR;
+  }
+  // Without the modifiers extension only the implied layout can be used, of
+  // which linear is the only one that is known.
+  bool has_modifier = modifier != DRM_FORMAT_MOD_INVALID;
+  if (has_modifier && !supports_dmabuf_modifiers_) {
+    if (modifier != DRM_FORMAT_MOD_LINEAR) {
+      return EGL_NO_IMAGE_KHR;
+    }
+    has_modifier = false;
+  }
+
+  std::vector<EGLint> attributes = {EGL_WIDTH,
+                                    width,
+                                    EGL_HEIGHT,
+                                    height,
+                                    EGL_LINUX_DRM_FOURCC_EXT,
+                                    static_cast<EGLint>(format)};
+  for (size_t i = 0; i < n_planes; i++) {
+    const PlaneAttributes& plane = kPlaneAttributes[i];
+    attributes.insert(attributes.end(),
+                      {plane.fd, planes[i].fd, plane.offset,
+                       static_cast<EGLint>(planes[i].offset), plane.pitch,
+                       static_cast<EGLint>(planes[i].stride)});
+    if (has_modifier) {
+      attributes.insert(
+          attributes.end(),
+          {plane.modifier_lo, static_cast<EGLint>(modifier & 0xffffffff),
+           plane.modifier_hi, static_cast<EGLint>(modifier >> 32)});
+    }
+  }
+  for (const EGLint* attribute = extra_attributes;
+       attribute != nullptr && *attribute != EGL_NONE; attribute += 2) {
+    attributes.insert(attributes.end(), {attribute[0], attribute[1]});
+  }
+  attributes.push_back(EGL_NONE);
+
+  return CreateImage(display_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr,
+                     attributes.data());
+}
+
+bool GpuDevice::IsExternalOnly(uint32_t format, uint64_t modifier) {
+  // Without the modifiers extension EGL can't say, so assume only RGB formats
+  // can be sampled as 2D textures.
+  auto is_rgb = [format]() {
+    switch (format) {
+      case DRM_FORMAT_ARGB8888:
+      case DRM_FORMAT_XRGB8888:
+      case DRM_FORMAT_ABGR8888:
+      case DRM_FORMAT_XBGR8888:
+      case DRM_FORMAT_RGBA8888:
+      case DRM_FORMAT_RGBX8888:
+      case DRM_FORMAT_BGRA8888:
+      case DRM_FORMAT_BGRX8888:
+      case DRM_FORMAT_ARGB2101010:
+      case DRM_FORMAT_XRGB2101010:
+      case DRM_FORMAT_ABGR2101010:
+      case DRM_FORMAT_XBGR2101010:
+      case DRM_FORMAT_RGB565:
+      case DRM_FORMAT_BGR565:
+      case DRM_FORMAT_ABGR16161616F:
+      case DRM_FORMAT_XBGR16161616F:
+        return true;
+      default:
+        return false;
+    }
+  };
+  if (QueryDmaBufModifiers == nullptr || modifier == DRM_FORMAT_MOD_INVALID) {
+    return !is_rgb();
+  }
+
+  std::scoped_lock lock(external_only_mutex_);
+  auto key = std::make_pair(format, modifier);
+  auto it = external_only_.find(key);
+  if (it != external_only_.end()) {
+    return it->second;
+  }
+
+  bool external_only = !is_rgb();
+  EGLint count = 0;
+  if (QueryDmaBufModifiers(display_, static_cast<EGLint>(format), 0, nullptr,
+                           nullptr, &count) &&
+      count > 0) {
+    std::vector<EGLuint64KHR> modifiers(count);
+    std::vector<EGLBoolean> external(count);
+    if (QueryDmaBufModifiers(display_, static_cast<EGLint>(format), count,
+                             modifiers.data(), external.data(), &count)) {
+      for (EGLint i = 0; i < count; i++) {
+        if (modifiers[i] == modifier) {
+          external_only = external[i] == EGL_TRUE;
+          break;
+        }
+      }
+    }
+  }
+  external_only_[key] = external_only;
+  return external_only;
 }
 
 void GpuDevice::InitializeExplicitSync(const char* extensions) {

@@ -256,6 +256,133 @@ FLUTTER_EXPORT void flutter_linux_engine_remove_fd_watch(
     FlutterLinuxEngine* engine,
     uint64_t watch_id);
 
+// External textures show content from plugins (e.g. video or a camera) in a
+// Texture widget. The texture ID is passed to the widget.
+//
+// A texture's callback is called on the raster thread when the framework
+// draws the texture after flutter_linux_engine_mark_texture_frame_available
+// has been called. The frame it returns is used until the next time it is
+// called.
+
+// A frame of pixels in CPU memory, copied to the GPU when drawn.
+typedef struct {
+  // The size of this struct. Must be sizeof(FlutterLinuxPixelBuffer).
+  size_t struct_size;
+  // Premultiplied RGBA pixels, 8 bits per channel.
+  const uint8_t* buffer;
+  size_t width;
+  size_t height;
+  // The number of bytes from the start of one row to the next, or zero if
+  // rows are tightly packed.
+  size_t row_bytes;
+  // Called, from any thread, once |buffer| has been copied. May be NULL.
+  FlutterLinuxCallback release_callback;
+  void* release_user_data;
+} FlutterLinuxPixelBuffer;
+
+// Called to get the latest frame for display at |width|x|height| physical
+// pixels. Returns NULL if there is no frame. The returned struct only needs
+// to remain valid until the callback returns.
+typedef const FlutterLinuxPixelBuffer* (*FlutterLinuxPixelBufferCallback)(
+    size_t width,
+    size_t height,
+    void* user_data);
+
+// The conversion from YUV to RGB.
+typedef enum {
+  // Chosen by the driver.
+  FLUTTER_LINUX_YUV_COLOR_SPACE_DEFAULT,
+  FLUTTER_LINUX_YUV_COLOR_SPACE_BT601,
+  FLUTTER_LINUX_YUV_COLOR_SPACE_BT709,
+  FLUTTER_LINUX_YUV_COLOR_SPACE_BT2020,
+} FlutterLinuxYuvColorSpace;
+
+// The range of YUV values.
+typedef enum {
+  // Chosen by the driver.
+  FLUTTER_LINUX_YUV_RANGE_DEFAULT,
+  // Y from 16-235, UV from 16-240 (for 8 bit values).
+  FLUTTER_LINUX_YUV_RANGE_NARROW,
+  FLUTTER_LINUX_YUV_RANGE_FULL,
+} FlutterLinuxYuvRange;
+
+#define FLUTTER_LINUX_DMABUF_MAX_PLANES 4
+
+typedef struct {
+  // A dmabuf file descriptor. It is not closed or kept by the engine.
+  int fd;
+  uint32_t offset;
+  uint32_t stride;
+} FlutterLinuxDmabufPlane;
+
+// A frame in a GPU buffer, shown without being copied. Any format and
+// modifier the GPU can sample can be used, including YUV formats such as
+// NV12.
+typedef struct {
+  // The size of this struct. Must be sizeof(FlutterLinuxDmabuf).
+  size_t struct_size;
+  uint32_t width;
+  uint32_t height;
+  // The DRM fourcc format, e.g. DRM_FORMAT_ARGB8888 or DRM_FORMAT_NV12.
+  uint32_t format;
+  // The DRM format modifier, or DRM_FORMAT_MOD_INVALID if the layout is
+  // implied by the driver.
+  uint64_t modifier;
+  uint32_t n_planes;
+  FlutterLinuxDmabufPlane planes[FLUTTER_LINUX_DMABUF_MAX_PLANES];
+  // Used for YUV formats.
+  FlutterLinuxYuvColorSpace color_space;
+  FlutterLinuxYuvRange range;
+  // Called, from any thread, once the engine has stopped using the buffer
+  // and it can be reused. This may be after the texture is unregistered.
+  // The buffer must be finished rendering when it is returned, as no fences
+  // are waited for. May be NULL.
+  FlutterLinuxCallback release_callback;
+  void* release_user_data;
+} FlutterLinuxDmabuf;
+
+// Called to get the latest frame for display at |width|x|height| physical
+// pixels. Returns NULL if there is no frame. The returned struct only needs
+// to remain valid until the callback returns.
+typedef const FlutterLinuxDmabuf* (
+    *FlutterLinuxDmabufCallback)(size_t width, size_t height, void* user_data);
+
+// Registers a texture that copies frames from CPU memory. |destroy|, which
+// may be NULL, is called on the platform thread when the texture is
+// unregistered or the engine is freed. Returns the texture ID, or -1 on
+// failure.
+FLUTTER_EXPORT int64_t flutter_linux_engine_register_pixel_buffer_texture(
+    FlutterLinuxEngine* engine,
+    FlutterLinuxPixelBufferCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data);
+
+// Registers a texture that shows frames from dmabufs. |destroy|, which may be
+// NULL, is called on the platform thread when the texture is unregistered or
+// the engine is freed. Returns the texture ID, or -1 on failure.
+FLUTTER_EXPORT int64_t flutter_linux_engine_register_dmabuf_texture(
+    FlutterLinuxEngine* engine,
+    FlutterLinuxDmabufCallback callback,
+    FlutterLinuxCallback destroy,
+    void* user_data);
+
+// Tells the engine the texture with |texture_id| has a new frame, so its
+// callback will be called the next time it is drawn. May be called from any
+// thread while the engine exists. Returns false if there is no such texture.
+FLUTTER_EXPORT bool flutter_linux_engine_mark_texture_frame_available(
+    FlutterLinuxEngine* engine,
+    int64_t texture_id);
+
+// Unregisters the texture with |texture_id|. Its callback may be called on
+// the raster thread until |done|, which may be NULL, is called on the
+// platform thread. The texture's |destroy| is called just before |done|.
+// Both may be called after the engine is freed.
+FLUTTER_EXPORT void flutter_linux_engine_unregister_texture(
+    FlutterLinuxEngine* engine,
+    int64_t texture_id,
+    FlutterLinuxCallback done,
+    void* user_data);
+
 // The surface the view's Flutter content is shown in. Its origin is the
 // origin of the view's content, and it is the root of the window's surface
 // tree, so it can be used to identify the window (e.g. with xdg-foreign).
