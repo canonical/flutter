@@ -31,6 +31,8 @@
 #include "flutter/shell/platform/linux/protocols/xdg-dialog-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-output-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/xdg-system-bell-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland_clipboard.h"
 #include "flutter/shell/platform/linux/wayland_output.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
 
@@ -92,9 +94,14 @@ class WaylandDisplay : public EventLoop::Source {
   zxdg_decoration_manager_v1* decoration_manager() const {
     return decoration_manager_;
   }
+  xdg_system_bell_v1* system_bell() const { return system_bell_; }
 
   // The first seat the compositor advertised, or nullptr if it has none.
   WaylandSeat* seat() const { return seat_.get(); }
+
+  // The clipboard of the seat, or nullptr if the compositor doesn't support
+  // one.
+  WaylandClipboard* clipboard() const { return clipboard_.get(); }
 
   // The outputs connected to the compositor, by ID. Outputs that are not
   // ready have not had their properties received yet.
@@ -224,6 +231,8 @@ class WaylandDisplay : public EventLoop::Source {
   zwp_text_input_manager_v3* text_input_manager_ = nullptr;
   zwp_pointer_gestures_v1* pointer_gestures_ = nullptr;
   std::unique_ptr<WaylandSeat> seat_;
+  wl_data_device_manager* data_device_manager_ = nullptr;
+  std::unique_ptr<WaylandClipboard> clipboard_;
   zwp_linux_dmabuf_v1* dmabuf_ = nullptr;
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;
@@ -235,6 +244,7 @@ class WaylandDisplay : public EventLoop::Source {
   xdg_wm_dialog_v1* wm_dialog_ = nullptr;
   xdg_activation_v1* activation_ = nullptr;
   zxdg_decoration_manager_v1* decoration_manager_ = nullptr;
+  xdg_system_bell_v1* system_bell_ = nullptr;
   zxdg_output_manager_v1* xdg_output_manager_ = nullptr;
   std::map<uint32_t, std::unique_ptr<WaylandOutput>> outputs_;
   std::vector<OutputObserver*> output_observers_;

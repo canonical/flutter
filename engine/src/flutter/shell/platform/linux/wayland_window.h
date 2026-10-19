@@ -179,6 +179,10 @@ class WaylandWindow : public WindowDecoration::Delegate,
   bool maximized() const { return maximized_; }
   bool fullscreen() const { return fullscreen_; }
   bool activated() const { return activated_; }
+
+  // True if the compositor has stopped showing the window, for example when
+  // it is minimized or on another workspace.
+  bool suspended() const { return suspended_; }
   bool modal() const { return modal_; }
   bool resizable() const { return resizable_; }
   const std::string& title() const { return title_; }
@@ -545,6 +549,7 @@ class WaylandWindow : public WindowDecoration::Delegate,
   bool pending_fullscreen_ = false;
   bool pending_tiled_ = false;
   bool pending_activated_ = false;
+  bool pending_suspended_ = false;
   int pending_popup_x_ = 0;
   int pending_popup_y_ = 0;
 
@@ -552,6 +557,7 @@ class WaylandWindow : public WindowDecoration::Delegate,
   bool fullscreen_ = false;
   bool tiled_ = false;
   bool activated_ = false;
+  bool suspended_ = false;
   bool can_minimize_ = true;
   bool can_maximize_ = true;
   bool resizable_ = true;

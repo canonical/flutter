@@ -29,8 +29,9 @@ from their source, not run.
   for GTK. The engine library is a similar size; the new one is 0.2 MB larger
   because it includes AT-SPI/D-Bus and title text layout.
 - **Features.** The new embedder leads on Wayland presentation, input, multiple
-  windows and accessibility. It is still missing several platform channels the
-  old one has: clipboard, settings, lifecycle, locales and system sounds.
+  windows and accessibility. It now matches the old one's platform channels
+  (clipboard, settings, lifecycle, locales and the system bell), but has no
+  GSettings fallback for settings.
 - **Sony.** Sony is a portable kiosk/embedded embedder: Wayland, X11 and DRM, chosen
   at compile time. On desktop Wayland it is clearly behind both of ours. It
   renders through `wl_egl_window`/`eglSwapBuffers`, has no fractional scaling, no
@@ -245,11 +246,11 @@ In the excluded screen-off run:
 
 | Feature | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---|---|---|---|---|
-| Clipboard | ✅ | ❌ | ✅ `wl_data_device` | ❌ TODO | ❌ stub |
-| `flutter/platform`: exit, `SystemNavigator.pop`, sounds | ✅ | ❌ | ⚠️ exit and clipboard | ✅ | ⚠️ |
-| `flutter/settings` (dark mode, text scale, 24-hour time) | ✅ portal and GSettings | ❌ | ⚠️ hard-coded light theme | ⚠️ from config | ⚠️ |
-| Lifecycle | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Locales | ✅ | ❌ | ❌ | ✅ | ✅ |
+| Clipboard | ✅ | ✅ `wl_data_device` | ✅ `wl_data_device` | ❌ TODO | ❌ stub |
+| `flutter/platform`: exit, `SystemNavigator.pop`, sounds | ✅ | ✅ bell through `xdg-system-bell`; exit code ignored | ⚠️ exit and clipboard | ✅ | ⚠️ |
+| `flutter/settings` (dark mode, text scale, 24-hour time) | ✅ portal and GSettings | ⚠️ portal only, plus high contrast and reduced motion | ⚠️ hard-coded light theme | ⚠️ from config | ⚠️ |
+| Lifecycle | ✅ | ✅ from activated/suspended state | ✅ | ✅ | ✅ |
+| Locales | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Accessibility | ✅ ATK (through GTK's AT-SPI bridge) | ✅ AT-SPI directly over its own D-Bus code, with actions, text, values, selection, relations and dialogs | ❌ | ⚠️ AccessKit to AT-SPI, optional; not fetched by the build | ❌ channel only |
 
 ### API and maintenance
@@ -369,18 +370,16 @@ These are from source analysis of `/tmp/flutterpi`.
 
 These are ordered by how much they affect apps:
 
-1. **`flutter/platform`**: clipboard (`wl_data_device`), exit and
-   `requestAppExit`, `SystemNavigator.pop`, sounds.
-2. **`flutter/settings`**: dark mode, text scale, 24-hour time, accent colour,
-   from the XDG settings portal over the existing D-Bus code.
-3. **Lifecycle and locales.**
-4. **Platform view follow-ups**: keyboard focus, a texture fallback for
+1. **Platform channel follow-ups**: the `System.exitApplication` exit code is
+   ignored, there is no GSettings fallback when the settings portal is missing,
+   and no accent colour.
+2. **Platform view follow-ups**: keyboard focus, a texture fallback for
    rotations and rounded clips (currently approximated by their bounding box),
    plugin access to a raw `wl_surface`, acquire fences for plugin buffers.
-5. **Drag and drop, primary selection, high-resolution scrolling
+3. **Drag and drop, primary selection, high-resolution scrolling
    (`axis_value120`, `wl_seat` v8+), tablet input.**
-6. **Vulkan / Impeller-Vulkan.**
-7. **Optional:** a DRM/KMS backend for embedded devices, which is the niche of
+4. **Vulkan / Impeller-Vulkan.**
+5. **Optional:** a DRM/KMS backend for embedded devices, which is the niche of
    Sony, ivi-homescreen and flutter-pi. flutter-pi's plane-based design is the
    best reference.
 

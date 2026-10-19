@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/common/app_lifecycle_state.h"
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
@@ -21,6 +22,7 @@
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/keyboard_manager.h"
 #include "flutter/shell/platform/linux/mouse_cursor_plugin.h"
+#include "flutter/shell/platform/linux/platform_handler.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
 #include "flutter/shell/platform/linux/platform_view_manager.h"
 #include "flutter/shell/platform/linux/plugin_messenger.h"
@@ -41,6 +43,7 @@ constexpr FlutterViewId kImplicitViewId = 0;
 // thread. Multiple engines may share an application.
 class FlutterLinuxEngine : public PlatformMessenger,
                            public AtspiApplication::Observer,
+                           public DesktopSettings::Observer,
                            public WaylandDisplay::OutputObserver,
                            public TextureRegistrar::Delegate {
  public:
@@ -163,6 +166,13 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |WaylandDisplay::OutputObserver|
   void OnOutputsChanged() override;
 
+  // |DesktopSettings::Observer|
+  void OnDesktopSettingsChanged() override;
+
+  // Tells the framework if the application is focused, visible or hidden,
+  // if that has changed since it was last told.
+  void UpdateLifecycleState();
+
   // The textures plugins have registered.
   TextureRegistrar* texture_registrar() { return texture_registrar_.get(); }
 
@@ -227,6 +237,15 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // Applies changes to a view's semantics tree.
   void OnSemanticsUpdate(const FlutterSemanticsUpdate2* update);
 
+  // Sends the user's preferences to the framework.
+  void SendSettings();
+
+  // Sends the user's preferred locales to the framework.
+  void SendLocales();
+
+  // Plays the alert sound.
+  void RingBell();
+
   // Handles a message on the flutter/accessibility channel.
   void HandleAccessibilityMessage(const uint8_t* data, size_t size);
 
@@ -256,6 +275,10 @@ class FlutterLinuxEngine : public PlatformMessenger,
 
   std::unique_ptr<KeyboardManager> keyboard_manager_;
   std::unique_ptr<MouseCursorPlugin> mouse_cursor_plugin_;
+  std::unique_ptr<PlatformHandler> platform_handler_;
+
+  // The lifecycle state last sent to the framework.
+  std::optional<AppLifecycleState> lifecycle_state_;
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;

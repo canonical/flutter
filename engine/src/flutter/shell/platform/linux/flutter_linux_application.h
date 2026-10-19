@@ -10,6 +10,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/atspi_application.h"
+#include "flutter/shell/platform/linux/desktop_settings.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
@@ -38,6 +39,9 @@ class FlutterLinuxApplication {
 
   // Exposes the application to assistive technologies.
   AtspiApplication* atspi() const { return atspi_.get(); }
+
+  // The user's desktop preferences.
+  DesktopSettings* settings() const { return settings_.get(); }
 
   // Draws window decorations, created on first use. Returns nullptr if
   // decorations can't be drawn. Must be called on the platform thread.
@@ -73,6 +77,7 @@ class FlutterLinuxApplication {
   std::unique_ptr<WaylandDisplay> display_;
   std::unique_ptr<GpuDevice> gpu_;
   std::unique_ptr<AtspiApplication> atspi_;
+  std::unique_ptr<DesktopSettings> settings_;
   std::unique_ptr<DecorationRenderer> decoration_renderer_;
   bool decoration_renderer_created_ = false;
   size_t view_count_ = 0;

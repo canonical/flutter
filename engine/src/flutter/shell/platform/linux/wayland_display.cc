@@ -48,6 +48,8 @@ constexpr uint32_t kMaxDecorationManagerVersion = 1;
 constexpr uint32_t kMaxActivationVersion = 1;
 constexpr uint32_t kMaxOutputVersion = 4;
 constexpr uint32_t kMaxXdgOutputManagerVersion = 3;
+constexpr uint32_t kMaxDataDeviceManagerVersion = 3;
+constexpr uint32_t kMaxSystemBellVersion = 1;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
@@ -150,7 +152,14 @@ WaylandDisplay::~WaylandDisplay() {
   if (dmabuf_ != nullptr) {
     zwp_linux_dmabuf_v1_destroy(dmabuf_);
   }
+  clipboard_.reset();
+  if (data_device_manager_ != nullptr) {
+    wl_data_device_manager_destroy(data_device_manager_);
+  }
   seat_.reset();
+  if (system_bell_ != nullptr) {
+    xdg_system_bell_v1_destroy(system_bell_);
+  }
   if (activation_ != nullptr) {
     xdg_activation_v1_destroy(activation_);
   }
@@ -217,6 +226,10 @@ bool WaylandDisplay::Initialize() {
     seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_,
                                           text_input_manager_,
                                           pointer_gestures_, event_loop_);
+    if (data_device_manager_ != nullptr) {
+      clipboard_ = std::make_unique<WaylandClipboard>(data_device_manager_,
+                                                      seat_.get(), event_loop_);
+    }
   }
 
   // A second roundtrip receives the buffer formats and the properties of
@@ -457,6 +470,14 @@ void WaylandDisplay::RegistryGlobal(void* data,
     self->activation_ = Bind<xdg_activation_v1>(
         &self->protocols_, registry, name, &xdg_activation_v1_interface,
         version, kMaxActivationVersion);
+  } else if (strcmp(interface, wl_data_device_manager_interface.name) == 0) {
+    self->data_device_manager_ = Bind<wl_data_device_manager>(
+        &self->protocols_, registry, name, &wl_data_device_manager_interface,
+        version, kMaxDataDeviceManagerVersion);
+  } else if (strcmp(interface, xdg_system_bell_v1_interface.name) == 0) {
+    self->system_bell_ = Bind<xdg_system_bell_v1>(
+        &self->protocols_, registry, name, &xdg_system_bell_v1_interface,
+        version, kMaxSystemBellVersion);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     self->AddOutput(name, version);
   } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {

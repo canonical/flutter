@@ -1189,12 +1189,14 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
 
   bool state_changed = self->maximized_ != self->pending_maximized_ ||
                        self->fullscreen_ != self->pending_fullscreen_ ||
-                       self->activated_ != self->pending_activated_;
+                       self->activated_ != self->pending_activated_ ||
+                       self->suspended_ != self->pending_suspended_;
   bool fullscreen_changed = self->fullscreen_ != self->pending_fullscreen_;
   self->maximized_ = self->pending_maximized_;
   self->fullscreen_ = self->pending_fullscreen_;
   self->tiled_ = self->pending_tiled_;
   self->activated_ = self->pending_activated_;
+  self->suspended_ = self->pending_suspended_;
   bool floating = !self->maximized_ && !self->fullscreen_ && !self->tiled_;
 
   // The configured size is the window geometry, which includes the title
@@ -1247,6 +1249,7 @@ void WaylandWindow::ToplevelConfigure(void* data,
   self->pending_fullscreen_ = false;
   self->pending_tiled_ = false;
   self->pending_activated_ = false;
+  self->pending_suspended_ = false;
   ForEachUint32(states, [self](uint32_t state) {
     switch (state) {
       case XDG_TOPLEVEL_STATE_MAXIMIZED:
@@ -1257,6 +1260,9 @@ void WaylandWindow::ToplevelConfigure(void* data,
         break;
       case XDG_TOPLEVEL_STATE_ACTIVATED:
         self->pending_activated_ = true;
+        break;
+      case XDG_TOPLEVEL_STATE_SUSPENDED:
+        self->pending_suspended_ = true;
         break;
       case XDG_TOPLEVEL_STATE_TILED_LEFT:
       case XDG_TOPLEVEL_STATE_TILED_RIGHT:

@@ -20,6 +20,7 @@ std::unique_ptr<FlutterLinuxApplication> FlutterLinuxApplication::Create() {
 
 FlutterLinuxApplication::~FlutterLinuxApplication() {
   decoration_renderer_.reset();
+  settings_.reset();
   atspi_.reset();
   gpu_.reset();
   if (display_) {
@@ -46,6 +47,9 @@ bool FlutterLinuxApplication::Initialize() {
 
   atspi_ = std::make_unique<AtspiApplication>(event_loop_.get());
   atspi_->Start();
+
+  settings_ = std::make_unique<DesktopSettings>(event_loop_.get());
+  settings_->Start();
   return true;
 }
 

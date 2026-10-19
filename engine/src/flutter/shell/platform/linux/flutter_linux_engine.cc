@@ -14,7 +14,9 @@
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_message_codec.h"
 #include "flutter/shell/platform/common/engine_switches.h"
+#include "flutter/shell/platform/common/json_message_codec.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
+#include "flutter/shell/platform/linux/locale.h"
 #include "flutter/shell/platform/linux/window_manager.h"
 
 namespace flutter {
@@ -83,12 +85,16 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
       });
   mouse_cursor_plugin_ = std::make_unique<MouseCursorPlugin>(
       this, [this](uint32_t shape) { OnCursorChanged(shape); });
+  platform_handler_ = std::make_unique<PlatformHandler>(
+      this, application_->display()->clipboard(),
+      [this]() { application_->Quit(); }, [this]() { RingBell(); });
   plugin_messenger_ = new PluginMessenger(this, application_->event_loop());
   plugin_event_loop_ =
       std::make_unique<ScopedEventLoop>(application_->event_loop());
   window_manager_ = std::make_unique<WindowManager>(this);
 
   application_->atspi()->AddObserver(this);
+  application_->settings()->AddObserver(this);
   application_->display()->AddOutputObserver(this);
   SetMessageHandler(
       "flutter/accessibility",
@@ -109,6 +115,7 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
     Engines().erase(this);
   }
   application_->atspi()->RemoveObserver(this);
+  application_->settings()->RemoveObserver(this);
   application_->display()->RemoveOutputObserver(this);
 
   window_manager_.reset();
@@ -126,6 +133,7 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
   texture_registrar_.reset();
   platform_view_manager_.reset();
 
+  platform_handler_.reset();
   mouse_cursor_plugin_.reset();
   keyboard_manager_.reset();
 
@@ -295,6 +303,9 @@ bool FlutterLinuxEngine::Run() {
 
   texture_registrar_->OnEngineStarted();
 
+  SendSettings();
+  SendLocales();
+
   // Views refer to the displays, so they must be known first.
   SendDisplays();
   for (const auto& [view_id, view] : views_) {
@@ -308,6 +319,9 @@ bool FlutterLinuxEngine::Run() {
   if (application_->atspi()->enabled()) {
     embedder_api_.UpdateSemanticsEnabled(engine_, true);
   }
+
+  lifecycle_state_.reset();
+  UpdateLifecycleState();
 
   return true;
 }
@@ -359,6 +373,7 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::AddView(
   views_[view->view_id()] = view.get();
   compositor_->AddView(view->view_id(), view.get());
   application_->OnViewAdded();
+  UpdateLifecycleState();
 
   if (running()) {
     if (view->view_id() == kImplicitViewId) {
@@ -449,6 +464,7 @@ void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
   }
   views_.erase(view->view_id());
   application_->OnViewRemoved();
+  UpdateLifecycleState();
 
   // The removed view may have been the reason drawing was throttled.
   OnFrameDone();
@@ -463,10 +479,118 @@ void FlutterLinuxEngine::SendWindowMetrics(
 }
 
 void FlutterLinuxEngine::OnViewClose(FlutterLinuxView* view) {
-  // Closing the implicit view ends the application.
+  // Closing the implicit view ends the application, unless the framework
+  // cancels it.
   if (view->view_id() == kImplicitViewId) {
-    application_->Quit();
+    platform_handler_->RequestAppExit();
   }
+}
+
+void FlutterLinuxEngine::OnDesktopSettingsChanged() {
+  SendSettings();
+}
+
+void FlutterLinuxEngine::SendSettings() {
+  if (!running()) {
+    return;
+  }
+  const DesktopSettings* settings = application_->settings();
+
+  rapidjson::Document message(rapidjson::kObjectType);
+  auto& allocator = message.GetAllocator();
+  message.AddMember("textScaleFactor", settings->text_scaling_factor(),
+                    allocator);
+  message.AddMember("alwaysUse24HourFormat", settings->use_24_hour_clock(),
+                    allocator);
+  message.AddMember("platformBrightness",
+                    rapidjson::StringRef(settings->dark() ? "dark" : "light"),
+                    allocator);
+  SendMessage("flutter/settings",
+              *JsonMessageCodec::GetInstance().EncodeMessage(message), nullptr);
+
+  int32_t features = 0;
+  if (settings->reduce_motion()) {
+    features |= kFlutterAccessibilityFeatureDisableAnimations;
+  }
+  if (settings->high_contrast()) {
+    features |= kFlutterAccessibilityFeatureHighContrast;
+  }
+  embedder_api_.UpdateAccessibilityFeatures(
+      engine_, static_cast<FlutterAccessibilityFeature>(features));
+}
+
+void FlutterLinuxEngine::SendLocales() {
+  if (!running()) {
+    return;
+  }
+  std::vector<Locale> locales = GetPreferredLocales();
+  if (locales.empty()) {
+    return;
+  }
+  std::vector<FlutterLocale> flutter_locales(locales.size());
+  std::vector<const FlutterLocale*> pointers;
+  for (size_t i = 0; i < locales.size(); i++) {
+    FlutterLocale& locale = flutter_locales[i];
+    locale.struct_size = sizeof(FlutterLocale);
+    locale.language_code = locales[i].language.c_str();
+    locale.country_code =
+        locales[i].country.empty() ? nullptr : locales[i].country.c_str();
+    locale.script_code =
+        locales[i].script.empty() ? nullptr : locales[i].script.c_str();
+    pointers.push_back(&locale);
+  }
+  if (embedder_api_.UpdateLocales(engine_, pointers.data(), pointers.size()) !=
+      kSuccess) {
+    FML_LOG(ERROR) << "Failed to set locales";
+  }
+}
+
+void FlutterLinuxEngine::UpdateLifecycleState() {
+  if (!running()) {
+    return;
+  }
+  // Resumed if any window has focus, inactive if any is shown, otherwise
+  // hidden.
+  AppLifecycleState state = AppLifecycleState::kHidden;
+  for (const auto& [view_id, view] : views_) {
+    const WaylandWindow* window = view->window();
+    if (window == nullptr) {
+      continue;
+    }
+    if (window->activated()) {
+      state = AppLifecycleState::kResumed;
+      break;
+    }
+    if (!window->suspended()) {
+      state = AppLifecycleState::kInactive;
+    }
+  }
+  if (lifecycle_state_ == state) {
+    return;
+  }
+  lifecycle_state_ = state;
+  std::string_view name = AppLifecycleStateToString(state);
+  SendMessage("flutter/lifecycle",
+              std::vector<uint8_t>(name.begin(), name.end()), nullptr);
+}
+
+void FlutterLinuxEngine::RingBell() {
+  xdg_system_bell_v1* bell = application_->display()->system_bell();
+  if (bell == nullptr) {
+    return;
+  }
+  wl_surface* surface = nullptr;
+  WaylandSeat* seat = application_->display()->seat();
+  if (seat != nullptr) {
+    for (const auto& [view_id, view] : views_) {
+      if (view->window() != nullptr &&
+          view->window()->surface() == seat->keyboard_focus()) {
+        surface = seat->keyboard_focus();
+        break;
+      }
+    }
+  }
+  xdg_system_bell_v1_ring(bell, surface);
 }
 
 void FlutterLinuxEngine::OnFramePresented(uint64_t presentation_time_ns,

@@ -169,6 +169,7 @@ void FlutterLinuxView::OnWindowConfigure() {
     return;
   }
   SendWindowMetrics();
+  engine_->UpdateLifecycleState();
   if (state_callback_) {
     state_callback_();
   }
@@ -184,6 +185,7 @@ void FlutterLinuxView::OnWindowStateChanged() {
   if (accessible_) {
     accessible_->OnWindowStateChanged();
   }
+  engine_->UpdateLifecycleState();
   if (state_callback_) {
     state_callback_();
   }

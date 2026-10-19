@@ -71,6 +71,7 @@ _wayland_protocols = [
   "protocols/xdg-dialog-v1.xml",
   "protocols/xdg-output-unstable-v1.xml",
   "protocols/xdg-shell.xml",
+  "protocols/xdg-system-bell-v1.xml",
 ]
 
 action_foreach("wayland_protocols_generate") {
@@ -178,6 +179,7 @@ source_set("flutter_linux_sources") {
     "dbus_connection.cc",
     "dbus_message.cc",
     "decoration_renderer.cc",
+    "desktop_settings.cc",
     "dmabuf_buffer.cc",
     "drm_timeline.cc",
     "egl_manager.cc",
@@ -193,7 +195,9 @@ source_set("flutter_linux_sources") {
     "key_mapping.h",
     "keyboard_manager.cc",
     "linux_platform_view.cc",
+    "locale.cc",
     "mouse_cursor_plugin.cc",
+    "platform_handler.cc",
     "platform_view_geometry.cc",
     "platform_view_manager.cc",
     "plugin_messenger.cc",
@@ -205,6 +209,7 @@ source_set("flutter_linux_sources") {
     "texture_registrar.cc",
     "title_renderer.cc",
     "vsync_predictor.cc",
+    "wayland_clipboard.cc",
     "wayland_display.cc",
     "wayland_output.cc",
     "wayland_seat.cc",
@@ -231,6 +236,7 @@ source_set("flutter_linux_sources") {
   public_deps = [
     ":flutter_linux_headers",
     ":wayland_protocols",
+    "//flutter/shell/platform/common:common_cpp_enums",
     "//flutter/fml",
     "//flutter/shell/platform/embedder:embedder_headers",
   ]
@@ -293,13 +299,16 @@ executable("flutter_linux_unittests") {
     "atspi_text_unittests.cc",
     "dbus_connection_unittests.cc",
     "dbus_message_unittests.cc",
+    "desktop_settings_unittests.cc",
     "event_loop_unittests.cc",
     "fake_dbus_bus.h",
     "fake_platform_messenger.h",
     "flutter_linux_unittests.cc",
     "key_event_converter_unittests.cc",
     "keyboard_manager_unittests.cc",
+    "locale_unittests.cc",
     "mouse_cursor_plugin_unittests.cc",
+    "platform_handler_unittests.cc",
     "platform_view_geometry_unittests.cc",
     "platform_view_manager_unittests.cc",
     "plugin_messenger_unittests.cc",
