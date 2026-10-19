@@ -3,6 +3,7 @@
 # Copyright 2013 The Flutter Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """Generates Wayland client protocol bindings from a protocol XML file.
 
 This produces the same API as `wayland-scanner client-header` and
@@ -107,8 +108,9 @@ class Enum:
 
   def __init__(self, element):
     self.name = element.get('name')
-    self.entries = [(e.get('name'), e.get('value'), int(e.get('since', '1')))
-                    for e in element.findall('entry')]
+    self.entries = [
+        (e.get('name'), e.get('value'), int(e.get('since', '1'))) for e in element.findall('entry')
+    ]
 
 
 class Interface:

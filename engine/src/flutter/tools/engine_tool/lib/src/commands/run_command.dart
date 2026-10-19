@@ -324,9 +324,8 @@ final class RunTarget {
         [Label.parseGn('//flutter/shell/platform/darwin/macos:flutter_framework')],
 
       // Desktop (Linux).
-      TargetPlatform.linuxX64 || TargetPlatform.linuxArm64 => [
-        Label.parseGn('//flutter/shell/platform/linux:flutter_linux'),
-      ],
+      TargetPlatform.linuxX64 ||
+      TargetPlatform.linuxArm64 => [Label.parseGn('//flutter/shell/platform/linux:flutter_linux')],
 
       // Desktop (Windows).
       TargetPlatform.windowsX64 ||
