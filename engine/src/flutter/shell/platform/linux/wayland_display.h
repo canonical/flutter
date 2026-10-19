@@ -21,6 +21,7 @@
 #include "flutter/shell/platform/linux/protocols/fractional-scale-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/linux-drm-syncobj-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/pointer-gestures-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
@@ -187,6 +188,7 @@ class WaylandDisplay : public EventLoop::Source {
   wl_seat* wl_seat_ = nullptr;
   wp_cursor_shape_manager_v1* cursor_shape_manager_ = nullptr;
   zwp_text_input_manager_v3* text_input_manager_ = nullptr;
+  zwp_pointer_gestures_v1* pointer_gestures_ = nullptr;
   std::unique_ptr<WaylandSeat> seat_;
   zwp_linux_dmabuf_v1* dmabuf_ = nullptr;
   wp_viewporter* viewporter_ = nullptr;

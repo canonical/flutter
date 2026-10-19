@@ -18,8 +18,8 @@ namespace flutter {
 // Converts Wayland input events on a view into Flutter pointer events.
 //
 // Mouse buttons and motion are sent as mouse events, wheel scrolling as
-// scroll signals, touchpad scrolling as pan/zoom gestures and each touch
-// point as a separate touch device.
+// scroll signals, touchpad scrolling and pinching as pan/zoom gestures and
+// each touch point as a separate touch device.
 class PointerEventConverter : public InputHandler {
  public:
   class Delegate {
@@ -56,6 +56,13 @@ class PointerEventConverter : public InputHandler {
   void OnTouchMotion(uint64_t time, int32_t id, double x, double y) override;
   void OnTouchCancel() override;
   void OnTouchFrame() override;
+  void OnPinchBegin(uint64_t time) override;
+  void OnPinchUpdate(uint64_t time,
+                     double dx,
+                     double dy,
+                     double scale,
+                     double rotation) override;
+  void OnPinchEnd(uint64_t time, bool cancelled) override;
 
  private:
   // Returns an event for the view at a position in logical pixels.
@@ -89,10 +96,18 @@ class PointerEventConverter : public InputHandler {
   double pointer_y_ = 0;
   int64_t buttons_ = 0;
 
-  // The pan from a touchpad scroll in progress, in physical pixels.
+  // Starts a touchpad pan/zoom gesture, ending any in progress.
+  void StartPanZoom(uint64_t time, bool pinch);
+  void EndPanZoom(uint64_t time);
+
+  // The touchpad scroll or pinch in progress. The pan is in physical pixels
+  // and the rotation is clockwise in radians.
   bool pan_active_ = false;
+  bool pinch_active_ = false;
   double pan_x_ = 0;
   double pan_y_ = 0;
+  double scale_ = 1.0;
+  double rotation_ = 0;
 
   // Touch points in the view.
   struct TouchPoint {

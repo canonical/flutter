@@ -35,6 +35,7 @@ constexpr uint32_t kMaxSubcompositorVersion = 1;
 constexpr uint32_t kMaxSeatVersion = 5;
 constexpr uint32_t kMaxCursorShapeManagerVersion = 1;
 constexpr uint32_t kMaxTextInputManagerVersion = 1;
+constexpr uint32_t kMaxPointerGesturesVersion = 3;
 constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
@@ -152,6 +153,14 @@ WaylandDisplay::~WaylandDisplay() {
   if (text_input_manager_ != nullptr) {
     zwp_text_input_manager_v3_destroy(text_input_manager_);
   }
+  if (pointer_gestures_ != nullptr) {
+    if (zwp_pointer_gestures_v1_get_version(pointer_gestures_) >=
+        ZWP_POINTER_GESTURES_V1_RELEASE_SINCE_VERSION) {
+      zwp_pointer_gestures_v1_release(pointer_gestures_);
+    } else {
+      zwp_pointer_gestures_v1_destroy(pointer_gestures_);
+    }
+  }
   if (cursor_shape_manager_ != nullptr) {
     wp_cursor_shape_manager_v1_destroy(cursor_shape_manager_);
   }
@@ -196,7 +205,8 @@ bool WaylandDisplay::Initialize() {
   }
   if (wl_seat_ != nullptr) {
     seat_ = std::make_unique<WaylandSeat>(wl_seat_, cursor_shape_manager_,
-                                          text_input_manager_, event_loop_);
+                                          text_input_manager_,
+                                          pointer_gestures_, event_loop_);
   }
   if (dmabuf_ == nullptr) {
     return true;
@@ -331,6 +341,10 @@ void WaylandDisplay::RegistryGlobal(void* data,
         &self->protocols_, registry, name,
         &wp_cursor_shape_manager_v1_interface, version,
         kMaxCursorShapeManagerVersion);
+  } else if (strcmp(interface, zwp_pointer_gestures_v1_interface.name) == 0) {
+    self->pointer_gestures_ = Bind<zwp_pointer_gestures_v1>(
+        &self->protocols_, registry, name, &zwp_pointer_gestures_v1_interface,
+        version, kMaxPointerGesturesVersion);
   } else if (strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
     self->text_input_manager_ = Bind<zwp_text_input_manager_v3>(
         &self->protocols_, registry, name, &zwp_text_input_manager_v3_interface,

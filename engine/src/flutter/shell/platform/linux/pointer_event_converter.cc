@@ -6,6 +6,7 @@
 
 #include <linux/input-event-codes.h>
 
+#include <cmath>
 #include <ctime>
 
 namespace flutter {
@@ -83,8 +84,29 @@ void PointerEventConverter::SendPanZoomEvent(FlutterPointerPhase phase,
   event.device_kind = kFlutterPointerDeviceKindTrackpad;
   event.pan_x = pan_x_;
   event.pan_y = pan_y_;
-  event.scale = 1.0;
+  event.scale = scale_;
+  event.rotation = rotation_;
   delegate_->SendPointerEvents(&event, 1);
+}
+
+void PointerEventConverter::StartPanZoom(uint64_t time, bool pinch) {
+  EndPanZoom(time);
+  pan_active_ = true;
+  pinch_active_ = pinch;
+  pan_x_ = 0;
+  pan_y_ = 0;
+  scale_ = 1.0;
+  rotation_ = 0;
+  SendPanZoomEvent(kPanZoomStart, time);
+}
+
+void PointerEventConverter::EndPanZoom(uint64_t time) {
+  if (!pan_active_) {
+    return;
+  }
+  pan_active_ = false;
+  pinch_active_ = false;
+  SendPanZoomEvent(kPanZoomEnd, time);
 }
 
 void PointerEventConverter::OnPointerEnter(uint64_t time, double x, double y) {
@@ -100,10 +122,7 @@ void PointerEventConverter::OnPointerLeave(uint64_t time) {
   if (!pointer_inside_) {
     return;
   }
-  if (pan_active_) {
-    pan_active_ = false;
-    SendPanZoomEvent(kPanZoomEnd, time);
-  }
+  EndPanZoom(time);
   // The engine cancels any press in progress.
   SendMouseEvent(kRemove, time);
   pointer_inside_ = false;
@@ -157,11 +176,12 @@ void PointerEventConverter::OnPointerScroll(uint64_t time,
   // Touchpads pan the content, which allows Flutter to fling it when the
   // fingers are lifted.
   if (scroll.source == WL_POINTER_AXIS_SOURCE_FINGER) {
+    // Pinches include their own motion.
+    if (pinch_active_) {
+      return;
+    }
     if (!pan_active_ && !scroll.stop) {
-      pan_active_ = true;
-      pan_x_ = 0;
-      pan_y_ = 0;
-      SendPanZoomEvent(kPanZoomStart, time);
+      StartPanZoom(time, false);
     }
     if (!pan_active_) {
       return;
@@ -172,8 +192,7 @@ void PointerEventConverter::OnPointerScroll(uint64_t time,
       SendPanZoomEvent(kPanZoomUpdate, time);
     }
     if (scroll.stop) {
-      pan_active_ = false;
-      SendPanZoomEvent(kPanZoomEnd, time);
+      EndPanZoom(time);
     }
     return;
   }
@@ -275,6 +294,35 @@ void PointerEventConverter::OnTouchCancel() {
 void PointerEventConverter::OnTouchFrame() {
   delegate_->SendPointerEvents(touch_events_.data(), touch_events_.size());
   touch_events_.clear();
+}
+
+void PointerEventConverter::OnPinchBegin(uint64_t time) {
+  if (!pointer_inside_) {
+    return;
+  }
+  StartPanZoom(time, true);
+}
+
+void PointerEventConverter::OnPinchUpdate(uint64_t time,
+                                          double dx,
+                                          double dy,
+                                          double scale,
+                                          double rotation) {
+  if (!pinch_active_) {
+    return;
+  }
+  double pixel_scale = delegate_->GetPointerScale();
+  pan_x_ += dx * pixel_scale;
+  pan_y_ += dy * pixel_scale;
+  scale_ = scale;
+  rotation_ += rotation * M_PI / 180.0;
+  SendPanZoomEvent(kPanZoomUpdate, time);
+}
+
+void PointerEventConverter::OnPinchEnd(uint64_t time, bool cancelled) {
+  if (pinch_active_) {
+    EndPanZoom(time);
+  }
 }
 
 }  // namespace flutter

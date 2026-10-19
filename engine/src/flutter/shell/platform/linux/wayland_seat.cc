@@ -73,6 +73,12 @@ const wl_pointer_listener WaylandSeat::kPointerListener = {
     .axis_discrete = PointerAxisDiscrete,
 };
 
+const zwp_pointer_gesture_pinch_v1_listener WaylandSeat::kPinchListener = {
+    .begin = PinchBegin,
+    .update = PinchUpdate,
+    .end = PinchEnd,
+};
+
 const wl_touch_listener WaylandSeat::kTouchListener = {
     .down = TouchDown,
     .up = TouchUp,
@@ -95,9 +101,11 @@ const wl_keyboard_listener WaylandSeat::kKeyboardListener = {
 WaylandSeat::WaylandSeat(wl_seat* seat,
                          wp_cursor_shape_manager_v1* cursor_shape_manager,
                          zwp_text_input_manager_v3* text_input_manager,
+                         zwp_pointer_gestures_v1* pointer_gestures,
                          EventLoop* event_loop)
     : seat_(seat),
       cursor_shape_manager_(cursor_shape_manager),
+      pointer_gestures_(pointer_gestures),
       event_loop_(event_loop) {
   wl_seat_add_listener(seat_, &kSeatListener, this);
   if (text_input_manager != nullptr) {
@@ -122,6 +130,9 @@ void WaylandSeat::SetInputHandler(wl_surface* surface, InputHandler* handler) {
   if (pointer_focus_ == surface) {
     pointer_focus_ = nullptr;
     has_scroll_ = false;
+  }
+  if (pinch_focus_ == surface) {
+    pinch_focus_ = nullptr;
   }
   for (auto it = touch_focus_.begin(); it != touch_focus_.end();) {
     it = it->second == surface ? touch_focus_.erase(it) : std::next(it);
@@ -262,6 +273,11 @@ void WaylandSeat::RepeatKey(uint64_t generation,
 }
 
 void WaylandSeat::ReleasePointer() {
+  if (pinch_ != nullptr) {
+    zwp_pointer_gesture_pinch_v1_destroy(pinch_);
+    pinch_ = nullptr;
+  }
+  pinch_focus_ = nullptr;
   if (cursor_shape_device_ != nullptr) {
     wp_cursor_shape_device_v1_destroy(cursor_shape_device_);
     cursor_shape_device_ = nullptr;
@@ -303,11 +319,22 @@ void WaylandSeat::SeatCapabilities(void* data,
   if (has_pointer && self->pointer_ == nullptr) {
     self->pointer_ = wl_seat_get_pointer(seat);
     wl_pointer_add_listener(self->pointer_, &kPointerListener, self);
+    if (self->pointer_gestures_ != nullptr) {
+      self->pinch_ = zwp_pointer_gestures_v1_get_pinch_gesture(
+          self->pointer_gestures_, self->pointer_);
+      zwp_pointer_gesture_pinch_v1_add_listener(self->pinch_, &kPinchListener,
+                                                self);
+    }
   } else if (!has_pointer && self->pointer_ != nullptr) {
     InputHandler* handler = self->HandlerFor(self->pointer_focus_);
+    InputHandler* pinch_handler = self->HandlerFor(self->pinch_focus_);
     self->ReleasePointer();
+    uint64_t now = MonotonicMillis() * 1000;
+    if (pinch_handler != nullptr) {
+      pinch_handler->OnPinchEnd(now, true);
+    }
     if (handler != nullptr) {
-      handler->OnPointerLeave(MonotonicMillis() * 1000);
+      handler->OnPointerLeave(now);
     }
   }
 
@@ -465,6 +492,49 @@ void WaylandSeat::PointerAxisDiscrete(void* data,
                                       wl_pointer* pointer,
                                       uint32_t axis,
                                       int32_t discrete) {}
+
+void WaylandSeat::PinchBegin(void* data,
+                             zwp_pointer_gesture_pinch_v1* pinch,
+                             uint32_t serial,
+                             uint32_t time,
+                             wl_surface* surface,
+                             uint32_t fingers) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  self->pinch_focus_ = surface;
+  InputHandler* handler = self->HandlerFor(surface);
+  if (handler != nullptr) {
+    handler->OnPinchBegin(EventTime(time));
+  }
+}
+
+void WaylandSeat::PinchUpdate(void* data,
+                              zwp_pointer_gesture_pinch_v1* pinch,
+                              uint32_t time,
+                              wl_fixed_t dx,
+                              wl_fixed_t dy,
+                              wl_fixed_t scale,
+                              wl_fixed_t rotation) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  InputHandler* handler = self->HandlerFor(self->pinch_focus_);
+  if (handler != nullptr) {
+    handler->OnPinchUpdate(EventTime(time), wl_fixed_to_double(dx),
+                           wl_fixed_to_double(dy), wl_fixed_to_double(scale),
+                           wl_fixed_to_double(rotation));
+  }
+}
+
+void WaylandSeat::PinchEnd(void* data,
+                           zwp_pointer_gesture_pinch_v1* pinch,
+                           uint32_t serial,
+                           uint32_t time,
+                           int32_t cancelled) {
+  auto* self = static_cast<WaylandSeat*>(data);
+  InputHandler* handler = self->HandlerFor(self->pinch_focus_);
+  self->pinch_focus_ = nullptr;
+  if (handler != nullptr) {
+    handler->OnPinchEnd(EventTime(time), cancelled != 0);
+  }
+}
 
 void WaylandSeat::TouchDown(void* data,
                             wl_touch* touch,

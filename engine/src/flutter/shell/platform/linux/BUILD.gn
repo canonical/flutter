@@ -59,6 +59,7 @@ _wayland_protocols = [
   "protocols/fractional-scale-v1.xml",
   "protocols/linux-dmabuf-v1.xml",
   "protocols/linux-drm-syncobj-v1.xml",
+  "protocols/pointer-gestures-unstable-v1.xml",
   "protocols/presentation-time.xml",
   "protocols/tablet-v2.xml",
   "protocols/text-input-unstable-v3.xml",

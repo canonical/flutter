@@ -16,6 +16,7 @@
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/key_event_converter.h"
 #include "flutter/shell/platform/linux/protocols/cursor-shape-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/pointer-gestures-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_text_input.h"
 #include "flutter/shell/platform/linux/xkb.h"
@@ -72,6 +73,18 @@ class InputHandler {
 
   // Called after a group of touch events that happened at the same time.
   virtual void OnTouchFrame() {}
+
+  // A touchpad pinch gesture at the pointer position. |dx| and |dy| are the
+  // motion of the fingers' center since the last update, |scale| is the
+  // distance between the fingers relative to the start and |rotation| is
+  // the clockwise rotation since the last update in degrees.
+  virtual void OnPinchBegin(uint64_t time) {}
+  virtual void OnPinchUpdate(uint64_t time,
+                             double dx,
+                             double dy,
+                             double scale,
+                             double rotation) {}
+  virtual void OnPinchEnd(uint64_t time, bool cancelled) {}
 };
 
 // Receives keyboard events for a surface. Called on the platform thread.
@@ -109,11 +122,13 @@ class WaylandSeat {
  public:
   // Takes ownership of |seat|. |cursor_shape_manager| may be nullptr, in
   // which case the cursor can't be changed. |text_input_manager| may be
-  // nullptr, in which case there is no input method. |event_loop| is used to
-  // repeat keys and must outlive the seat.
+  // nullptr, in which case there is no input method. |pointer_gestures| may
+  // be nullptr, in which case there are no touchpad gestures. |event_loop| is
+  // used to repeat keys and must outlive the seat.
   WaylandSeat(wl_seat* seat,
               wp_cursor_shape_manager_v1* cursor_shape_manager,
               zwp_text_input_manager_v3* text_input_manager,
+              zwp_pointer_gestures_v1* pointer_gestures,
               EventLoop* event_loop);
   ~WaylandSeat();
 
@@ -189,6 +204,24 @@ class WaylandSeat {
                                   wl_pointer* pointer,
                                   uint32_t axis,
                                   int32_t discrete);
+  static void PinchBegin(void* data,
+                         zwp_pointer_gesture_pinch_v1* pinch,
+                         uint32_t serial,
+                         uint32_t time,
+                         wl_surface* surface,
+                         uint32_t fingers);
+  static void PinchUpdate(void* data,
+                          zwp_pointer_gesture_pinch_v1* pinch,
+                          uint32_t time,
+                          wl_fixed_t dx,
+                          wl_fixed_t dy,
+                          wl_fixed_t scale,
+                          wl_fixed_t rotation);
+  static void PinchEnd(void* data,
+                       zwp_pointer_gesture_pinch_v1* pinch,
+                       uint32_t serial,
+                       uint32_t time,
+                       int32_t cancelled);
   static void TouchDown(void* data,
                         wl_touch* touch,
                         uint32_t serial,
@@ -254,6 +287,7 @@ class WaylandSeat {
 
   static const wl_seat_listener kSeatListener;
   static const wl_pointer_listener kPointerListener;
+  static const zwp_pointer_gesture_pinch_v1_listener kPinchListener;
   static const wl_touch_listener kTouchListener;
   static const wl_keyboard_listener kKeyboardListener;
 
@@ -290,9 +324,13 @@ class WaylandSeat {
 
   wl_seat* seat_;
   wp_cursor_shape_manager_v1* cursor_shape_manager_;
+  zwp_pointer_gestures_v1* pointer_gestures_;
   EventLoop* event_loop_;
   wl_pointer* pointer_ = nullptr;
   wp_cursor_shape_device_v1* cursor_shape_device_ = nullptr;
+  zwp_pointer_gesture_pinch_v1* pinch_ = nullptr;
+  // The surface the pinch gesture in progress started in.
+  wl_surface* pinch_focus_ = nullptr;
   wl_touch* touch_ = nullptr;
 
   std::map<wl_surface*, InputHandler*> handlers_;

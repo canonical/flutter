@@ -6,6 +6,7 @@
 
 #include <linux/input-event-codes.h>
 
+#include <cmath>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -169,6 +170,56 @@ TEST(PointerEventConverterTest, LeaveEndsPan) {
   ASSERT_EQ(delegate.events.size(), 5u);
   EXPECT_EQ(delegate.events[3].phase, kPanZoomEnd);
   EXPECT_EQ(delegate.events[4].phase, kRemove);
+}
+
+TEST(PointerEventConverterTest, TouchpadPinch) {
+  TestDelegate delegate;
+  delegate.scale = 2.0;
+  PointerEventConverter converter(&delegate, kViewId);
+
+  converter.OnPointerEnter(0, 10, 20);
+  converter.OnPinchBegin(1000);
+  converter.OnPinchUpdate(2000, 1, 2, 1.5, 90);
+  // Scrolling during a pinch is ignored.
+  converter.OnPointerScroll(2500,
+                            {.source = WL_POINTER_AXIS_SOURCE_FINGER, .dx = 1});
+  converter.OnPinchUpdate(3000, 1, 0, 2.0, -45);
+  converter.OnPinchEnd(4000, false);
+  // Updates after the end are ignored.
+  converter.OnPinchUpdate(5000, 1, 0, 2.0, 0);
+
+  ASSERT_EQ(delegate.events.size(), 5u);
+  EXPECT_EQ(delegate.events[1].phase, kPanZoomStart);
+  EXPECT_DOUBLE_EQ(delegate.events[1].x, 20);
+  EXPECT_DOUBLE_EQ(delegate.events[1].y, 40);
+  EXPECT_EQ(delegate.events[2].phase, kPanZoomUpdate);
+  EXPECT_DOUBLE_EQ(delegate.events[2].pan_x, 2);
+  EXPECT_DOUBLE_EQ(delegate.events[2].pan_y, 4);
+  EXPECT_DOUBLE_EQ(delegate.events[2].scale, 1.5);
+  EXPECT_DOUBLE_EQ(delegate.events[2].rotation, M_PI / 2);
+  EXPECT_EQ(delegate.events[3].phase, kPanZoomUpdate);
+  EXPECT_DOUBLE_EQ(delegate.events[3].pan_x, 4);
+  EXPECT_DOUBLE_EQ(delegate.events[3].scale, 2.0);
+  EXPECT_DOUBLE_EQ(delegate.events[3].rotation, M_PI / 4);
+  EXPECT_EQ(delegate.events[4].phase, kPanZoomEnd);
+  EXPECT_EQ(delegate.events[4].device_kind, kFlutterPointerDeviceKindTrackpad);
+}
+
+TEST(PointerEventConverterTest, PinchEndsPan) {
+  TestDelegate delegate;
+  PointerEventConverter converter(&delegate, kViewId);
+
+  converter.OnPointerEnter(0, 0, 0);
+  converter.OnPointerScroll(1000,
+                            {.source = WL_POINTER_AXIS_SOURCE_FINGER, .dx = 1});
+  converter.OnPinchBegin(2000);
+  converter.OnPinchEnd(3000, true);
+
+  ASSERT_EQ(delegate.events.size(), 6u);
+  EXPECT_EQ(delegate.events[3].phase, kPanZoomEnd);
+  EXPECT_EQ(delegate.events[4].phase, kPanZoomStart);
+  EXPECT_DOUBLE_EQ(delegate.events[4].scale, 1.0);
+  EXPECT_EQ(delegate.events[5].phase, kPanZoomEnd);
 }
 
 TEST(PointerEventConverterTest, MultiTouch) {
