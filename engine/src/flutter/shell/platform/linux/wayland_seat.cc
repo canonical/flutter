@@ -387,6 +387,9 @@ void WaylandSeat::PointerButton(void* data,
                                 uint32_t button,
                                 uint32_t state) {
   auto* self = static_cast<WaylandSeat*>(data);
+  if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    self->last_input_serial_ = serial;
+  }
   InputHandler* handler = self->HandlerFor(self->pointer_focus_);
   if (handler != nullptr) {
     handler->OnPointerButton(serial, EventTime(time), button,
@@ -472,6 +475,7 @@ void WaylandSeat::TouchDown(void* data,
                             wl_fixed_t x,
                             wl_fixed_t y) {
   auto* self = static_cast<WaylandSeat*>(data);
+  self->last_input_serial_ = serial;
   InputHandler* handler = self->HandlerFor(surface);
   if (handler == nullptr) {
     return;
@@ -594,6 +598,7 @@ void WaylandSeat::KeyboardEnter(void* data,
                                 wl_array* keys) {
   auto* self = static_cast<WaylandSeat*>(data);
   self->keyboard_focus_ = surface;
+  self->last_input_serial_ = serial;
   KeyboardHandler* handler = self->KeyboardHandlerFor(surface);
   if (handler == nullptr || self->xkb_keyboard_ == nullptr) {
     return;
@@ -628,6 +633,9 @@ void WaylandSeat::KeyboardKeyEvent(void* data,
                                    uint32_t key,
                                    uint32_t state) {
   auto* self = static_cast<WaylandSeat*>(data);
+  if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+    self->last_input_serial_ = serial;
+  }
   KeyboardHandler* handler = self->KeyboardHandlerFor(self->keyboard_focus_);
   if (handler == nullptr || self->xkb_keyboard_ == nullptr) {
     return;

@@ -232,6 +232,7 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
                                                           int width,
                                                           int height) {
   DispatchBufferEvents();
+  RemoveUnusedPools();
 
   auto& pool = pools_[view_id];
   TrimPool(pool, width, height);
@@ -302,6 +303,19 @@ std::unique_ptr<RenderBuffer> CompositorOpenGL::AllocateBuffer(int width,
     explicit_sync_ = false;
   }
   return ShmBuffer::Create(egl_, shm_wrapper_, width, height, depth_stencil_);
+}
+
+void CompositorOpenGL::RemoveUnusedPools() {
+  std::scoped_lock lock(views_mutex_);
+  for (auto it = pools_.begin(); it != pools_.end();) {
+    bool in_use = std::any_of(it->second.begin(), it->second.end(),
+                              [](const auto& b) { return b->in_use; });
+    if (views_.count(it->first) == 0 && !in_use) {
+      it = pools_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void CompositorOpenGL::TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,

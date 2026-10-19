@@ -6,6 +6,7 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_FLUTTER_LINUX_APPLICATION_H_
 
 #include <memory>
+#include <string>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/event_loop.h"
@@ -45,6 +46,19 @@ class FlutterLinuxApplication {
   // Causes Run to return. May be called from any thread.
   void Quit();
 
+  // The ID used to match windows to the application's desktop file.
+  const std::string& application_id() const { return application_id_; }
+  void SetApplicationId(const std::string& application_id) {
+    application_id_ = application_id;
+  }
+
+  // The number of views shown by all engines.
+  size_t view_count() const { return view_count_; }
+
+  // Called by engines when a view is created or destroyed.
+  void OnViewAdded() { view_count_++; }
+  void OnViewRemoved() { view_count_--; }
+
  private:
   FlutterLinuxApplication() = default;
 
@@ -55,6 +69,8 @@ class FlutterLinuxApplication {
   std::unique_ptr<GpuDevice> gpu_;
   std::unique_ptr<DecorationRenderer> decoration_renderer_;
   bool decoration_renderer_created_ = false;
+  size_t view_count_ = 0;
+  std::string application_id_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterLinuxApplication);
 };

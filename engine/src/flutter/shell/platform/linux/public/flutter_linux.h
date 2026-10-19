@@ -293,6 +293,14 @@ class FlutterDesktopApplication {
   // Causes run to return. May be called from any thread.
   void quit() { flutter_linux_application_quit(application_); }
 
+  // Sets the ID used to match windows to the application's desktop file.
+  // Applies to windows created after this call, including windows created by
+  // the framework.
+  void set_application_id(const std::string& application_id) {
+    flutter_linux_application_set_application_id(application_,
+                                                 application_id.c_str());
+  }
+
   // The connection to the Wayland compositor. Plugins may use this to create
   // their own Wayland objects, with their own event queue if used from other
   // threads.

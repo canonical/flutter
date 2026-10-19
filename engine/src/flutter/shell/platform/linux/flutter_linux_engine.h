@@ -18,6 +18,7 @@
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
+#include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/keyboard_manager.h"
 #include "flutter/shell/platform/linux/mouse_cursor_plugin.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
@@ -27,7 +28,7 @@
 
 namespace flutter {
 
-class FlutterLinuxView;
+class WindowManager;
 
 // The view ID of the view that exists for the lifetime of the engine.
 constexpr FlutterViewId kImplicitViewId = 0;
@@ -54,6 +55,10 @@ class FlutterLinuxEngine : public PlatformMessenger {
 
   ~FlutterLinuxEngine() override;
 
+  // Returns the engine with the ID given to the framework, or nullptr if there
+  // is no such engine.
+  static FlutterLinuxEngine* FromEngineId(int64_t engine_id);
+
   // Starts running the engine.
   bool Run();
 
@@ -75,11 +80,18 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // Presents the frames the engine renders.
   CompositorOpenGL* compositor() const { return compositor_.get(); }
 
-  // Creates the view shown in a new window of the given logical size.
-  //
-  // Only the implicit view is currently supported, so this can only be
-  // called once.
+  // Creates a view shown in a new top-level window of the given logical
+  // size. The first view created is the implicit view.
   std::unique_ptr<FlutterLinuxView> CreateView(int width, int height);
+
+  // Creates a view that is not the implicit view, shown in a new window.
+  std::unique_ptr<FlutterLinuxView> CreateView(
+      const WaylandWindow::Params& params,
+      FlutterLinuxView::Sizing sizing,
+      const FlutterLinuxView::Constraints& constraints);
+
+  // Manages the windows created by the framework.
+  WindowManager* window_manager() const { return window_manager_.get(); }
 
   // Detaches |view| from the engine before it is destroyed.
   void RemoveView(FlutterLinuxView* view);
@@ -136,6 +148,13 @@ class FlutterLinuxEngine : public PlatformMessenger {
 
   bool Initialize();
 
+  // Adds |view| to the views shown by the engine and the framework.
+  std::unique_ptr<FlutterLinuxView> AddView(
+      std::unique_ptr<FlutterLinuxView> view);
+
+  // Tells the running engine about a view that is not the implicit view.
+  void AddViewToEngine(FlutterLinuxView* view);
+
   // Posts a Flutter task to be run on the platform thread.
   void PostFlutterTask(FlutterTask task, uint64_t target_time_nanos);
 
@@ -179,6 +198,10 @@ class FlutterLinuxEngine : public PlatformMessenger {
 
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;
+  FlutterViewId next_view_id_ = kImplicitViewId + 1;
+  bool implicit_view_created_ = false;
+
+  std::unique_ptr<WindowManager> window_manager_;
 
   // The messenger plugins use. Reference counted as messages may still be
   // in flight when the engine is destroyed.

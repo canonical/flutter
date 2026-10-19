@@ -7,11 +7,14 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <mutex>
+#include <set>
 
 #include "flutter/fml/icu_util.h"
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/common/engine_switches.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
+#include "flutter/shell/platform/linux/window_manager.h"
 
 namespace flutter {
 
@@ -34,7 +37,24 @@ EventLoop::TimePoint ToEventLoopTime(uint64_t target_time_nanos,
          std::chrono::duration_cast<EventLoop::Clock::duration>(delay);
 }
 
+// The engines that exist, so IDs from the framework can be checked.
+std::mutex& EnginesMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::set<FlutterLinuxEngine*>& Engines() {
+  static std::set<FlutterLinuxEngine*> engines;
+  return engines;
+}
+
 }  // namespace
+
+FlutterLinuxEngine* FlutterLinuxEngine::FromEngineId(int64_t engine_id) {
+  auto* engine = reinterpret_cast<FlutterLinuxEngine*>(engine_id);
+  std::scoped_lock lock(EnginesMutex());
+  return Engines().count(engine) != 0 ? engine : nullptr;
+}
 
 std::unique_ptr<FlutterLinuxEngine> FlutterLinuxEngine::Create(
     FlutterLinuxApplication* application,
@@ -65,9 +85,19 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
   plugin_messenger_ = new PluginMessenger(this, application_->event_loop());
   plugin_event_loop_ =
       std::make_unique<ScopedEventLoop>(application_->event_loop());
+  window_manager_ = std::make_unique<WindowManager>(this);
+
+  std::scoped_lock lock(EnginesMutex());
+  Engines().insert(this);
 }
 
 FlutterLinuxEngine::~FlutterLinuxEngine() {
+  {
+    std::scoped_lock lock(EnginesMutex());
+    Engines().erase(this);
+  }
+
+  window_manager_.reset();
   FML_DCHECK(views_.empty());
 
   // Plugins (which are destroyed before the engine) may have left tasks,
@@ -225,7 +255,11 @@ bool FlutterLinuxEngine::Run() {
   }
 
   for (const auto& [view_id, view] : views_) {
-    view->SendWindowMetrics();
+    if (view_id == kImplicitViewId) {
+      view->SendWindowMetrics();
+    } else {
+      AddViewToEngine(view);
+    }
   }
 
   return true;
@@ -242,28 +276,85 @@ bool FlutterLinuxEngine::Stop() {
 
 std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
                                                                  int height) {
-  if (views_.count(kImplicitViewId) != 0) {
-    FML_LOG(ERROR) << "Only a single view is currently supported";
-    return nullptr;
+  // The framework expects the implicit view to exist from when it starts, so
+  // it can only be created before the engine runs.
+  FlutterViewId view_id = kImplicitViewId;
+  if (running() || implicit_view_created_) {
+    view_id = next_view_id_++;
   }
+  implicit_view_created_ = true;
 
-  std::unique_ptr<FlutterLinuxView> view =
-      FlutterLinuxView::Create(this, kImplicitViewId, width, height);
+  WaylandWindow::Params params;
+  params.width = width;
+  params.height = height;
+  params.application_id = application_->application_id();
+  return AddView(FlutterLinuxView::Create(
+      this, view_id, params, FlutterLinuxView::Sizing::kWindow, {}));
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(
+    const WaylandWindow::Params& params,
+    FlutterLinuxView::Sizing sizing,
+    const FlutterLinuxView::Constraints& constraints) {
+  WaylandWindow::Params window_params = params;
+  if (window_params.application_id.empty()) {
+    window_params.application_id = application_->application_id();
+  }
+  return AddView(FlutterLinuxView::Create(this, next_view_id_++, window_params,
+                                          sizing, constraints));
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::AddView(
+    std::unique_ptr<FlutterLinuxView> view) {
   if (!view) {
     return nullptr;
   }
   views_[view->view_id()] = view.get();
   compositor_->AddView(view->view_id(), view.get());
+  application_->OnViewAdded();
 
   if (running()) {
-    view->SendWindowMetrics();
+    if (view->view_id() == kImplicitViewId) {
+      view->SendWindowMetrics();
+    } else {
+      AddViewToEngine(view.get());
+    }
   }
   return view;
 }
 
+void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {
+  FlutterWindowMetricsEvent metrics = view->GetWindowMetrics();
+  FlutterAddViewInfo info = {};
+  info.struct_size = sizeof(FlutterAddViewInfo);
+  info.view_id = view->view_id();
+  info.view_metrics = &metrics;
+  info.add_view_callback = [](const FlutterAddViewResult* result) {
+    if (!result->added) {
+      FML_LOG(ERROR) << "Failed to add view to engine";
+    }
+  };
+  if (embedder_api_.AddView(engine_, &info) != kSuccess) {
+    FML_LOG(ERROR) << "Failed to add view " << view->view_id();
+  }
+}
+
 void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
+  // Stop presenting to the view before the engine is told it is gone. Once
+  // removed from the compositor no frames are shown in the view, so there is
+  // no need to wait for the engine to finish with it.
   compositor_->RemoveView(view->view_id());
+  if (running() && view->view_id() != kImplicitViewId) {
+    FlutterRemoveViewInfo info = {};
+    info.struct_size = sizeof(FlutterRemoveViewInfo);
+    info.view_id = view->view_id();
+    info.remove_view_callback = [](const FlutterRemoveViewResult* result) {};
+    if (embedder_api_.RemoveView(engine_, &info) != kSuccess) {
+      FML_LOG(ERROR) << "Failed to remove view " << view->view_id();
+    }
+  }
   views_.erase(view->view_id());
+  application_->OnViewRemoved();
 
   // The removed view may have been the reason drawing was throttled.
   OnFrameDone();

@@ -20,14 +20,15 @@
 
 namespace flutter {
 
-// A top-level window on a Wayland compositor.
+// A window on a Wayland compositor: either a top-level window, or a popup
+// placed relative to a parent window.
 //
 // The window is configured on the platform thread, but contents are presented
 // from the raster thread. The platform thread only commits the surface to
 // update the decorations, synchronized with presentation by a lock.
 //
-// If |decoration_renderer| is provided the window draws its own title bar
-// and shadow in a subsurface below the content. Decorations of a new size
+// If |decoration_renderer| is provided top-level windows draw their own title
+// bar and shadow in a subsurface below the content. Decorations of a new size
 // are shown with the first content buffer of the matching size, so resizing
 // is atomic and presenting content doesn't redraw the decorations.
 class WaylandWindow : public WindowDecoration::Delegate {
@@ -39,8 +40,13 @@ class WaylandWindow : public WindowDecoration::Delegate {
     // Called when the window size or scale changes.
     virtual void OnWindowConfigure() = 0;
 
-    // Called when the user requests the window be closed.
+    // Called when the user requests the window be closed, or when the
+    // compositor dismisses a popup.
     virtual void OnWindowClose() = 0;
+
+    // Called when the window is activated or deactivated, maximized,
+    // made fullscreen, or a popup is moved.
+    virtual void OnWindowStateChanged() {}
 
     // Called when a frame has been shown on the screen.
     // |presentation_time_ns| is when it was shown, on CLOCK_MONOTONIC.
@@ -54,16 +60,83 @@ class WaylandWindow : public WindowDecoration::Delegate {
     virtual void OnWindowFrameDone() = 0;
   };
 
-  // Creates a window with content of the given logical size. This blocks
-  // until the compositor has configured the window. |decoration_renderer|
-  // may be nullptr, in which case the window is undecorated. Returns nullptr
-  // on failure.
+  enum class Role {
+    // A top-level window, optionally attached to a parent window.
+    kToplevel,
+    // A window placed relative to its parent, such as a menu or tooltip.
+    // Popups are undecorated and are dismissed by the compositor when the
+    // user interacts with another application.
+    kPopup,
+  };
+
+  // Where a popup is placed relative to its parent, using xdg_positioner
+  // values.
+  struct Positioner {
+    // The rectangle in the parent the popup is placed relative to, in
+    // logical pixels relative to the parent's content.
+    Rect anchor_rect;
+
+    // An xdg_positioner_anchor: the point on |anchor_rect| the popup is
+    // placed at.
+    uint32_t anchor = XDG_POSITIONER_ANCHOR_NONE;
+
+    // An xdg_positioner_gravity: the direction the popup extends from the
+    // anchor point.
+    uint32_t gravity = XDG_POSITIONER_GRAVITY_NONE;
+
+    // A combination of xdg_positioner_constraint_adjustment bits, how the
+    // compositor may move the popup to keep it on screen.
+    uint32_t constraint_adjustment = 0;
+
+    // Moves the popup from the anchor point, in logical pixels.
+    int offset_x = 0;
+    int offset_y = 0;
+  };
+
+  // Limits on the size of the window content in logical pixels. A maximum of
+  // zero is unlimited.
+  struct SizeLimits {
+    int min_width = 0;
+    int min_height = 0;
+    int max_width = 0;
+    int max_height = 0;
+  };
+
+  struct Params {
+    Role role = Role::kToplevel;
+
+    // The window a top-level window is attached to, or the window a popup is
+    // placed relative to. Required for popups.
+    WaylandWindow* parent = nullptr;
+
+    // The initial logical size of the content.
+    int width = 0;
+    int height = 0;
+
+    // For top-level windows: whether the window has decorations, blocks
+    // input to its parent, and can be resized by the user.
+    bool decorated = true;
+    bool modal = false;
+    bool resizable = true;
+    SizeLimits size_limits;
+    std::string title;
+    std::string application_id;
+
+    // For popups: where the popup is placed, and whether it receives input.
+    // Popups that don't receive input pass it to the windows below.
+    Positioner positioner;
+    bool accepts_input = true;
+  };
+
+  // Creates a window. This blocks until the compositor has configured the
+  // window, without dispatching events for other windows. Decorations are
+  // drawn with |decoration_renderer| if it is not nullptr. Returns nullptr on
+  // failure.
   static std::unique_ptr<WaylandWindow> Create(
       WaylandDisplay* display,
       DecorationRenderer* decoration_renderer,
       Delegate* delegate,
-      int width,
-      int height);
+      const Params& params);
 
   ~WaylandWindow() override;
 
@@ -81,8 +154,54 @@ class WaylandWindow : public WindowDecoration::Delegate {
   int physical_width() const;
   int physical_height() const;
 
+  Role role() const { return role_; }
+  WaylandWindow* parent() const { return parent_; }
+
+  // Top-level window state.
+  bool maximized() const { return maximized_; }
+  bool fullscreen() const { return fullscreen_; }
+  bool activated() const { return activated_; }
+
+  // The position of a popup's content relative to its parent's content, in
+  // logical pixels.
+  int popup_x() const;
+  int popup_y() const;
+
+  // The largest content size the compositor suggests for a top-level window,
+  // in logical pixels, or zero if unknown.
+  int max_suggested_width() const;
+  int max_suggested_height() const;
+
   void SetTitle(const std::string& title);
   void SetApplicationId(const std::string& application_id);
+
+  // Changes the content size of a top-level window when it is not
+  // maximized, fullscreen or tiled.
+  void SetSize(int width, int height);
+
+  // Changes the content size to match content that has been drawn at
+  // |width| x |height| logical pixels, ignoring the size limits. Used for
+  // windows whose size is chosen by their content. The delegate's
+  // OnWindowConfigure is not called.
+  void ResizeToContent(int width, int height);
+
+  // Limits the content size of a top-level window, resizing it if it is
+  // outside the limits.
+  void SetSizeLimits(const SizeLimits& limits);
+
+  void SetMaximized(bool maximized);
+  void SetMinimized();
+  void SetFullscreen(bool fullscreen);
+
+  // Asks the compositor to focus a top-level window. Compositors may refuse
+  // if the request is not in response to user input.
+  void Activate();
+
+  // Attaches a top-level window to |parent|, or detaches it if nullptr.
+  void SetParent(WaylandWindow* parent);
+
+  // Moves a popup. Has no effect if the compositor doesn't support it.
+  void SetPositioner(const Positioner& positioner);
 
   // Timeline points used to explicitly synchronize access to a buffer with
   // the compositor.
@@ -129,8 +248,26 @@ class WaylandWindow : public WindowDecoration::Delegate {
   WaylandWindow(WaylandDisplay* display, Delegate* delegate);
 
   bool Initialize(DecorationRenderer* decoration_renderer,
-                  int width,
-                  int height);
+                  const Params& params);
+
+  // The window geometry origin relative to the content surface.
+  int geometry_x() const;
+  int geometry_y() const;
+
+  // The height of the title bar above the content, if shown.
+  int title_bar_height() const;
+
+  // Creates an xdg_positioner placing a popup of the current size.
+  xdg_positioner* CreatePositioner(const Positioner& positioner);
+
+  // Sends the size limits to the compositor.
+  void UpdateSizeLimits();
+
+  // Applies |limits_| to the content size.
+  void ClampSize(int* width, int* height) const;
+
+  // Changes the content size and informs the delegate if it changed.
+  void Resize(int width, int height);
 
   // Redraws the decorations if the window state has changed.
   void UpdateDecoration();
@@ -157,6 +294,17 @@ class WaylandWindow : public WindowDecoration::Delegate {
   static void ToplevelWmCapabilities(void* data,
                                      xdg_toplevel* toplevel,
                                      wl_array* capabilities);
+  static void PopupConfigure(void* data,
+                             xdg_popup* popup,
+                             int32_t x,
+                             int32_t y,
+                             int32_t width,
+                             int32_t height);
+  static void PopupDone(void* data, xdg_popup* popup);
+  static void PopupRepositioned(void* data, xdg_popup* popup, uint32_t token);
+  static void ActivationTokenDone(void* data,
+                                  xdg_activation_token_v1* token,
+                                  const char* token_string);
   static void FeedbackSyncOutput(void* data,
                                  struct wp_presentation_feedback* feedback,
                                  wl_output* output);
@@ -179,6 +327,8 @@ class WaylandWindow : public WindowDecoration::Delegate {
   static const wl_surface_listener kSurfaceListener;
   static const xdg_surface_listener kXdgSurfaceListener;
   static const xdg_toplevel_listener kToplevelListener;
+  static const xdg_popup_listener kPopupListener;
+  static const xdg_activation_token_v1_listener kActivationTokenListener;
   static const wp_fractional_scale_v1_listener kFractionalScaleListener;
   static const wp_presentation_feedback_listener kFeedbackListener;
   static const wl_callback_listener kFrameListener;
@@ -188,10 +338,15 @@ class WaylandWindow : public WindowDecoration::Delegate {
 
   WaylandDisplay* display_;
   Delegate* delegate_;
+  Role role_ = Role::kToplevel;
+  WaylandWindow* parent_ = nullptr;
 
   wl_surface* surface_ = nullptr;
   xdg_surface* xdg_surface_ = nullptr;
   xdg_toplevel* toplevel_ = nullptr;
+  xdg_popup* popup_ = nullptr;
+  xdg_dialog_v1* dialog_ = nullptr;
+  xdg_activation_token_v1* activation_token_ = nullptr;
   wp_viewport* viewport_ = nullptr;
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
   wp_fifo_v1* fifo_ = nullptr;
@@ -224,6 +379,8 @@ class WaylandWindow : public WindowDecoration::Delegate {
   bool pending_fullscreen_ = false;
   bool pending_tiled_ = false;
   bool pending_activated_ = false;
+  int pending_popup_x_ = 0;
+  int pending_popup_y_ = 0;
 
   bool maximized_ = false;
   bool fullscreen_ = false;
@@ -231,7 +388,21 @@ class WaylandWindow : public WindowDecoration::Delegate {
   bool activated_ = false;
   bool can_minimize_ = true;
   bool can_maximize_ = true;
+  bool resizable_ = true;
+  SizeLimits limits_;
   std::string title_;
+
+  // The size the compositor suggests for a top-level window's geometry, or
+  // zero if unknown.
+  int bounds_width_ = 0;
+  int bounds_height_ = 0;
+
+  // A popup's position relative to its parent's window geometry, and how it
+  // was last placed.
+  int popup_geometry_x_ = 0;
+  int popup_geometry_y_ = 0;
+  Positioner positioner_;
+  uint32_t reposition_token_ = 0;
 
   // The content size to return to when the window stops being maximized,
   // fullscreen or tiled.

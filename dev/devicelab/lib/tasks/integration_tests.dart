@@ -250,12 +250,13 @@ TaskFunction createEngineIntegrationGoldenTest({String? maxD3DFeatureLevel}) {
   ).call;
 }
 
-TaskFunction createWindowingDriverTest() {
+TaskFunction createWindowingDriverTest({Map<String, String>? environment}) {
   return () async {
     await flutter('config', options: const <String>['--enable-windowing']);
     return DriverTest(
       '${flutterDirectory.path}/dev/integration_tests/windowing_test',
       'lib/main.dart',
+      environment: environment,
     ).call();
   };
 }

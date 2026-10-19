@@ -131,6 +131,12 @@ void flutter_linux_application_quit(FlutterLinuxApplication* application) {
   ToApplication(application)->Quit();
 }
 
+void flutter_linux_application_set_application_id(
+    FlutterLinuxApplication* application,
+    const char* application_id) {
+  ToApplication(application)->SetApplicationId(application_id);
+}
+
 wl_display* flutter_linux_application_get_wl_display(
     FlutterLinuxApplication* application) {
   return ToApplication(application)->display()->display();

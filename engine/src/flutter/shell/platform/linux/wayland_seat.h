@@ -134,6 +134,14 @@ class WaylandSeat {
   // The surface the pointer is in, or nullptr.
   wl_surface* pointer_focus() const { return pointer_focus_; }
 
+  // The surface with keyboard focus, or nullptr.
+  wl_surface* keyboard_focus() const { return keyboard_focus_; }
+
+  // The serial of the most recent user input (button press, key press, touch
+  // or keyboard focus), or zero if there has been none. Compositors use this
+  // to verify requests made in response to user input, such as activation.
+  uint32_t last_input_serial() const { return last_input_serial_; }
+
   // Sets the cursor shown over the surface the pointer is in. |shape| is a
   // wp_cursor_shape_device_v1 shape, or kHiddenCursorShape.
   void SetCursor(uint32_t shape);
@@ -315,6 +323,8 @@ class WaylandSeat {
 
   // The surface with keyboard focus.
   wl_surface* keyboard_focus_ = nullptr;
+
+  uint32_t last_input_serial_ = 0;
 
   // Key repeat settings, as keys per second and milliseconds before the
   // first repeat. A rate of zero disables repeating.

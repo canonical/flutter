@@ -64,6 +64,8 @@ _wayland_protocols = [
   "protocols/text-input-unstable-v3.xml",
   "protocols/viewporter.xml",
   "protocols/wayland.xml",
+  "protocols/xdg-activation-v1.xml",
+  "protocols/xdg-dialog-v1.xml",
   "protocols/xdg-shell.xml",
 ]
 
@@ -146,6 +148,7 @@ source_set("flutter_linux_sources") {
     "wayland_text_input.h",
     "wayland_window.h",
     "window_decoration.h",
+    "window_manager.h",
     "xkb.h",
   ]
 
@@ -179,6 +182,7 @@ source_set("flutter_linux_sources") {
     "wayland_text_input.cc",
     "wayland_window.cc",
     "window_decoration.cc",
+    "window_manager.cc",
     "xkb.cc",
   ]
 

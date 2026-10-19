@@ -41,6 +41,8 @@ constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
 constexpr uint32_t kMaxPresentationVersion = 2;
 constexpr uint32_t kMaxFifoManagerVersion = 1;
 constexpr uint32_t kMaxSyncobjManagerVersion = 1;
+constexpr uint32_t kMaxWmDialogVersion = 1;
+constexpr uint32_t kMaxActivationVersion = 1;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
@@ -137,6 +139,12 @@ WaylandDisplay::~WaylandDisplay() {
     zwp_linux_dmabuf_v1_destroy(dmabuf_);
   }
   seat_.reset();
+  if (activation_ != nullptr) {
+    xdg_activation_v1_destroy(activation_);
+  }
+  if (wm_dialog_ != nullptr) {
+    xdg_wm_dialog_v1_destroy(wm_dialog_);
+  }
   if (text_input_manager_ != nullptr) {
     zwp_text_input_manager_v3_destroy(text_input_manager_);
   }
@@ -355,6 +363,14 @@ void WaylandDisplay::RegistryGlobal(void* data,
         &self->protocols_, registry, name,
         &wp_linux_drm_syncobj_manager_v1_interface, version,
         kMaxSyncobjManagerVersion);
+  } else if (strcmp(interface, xdg_wm_dialog_v1_interface.name) == 0) {
+    self->wm_dialog_ = Bind<xdg_wm_dialog_v1>(&self->protocols_, registry, name,
+                                              &xdg_wm_dialog_v1_interface,
+                                              version, kMaxWmDialogVersion);
+  } else if (strcmp(interface, xdg_activation_v1_interface.name) == 0) {
+    self->activation_ = Bind<xdg_activation_v1>(
+        &self->protocols_, registry, name, &xdg_activation_v1_interface,
+        version, kMaxActivationVersion);
   }
 }
 

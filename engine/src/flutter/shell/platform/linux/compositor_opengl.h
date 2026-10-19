@@ -117,6 +117,10 @@ class CompositorOpenGL {
                 int height);
 
   // Returns a free buffer of the given size from |pool| or nullptr.
+  // Frees the buffers of views that have been removed, once the engine has
+  // finished with them.
+  void RemoveUnusedPools();
+
   PoolBuffer* FindFreeBuffer(std::vector<std::unique_ptr<PoolBuffer>>& pool,
                              int width,
                              int height);

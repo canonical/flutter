@@ -96,6 +96,11 @@ FLUTTER_EXPORT void flutter_linux_application_run(
 FLUTTER_EXPORT void flutter_linux_application_quit(
     FlutterLinuxApplication* application);
 
+// Sets the application ID given to windows created after this call.
+FLUTTER_EXPORT void flutter_linux_application_set_application_id(
+    FlutterLinuxApplication* application,
+    const char* application_id);
+
 // Returns the connection to the Wayland compositor shared by all engines.
 // Plugins may create their own event queues on it to use it from other
 // threads.

@@ -4,20 +4,37 @@
 
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 
 namespace flutter {
 
+namespace {
+
+// The largest size content may grow to if it is unconstrained and the
+// compositor doesn't suggest a limit, in logical pixels.
+constexpr double kDefaultMaxContentSize = 4096;
+
+size_t ToPhysical(double logical, double scale) {
+  return static_cast<size_t>(std::round(logical * scale));
+}
+
+}  // namespace
+
 std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
     FlutterLinuxEngine* engine,
     FlutterViewId view_id,
-    int width,
-    int height) {
-  std::unique_ptr<FlutterLinuxView> view(new FlutterLinuxView(engine, view_id));
+    const WaylandWindow::Params& params,
+    Sizing sizing,
+    const Constraints& constraints) {
+  std::unique_ptr<FlutterLinuxView> view(
+      new FlutterLinuxView(engine, view_id, sizing, constraints));
   FlutterLinuxApplication* application = engine->application();
   view->window_ = WaylandWindow::Create(application->display(),
                                         application->decoration_renderer(),
-                                        view.get(), width, height);
+                                        view.get(), params);
   if (!view->window_) {
     return nullptr;
   }
@@ -36,8 +53,13 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
 }
 
 FlutterLinuxView::FlutterLinuxView(FlutterLinuxEngine* engine,
-                                   FlutterViewId view_id)
-    : engine_(engine), view_id_(view_id) {}
+                                   FlutterViewId view_id,
+                                   Sizing sizing,
+                                   const Constraints& constraints)
+    : engine_(engine),
+      view_id_(view_id),
+      sizing_(sizing),
+      constraints_(constraints) {}
 
 FlutterLinuxView::~FlutterLinuxView() {
   WaylandSeat* seat = engine_->application()->display()->seat();
@@ -55,7 +77,41 @@ FlutterWindowMetricsEvent FlutterLinuxView::GetWindowMetrics() const {
   event.height = window_->physical_height();
   event.pixel_ratio = window_->scale();
   event.view_id = view_id_;
+
+  if (sizing_ != Sizing::kWindow) {
+    // Let the content choose its size within the constraints, keeping it
+    // within the space the compositor suggests.
+    double scale = window_->scale();
+    double max_width = constraints_.max_width;
+    double max_height = constraints_.max_height;
+    if (!std::isfinite(max_width)) {
+      int suggested = window_->max_suggested_width();
+      max_width = suggested > 0 ? suggested : kDefaultMaxContentSize;
+    }
+    if (!std::isfinite(max_height)) {
+      int suggested = window_->max_suggested_height();
+      max_height = suggested > 0 ? suggested : kDefaultMaxContentSize;
+    }
+    event.has_constraints = true;
+    event.min_width_constraint = ToPhysical(constraints_.min_width, scale);
+    event.min_height_constraint = ToPhysical(constraints_.min_height, scale);
+    event.max_width_constraint =
+        std::max(ToPhysical(max_width, scale), event.min_width_constraint);
+    event.max_height_constraint =
+        std::max(ToPhysical(max_height, scale), event.min_height_constraint);
+    event.width = std::clamp(event.width, event.min_width_constraint,
+                             event.max_width_constraint);
+    event.height = std::clamp(event.height, event.min_height_constraint,
+                              event.max_height_constraint);
+  }
   return event;
+}
+
+void FlutterLinuxView::SetConstraints(const Constraints& constraints) {
+  constraints_ = constraints;
+  if (sizing_ != Sizing::kWindow) {
+    SendWindowMetrics();
+  }
 }
 
 void FlutterLinuxView::SendWindowMetrics() {
@@ -64,7 +120,35 @@ void FlutterLinuxView::SendWindowMetrics() {
 
 void FlutterLinuxView::PresentBuffer(RenderBuffer* buffer,
                                      const WaylandWindow::SyncPoints* sync) {
-  window_->Present(buffer->buffer(), buffer->width(), buffer->height(), sync);
+  int width = buffer->width();
+  int height = buffer->height();
+  window_->Present(buffer->buffer(), width, height, sync);
+
+  if (sizing_ != Sizing::kWindow &&
+      (width != presented_width_ || height != presented_height_)) {
+    presented_width_ = width;
+    presented_height_ = height;
+    double scale = window_->scale();
+    engine_->application()->event_loop()->PostTask(
+        [this, alive = std::weak_ptr<bool>(alive_), width, height, scale]() {
+          if (!alive.expired()) {
+            OnContentResized(width, height, scale);
+          }
+        });
+  }
+}
+
+void FlutterLinuxView::OnContentResized(int width, int height, double scale) {
+  if (sizing_ == Sizing::kWindow) {
+    return;
+  }
+  window_->ResizeToContent(static_cast<int>(std::round(width / scale)),
+                           static_cast<int>(std::round(height / scale)));
+  if (sizing_ == Sizing::kInitialContent) {
+    // From now on the user sizes the window, and the content fills it.
+    sizing_ = Sizing::kWindow;
+    SendWindowMetrics();
+  }
 }
 
 void FlutterLinuxView::OnWindowConfigure() {
@@ -73,6 +157,15 @@ void FlutterLinuxView::OnWindowConfigure() {
     return;
   }
   SendWindowMetrics();
+  if (state_callback_) {
+    state_callback_();
+  }
+}
+
+void FlutterLinuxView::OnWindowStateChanged() {
+  if (state_callback_) {
+    state_callback_();
+  }
 }
 
 void FlutterLinuxView::OnWindowClose() {

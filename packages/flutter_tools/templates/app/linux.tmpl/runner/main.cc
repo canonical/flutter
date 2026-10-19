@@ -18,6 +18,8 @@ int main(int argc, char** argv) {
   properties.aot_library_path = "lib/libapp.so";
   properties.dart_entrypoint_arguments.assign(argv + 1, argv + argc);
 
+  application->set_application_id(APPLICATION_ID);
+
   auto engine = flutter::FlutterDesktopEngine::create(application, properties);
   if (!engine) {
     fprintf(stderr, "Failed to create Flutter engine\n");
@@ -31,7 +33,6 @@ int main(int argc, char** argv) {
     return 1;
   }
   view->set_title(WINDOW_TITLE);
-  view->set_application_id(APPLICATION_ID);
 
   if (!engine->run()) {
     fprintf(stderr, "Failed to run Flutter engine\n");
