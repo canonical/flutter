@@ -117,8 +117,10 @@ void CompositorOpenGL::AddView(FlutterViewId view_id, FlutterLinuxView* view) {
 }
 
 void CompositorOpenGL::RemoveView(FlutterViewId view_id) {
-  std::scoped_lock lock(views_mutex_);
+  std::unique_lock<std::mutex> lock(views_mutex_);
   views_.erase(view_id);
+  presented_condition_.wait(
+      lock, [this, view_id]() { return presenting_view_ != view_id; });
 }
 
 bool CompositorOpenGL::CreateBackingStore(
@@ -171,14 +173,29 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     return false;
   }
   auto* pool_buffer = static_cast<PoolBuffer*>(layer->backing_store->user_data);
-  RenderBuffer* buffer = pool_buffer->buffer.get();
 
-  std::scoped_lock lock(views_mutex_);
-  auto it = views_.find(view_id);
-  if (it == views_.end()) {
-    return false;
+  FlutterLinuxView* view;
+  {
+    std::scoped_lock lock(views_mutex_);
+    auto it = views_.find(view_id);
+    if (it == views_.end()) {
+      return false;
+    }
+    view = it->second;
+    presenting_view_ = view_id;
   }
+  bool result = PresentToView(view, pool_buffer);
+  {
+    std::scoped_lock lock(views_mutex_);
+    presenting_view_.reset();
+  }
+  presented_condition_.notify_all();
+  return result;
+}
 
+bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
+                                     PoolBuffer* pool_buffer) {
+  RenderBuffer* buffer = pool_buffer->buffer.get();
   if (!buffer->PrepareToPresent()) {
     return false;
   }
@@ -188,7 +205,7 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     // complete using the implicit fence on the dmabuf.
     glFlush();
     buffer->set_busy(true);
-    it->second->PresentBuffer(buffer, nullptr);
+    view->PresentBuffer(buffer, nullptr);
     return true;
   }
 
@@ -202,7 +219,7 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     return false;
   }
   pool_buffer->release_point = sync.release_point;
-  it->second->PresentBuffer(buffer, &sync);
+  view->PresentBuffer(buffer, &sync);
   return true;
 }
 

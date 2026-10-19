@@ -342,7 +342,9 @@ void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {
 void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
   // Stop presenting to the view before the engine is told it is gone. Once
   // removed from the compositor no frames are shown in the view, so there is
-  // no need to wait for the engine to finish with it.
+  // no need to wait for the engine to finish with it. The compositor waits
+  // for any frame being presented, which mustn't wait for this thread.
+  view->window()->StopWaiting();
   compositor_->RemoveView(view->view_id());
   if (running() && view->view_id() != kImplicitViewId) {
     FlutterRemoveViewInfo info = {};

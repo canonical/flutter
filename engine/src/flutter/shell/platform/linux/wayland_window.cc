@@ -5,6 +5,7 @@
 #include "flutter/shell/platform/linux/wayland_window.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "flutter/fml/logging.h"
@@ -230,7 +231,10 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
     }
     UpdateSizeLimits();
   } else {
-    xdg_positioner* positioner = CreatePositioner(positioner_);
+    positioned_width_ = width_;
+    positioned_height_ = height_;
+    xdg_positioner* positioner =
+        CreatePositioner(positioner_, positioned_width_, positioned_height_);
     popup_ =
         xdg_surface_get_popup(xdg_surface_, parent_->xdg_surface_, positioner);
     xdg_positioner_destroy(positioner);
@@ -296,10 +300,11 @@ int WaylandWindow::max_suggested_height() const {
                             : 0;
 }
 
-xdg_positioner* WaylandWindow::CreatePositioner(const Positioner& positioner) {
+xdg_positioner* WaylandWindow::CreatePositioner(const Positioner& positioner,
+                                                int width,
+                                                int height) {
   xdg_positioner* result = xdg_wm_base_create_positioner(display_->wm_base());
-  xdg_positioner_set_size(result, std::max(width_.load(), 1),
-                          std::max(height_.load(), 1));
+  xdg_positioner_set_size(result, std::max(width, 1), std::max(height, 1));
   xdg_positioner_set_anchor_rect(
       result, positioner.anchor_rect.x - parent_->geometry_x(),
       positioner.anchor_rect.y - parent_->geometry_y(),
@@ -322,14 +327,52 @@ void WaylandWindow::SetPositioner(const Positioner& positioner) {
   if (popup_ == nullptr) {
     return;
   }
+  std::lock_guard<std::mutex> lock(surface_mutex_);
   positioner_ = positioner;
   if (xdg_popup_get_version(popup_) < XDG_POPUP_REPOSITION_SINCE_VERSION) {
     return;
   }
-  xdg_positioner* result = CreatePositioner(positioner_);
+  xdg_positioner* result =
+      CreatePositioner(positioner_, positioned_width_, positioned_height_);
   xdg_popup_reposition(popup_, result, ++reposition_token_);
   xdg_positioner_destroy(result);
   wl_display_flush(display_->display());
+}
+
+void WaylandWindow::StopWaiting() {
+  {
+    std::lock_guard<std::mutex> lock(surface_mutex_);
+    stop_waiting_ = true;
+  }
+  reposition_condition_.notify_all();
+}
+
+void WaylandWindow::RepositionForSize(std::unique_lock<std::mutex>& lock,
+                                      int width,
+                                      int height) {
+  if (!configured_ || stop_waiting_ ||
+      xdg_popup_get_version(popup_) < XDG_POPUP_REPOSITION_SINCE_VERSION ||
+      (width == positioned_width_ && height == positioned_height_)) {
+    return;
+  }
+  positioned_width_ = width;
+  positioned_height_ = height;
+  uint32_t token = ++reposition_token_;
+  xdg_positioner* positioner = CreatePositioner(positioner_, width, height);
+  xdg_popup_reposition(popup_, positioner, token);
+  xdg_positioner_destroy(positioner);
+  wl_display_flush(display_->display());
+
+  // The configure is acknowledged on the platform thread, and applies with
+  // the next commit, which will contain the buffer of the new size. Give up
+  // after a while in case the compositor doesn't respond, as frames would
+  // otherwise stop.
+  awaited_reposition_token_ = token;
+  reposition_condition_.wait_for(lock, std::chrono::milliseconds(100), [&]() {
+    return stop_waiting_ ||
+           static_cast<int32_t>(acked_reposition_token_ - token) >= 0;
+  });
+  awaited_reposition_token_.reset();
 }
 
 void WaylandWindow::ClampSize(int* width, int* height) const {
@@ -422,10 +465,6 @@ void WaylandWindow::ResizeToContent(int width, int height) {
   UpdateDecoration();
   if (!resizable_) {
     UpdateSizeLimits();
-  }
-  if (popup_ != nullptr) {
-    // Have the compositor place the popup at its new size.
-    SetPositioner(positioner_);
   }
   delegate_->OnWindowStateChanged();
 }
@@ -609,7 +648,15 @@ void WaylandWindow::Present(wl_buffer* buffer,
                             int width,
                             int height,
                             const SyncPoints* sync) {
-  std::lock_guard<std::mutex> surface_lock(surface_mutex_);
+  std::unique_lock<std::mutex> surface_lock(surface_mutex_);
+  if (popup_ != nullptr) {
+    // The popup is placed using its logical size, matching the viewport
+    // destination below.
+    double scale = scale_;
+    RepositionForSize(
+        surface_lock, std::max(static_cast<int>(std::round(width / scale)), 1),
+        std::max(static_cast<int>(std::round(height / scale)), 1));
+  }
   if (pending_decoration_.has_value() &&
       pending_decoration_->content_width == width &&
       pending_decoration_->content_height == height) {
@@ -732,11 +779,24 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
                                         xdg_surface* xdg_surface,
                                         uint32_t serial) {
   auto* self = static_cast<WaylandWindow*>(data);
-  xdg_surface_ack_configure(xdg_surface, serial);
-  bool first_configure = !self->configured_;
-  self->configured_ = true;
-
   if (self->popup_ != nullptr) {
+    bool first_configure;
+    {
+      std::lock_guard<std::mutex> lock(self->surface_mutex_);
+      xdg_surface_ack_configure(xdg_surface, serial);
+      first_configure = !self->configured_;
+      self->configured_ = true;
+      self->acked_reposition_token_ = self->received_reposition_token_;
+      if (self->awaited_reposition_token_.has_value()) {
+        // |Present| commits this configure with the buffer of the new size.
+        self->reposition_condition_.notify_all();
+      } else if (!first_configure && self->presented_width_ > 0) {
+        // Commit for the popup to move, as there may not be another frame.
+        wl_surface_commit(self->surface_);
+        wl_display_flush(self->display_->display());
+      }
+    }
+
     bool moved = self->pending_popup_x_ != self->popup_geometry_x_ ||
                  self->pending_popup_y_ != self->popup_geometry_y_;
     self->popup_geometry_x_ = self->pending_popup_x_;
@@ -756,6 +816,10 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
     }
     return;
   }
+
+  xdg_surface_ack_configure(xdg_surface, serial);
+  bool first_configure = !self->configured_;
+  self->configured_ = true;
 
   bool state_changed = self->maximized_ != self->pending_maximized_ ||
                        self->fullscreen_ != self->pending_fullscreen_ ||
@@ -869,7 +933,11 @@ void WaylandWindow::PopupDone(void* data, xdg_popup* popup) {
 
 void WaylandWindow::PopupRepositioned(void* data,
                                       xdg_popup* popup,
-                                      uint32_t token) {}
+                                      uint32_t token) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  std::lock_guard<std::mutex> lock(self->surface_mutex_);
+  self->received_reposition_token_ = token;
+}
 
 void WaylandWindow::ToplevelWmCapabilities(void* data,
                                            xdg_toplevel* toplevel,

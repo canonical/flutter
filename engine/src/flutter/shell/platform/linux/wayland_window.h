@@ -6,6 +6,7 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_H_
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -203,6 +204,10 @@ class WaylandWindow : public WindowDecoration::Delegate {
   // Moves a popup. Has no effect if the compositor doesn't support it.
   void SetPositioner(const Positioner& positioner);
 
+  // Stops |Present| waiting for the compositor, so it doesn't block a thread
+  // that is removing the window.
+  void StopWaiting();
+
   // Timeline points used to explicitly synchronize access to a buffer with
   // the compositor.
   struct SyncPoints {
@@ -227,6 +232,9 @@ class WaylandWindow : public WindowDecoration::Delegate {
   //
   // The delegate is informed when the compositor is ready for another frame,
   // and if the compositor supports wp_presentation, when the frame is shown.
+  //
+  // If a popup changes size, it is repositioned first and this blocks until
+  // the compositor has placed it, so it moves and resizes in the same frame.
   //
   // May be called from any thread, but only from one thread at a time.
   void Present(wl_buffer* buffer,
@@ -257,8 +265,16 @@ class WaylandWindow : public WindowDecoration::Delegate {
   // The height of the title bar above the content, if shown.
   int title_bar_height() const;
 
-  // Creates an xdg_positioner placing a popup of the current size.
-  xdg_positioner* CreatePositioner(const Positioner& positioner);
+  // Places a popup of |width| x |height| logical pixels and waits for the
+  // compositor to configure it. Called with |surface_mutex_| held in |lock|.
+  void RepositionForSize(std::unique_lock<std::mutex>& lock,
+                         int width,
+                         int height);
+
+  // Creates an xdg_positioner placing a popup of the given logical size.
+  xdg_positioner* CreatePositioner(const Positioner& positioner,
+                                   int width,
+                                   int height);
 
   // Sends the size limits to the compositor.
   void UpdateSizeLimits();
@@ -401,8 +417,24 @@ class WaylandWindow : public WindowDecoration::Delegate {
   // was last placed.
   int popup_geometry_x_ = 0;
   int popup_geometry_y_ = 0;
+
+  // How a popup was last placed, guarded by |surface_mutex_| as popups are
+  // repositioned when presenting.
   Positioner positioner_;
+  int positioned_width_ = 0;
+  int positioned_height_ = 0;
   uint32_t reposition_token_ = 0;
+
+  // The last reposition the compositor responded to, and the last one whose
+  // configure has been acknowledged. Guarded by |surface_mutex_|.
+  uint32_t received_reposition_token_ = 0;
+  uint32_t acked_reposition_token_ = 0;
+
+  // The reposition |Present| is waiting for, if any, and whether it should
+  // stop waiting. Guarded by |surface_mutex_|.
+  std::optional<uint32_t> awaited_reposition_token_;
+  bool stop_waiting_ = false;
+  std::condition_variable reposition_condition_;
 
   // The content size to return to when the window stops being maximized,
   // fullscreen or tiled.

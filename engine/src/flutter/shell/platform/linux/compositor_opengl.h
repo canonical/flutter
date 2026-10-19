@@ -6,9 +6,11 @@
 #define FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
 
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include "flutter/fml/macros.h"
@@ -142,6 +144,9 @@ class CompositorOpenGL {
   bool WaitForReleasedBuffer(std::vector<std::unique_ptr<PoolBuffer>>& pool,
                              int timeout_ms);
 
+  // Shows the rendering in |pool_buffer| in |view|.
+  bool PresentToView(FlutterLinuxView* view, PoolBuffer* pool_buffer);
+
   // Flushes rendering and sets |point| on |timeline| to signal when it
   // completes.
   bool SignalWhenRenderingComplete(DrmTimeline* timeline, uint64_t point);
@@ -180,6 +185,12 @@ class CompositorOpenGL {
 
   std::mutex views_mutex_;
   std::map<FlutterViewId, FlutterLinuxView*> views_;
+
+  // The view being presented to. The lock isn't held while presenting, as
+  // that may wait for the platform thread, so views are only removed once
+  // they are not being presented to. Guarded by |views_mutex_|.
+  std::optional<FlutterViewId> presenting_view_;
+  std::condition_variable presented_condition_;
 
   bool warned_multiple_layers_ = false;
 
