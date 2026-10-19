@@ -1,8 +1,8 @@
-Flutter apps work by transforming the widget tree in an application to a render tree that describes how to graphically render the widgets onscreen, and animating in response to input events or the passage of time. We refer to a single still image within the sequence of images composing an animation as a frame, similar to a frame in a movie filmstrip. In the context of a complete Flutter application these are rendered into a `FlutterView` class which is typically an instance of a platform-specific view class like [SurfaceView][surfaceview] on Android, [UIView][uiview] on iOS, [HWND][hwnd] on Windows, [NSView][nsview] on macOS, or [GtkBox][gtkbox] on Linux.
+Flutter apps work by transforming the widget tree in an application to a render tree that describes how to graphically render the widgets onscreen, and animating in response to input events or the passage of time. We refer to a single still image within the sequence of images composing an animation as a frame, similar to a frame in a movie filmstrip. In the context of a complete Flutter application these are rendered into a `FlutterView` class which is typically an instance of a platform-specific view class like [SurfaceView][surfaceview] on Android, [UIView][uiview] on iOS, [HWND][hwnd] on Windows, [NSView][nsview] on macOS, or a [wl_surface][wl_surface] on Linux.
 
 This page attempts to describe the life of a Flutter frame in the engine from initial trigger to rasterization, presentation, and finally destruction/recycling. For an overview of the Framework side of this process, see the [Flutter's Rendering Pipeline][renderingPipelineTalk] tech talk.
 
-[gtkbox]: https://docs.gtk.org/gtk3/class.Box.html
+[wl_surface]: https://wayland.app/protocols/wayland#wl_surface
 [hwnd]: https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#HWND
 [nsview]: https://developer.apple.com/documentation/appkit/nsview
 [surfaceview]: https://developer.android.com/reference/android/view/SurfaceView

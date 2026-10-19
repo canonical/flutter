@@ -64,7 +64,7 @@ const Map<String, PlatformDocsSection> kPlatformDocs = <String, PlatformDocsSect
   'linux': PlatformDocsSection(
     zipName: 'linux-docs.zip',
     sectionName: 'Linux',
-    checkFile: 'struct___fl_view.html',
+    checkFile: 'classflutter_1_1_flutter_desktop_view.html',
     subdir: 'linux-embedder',
   ),
   'windows': PlatformDocsSection(

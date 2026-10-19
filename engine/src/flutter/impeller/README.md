@@ -178,7 +178,7 @@ macOS Desktop. This flag can be specified to `flutter run`.
 
 | Releases | iOS | Android | Embedder API (Metal) | Embedder API (Vulkan) | Embedder API (OpenGL) | macOS | Windows | Linux | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **main** | ⭐ | ✅ | 🧪 | 🚧 | 🚧 | ✅ | ✅ | ✅ | 🚫 |
+| **main** | ⭐ | ✅ | 🧪 | 🚧 | 🚧 | ✅ | ✅ | 🧪 | 🚫 |
 | **3.47** | ⭐ | ✅ | 🧪 | 🚧 | 🚧 | ✅ | ✅ | ✅ | 🚫 |
 | **3.44** | ⭐ | ✅ | 🧪 | 🚧 | 🚧 | 🧪 | 🚧 | 🚧 | 🚫 |
 | **3.41** | ⭐ | ✅ | 🧪 | 🚧 | 🚧 | 🧪 | 🚧 | 🚧 | 🚫 |
@@ -257,14 +257,9 @@ To explicitly opt out of using Impeller, add the following to your `Info.plist` 
 
 ### Linux
 
-Impeller is the **default** on Linux.
+Impeller is **opt-in** on Linux.
 
-To disable Impeller on Linux when deploying your app, add the following setup to
-your project in `linux/runner/my_application.cc`.
-
-```c
-fl_dart_project_set_enable_impeller(project, FALSE);
-```
+To try Impeller on Linux, pass the `--enable-impeller` flag to `flutter run`.
 
 ### Windows
 

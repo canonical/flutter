@@ -127,16 +127,12 @@ class LinuxDoctorValidator extends DoctorValidator {
   static const kClangBinary = 'clang++';
   static const kCmakeBinary = 'cmake';
   static const kNinjaBinary = 'ninja';
-  static const kPkgConfigBinary = 'pkg-config';
 
   final _requiredBinaryVersions = <String, Version>{
     kClangBinary: Version(3, 4, 0),
     kCmakeBinary: Version(3, 10, 0),
     kNinjaBinary: Version(1, 8, 0),
-    kPkgConfigBinary: Version(0, 29, 0),
   };
-
-  final _requiredGtkLibraries = <String>['gtk+-3.0', 'glib-2.0', 'gio-2.0'];
 
   @override
   Future<ValidationResult> validateImpl() async {
@@ -207,41 +203,6 @@ class LinuxDoctorValidator extends DoctorValidator {
             ValidationMessage.error(_userMessages.ninjaTooOld(requiredVersion.toString())),
           );
         }
-      }
-    }
-
-    // Message for pkg-config.
-    {
-      final _VersionInfo? version = installedVersions[kPkgConfigBinary];
-      if (version == null || version.number == null) {
-        messages.add(ValidationMessage.error(_userMessages.pkgConfigMissing));
-        // Exit early because we cannot validate libraries without pkg-config.
-        return ValidationResult(validationType, messages);
-      } else {
-        assert(_requiredBinaryVersions.containsKey(kPkgConfigBinary));
-        // The full version description is just the number, so add context.
-        messages.add(ValidationMessage(_userMessages.pkgConfigVersion(version.description)));
-        final Version requiredVersion = _requiredBinaryVersions[kPkgConfigBinary]!;
-        if (version.number! < requiredVersion) {
-          messages.add(
-            ValidationMessage.error(_userMessages.pkgConfigTooOld(requiredVersion.toString())),
-          );
-        }
-      }
-    }
-
-    // Messages for libraries.
-    {
-      var libraryMissing = false;
-      for (final String library in _requiredGtkLibraries) {
-        if (!await _libraryIsPresent(library)) {
-          libraryMissing = true;
-          break;
-        }
-      }
-      if (libraryMissing) {
-        validationType = ValidationType.missing;
-        messages.add(ValidationMessage.error(_userMessages.gtkLibrariesMissing));
       }
     }
 
@@ -353,16 +314,5 @@ class LinuxDoctorValidator extends DoctorValidator {
     }
     final String firstLine = (result.stdout as String).split('\n').first.trim();
     return _VersionInfo(firstLine);
-  }
-
-  /// Checks that [library] is available via pkg-config.
-  Future<bool> _libraryIsPresent(String library) async {
-    ProcessResult? result;
-    try {
-      result = await _processManager.run(<String>['pkg-config', '--exists', library]);
-    } on ArgumentError {
-      // ignore error.
-    }
-    return (result?.exitCode ?? 1) == 0;
   }
 }

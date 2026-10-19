@@ -28,7 +28,7 @@ Future<CCompilerConfig?> cCompilerConfigLinux({
 
   final FileSystem fileSystem = cmakeDirectory.fileSystem;
 
-  // For app builds, use the same compiler as the native/GTK parts of the app.
+  // For app builds, use the same compiler as the native parts of the app.
   final File cmakeCacheTxt = cmakeDirectory.childFile('CMakeCache.txt');
   if (!cmakeCacheTxt.existsSync()) {
     if (throwIfNotFound) {

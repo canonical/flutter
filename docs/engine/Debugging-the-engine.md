@@ -141,7 +141,7 @@ gdb out/host_debug_unopt/exe.unstripped/flutter_linux_unittests
 
 And then debug the test normally using GDB commands.
 
-To debug a Flutter app using GDB, the stripped flutter engine GTK library in the built application needs to be replaced with the unstripped one in the engine build output directory.
+To debug a Flutter app using GDB, the stripped Flutter engine library (`libflutter_linux.so`) in the built application needs to be replaced with the unstripped one in the engine build output directory.
 
 First, in your Flutter project, build your Flutter app using the local engine:
 

@@ -12,195 +12,90 @@ import 'package:flutter_devicelab/framework/task_result.dart';
 import 'package:flutter_devicelab/framework/utils.dart';
 import 'package:path/path.dart' as path;
 
+// Printed by the engine with the backend in use, e.g. "(OpenGLES)".
+const String _impellerBackendMessage = 'Using the Impeller rendering backend (';
+
+/// Runs the app with [options] and returns whether the Impeller backend
+/// message was seen, or a failure message.
+Future<(bool, String?)> _runApp(String step, List<String> options) async {
+  final Process process = await startFlutter('run', options: <String>[...options, '-d', 'linux']);
+
+  final completer = Completer<void>();
+  var sawImpellerBackendMessage = false;
+  var sawVMServiceMessage = false;
+
+  final StreamSubscription<String> subscription = process.stdout
+      .transform(utf8.decoder)
+      .transform(const LineSplitter())
+      .listen((String line) {
+        print('[STDOUT $step]: $line');
+        if (line.contains(_impellerBackendMessage)) {
+          sawImpellerBackendMessage = true;
+        }
+        if (line.contains('The Dart VM service is listening on') ||
+            line.contains('A Dart VM Service')) {
+          sawVMServiceMessage = true;
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        }
+      });
+
+  await Future.any(<Future<void>>[
+    completer.future,
+    Future<void>.delayed(const Duration(minutes: 2)),
+  ]);
+
+  process.stdin.writeln('q');
+  final int exitCode = await process.exitCode;
+  await subscription.cancel();
+
+  if (exitCode != 0) {
+    return (false, 'Flutter process $step exited with non-zero exit code: $exitCode');
+  } else if (!sawVMServiceMessage) {
+    return (false, 'Did not see VM Service message (Step $step)');
+  }
+  return (sawImpellerBackendMessage, null);
+}
+
 Future<TaskResult> run() async {
   deviceOperatingSystem = DeviceOperatingSystem.linux;
 
   final Directory appDir = dir(path.join(flutterDirectory.path, 'examples/hello_world'));
-  final String myApplicationPath = path.join(appDir.path, 'linux', 'runner', 'my_application.cc');
-  final myApplicationFile = File(myApplicationPath);
-
-  const vulkanBackendMessage = 'Using the Impeller rendering backend (VulkanSDF).';
-  const openGLBackendMessage = 'Using the Impeller rendering backend (OpenGLESSDF).';
-
-  var res = TaskResult.success(null);
 
   try {
-    await inDirectory(appDir, () async {
+    return await inDirectory(appDir, () async {
       await flutter('packages', options: <String>['get']);
 
-      // Step 1: Test using default (should be enabled).
+      // Step 1: Impeller is disabled by default.
       {
-        final Process process = await startFlutter('run', options: <String>['-d', 'linux']);
-
-        final completer = Completer<void>();
-        var sawImpellerBackendMessage = false;
-
-        final StreamSubscription<String> subscription = process.stdout
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())
-            .listen((String line) {
-              print('[STDOUT 1]: $line');
-              if (line.contains(vulkanBackendMessage) || line.contains(openGLBackendMessage)) {
-                sawImpellerBackendMessage = true;
-                if (!completer.isCompleted) {
-                  completer.complete();
-                }
-              }
-            });
-
-        await Future.any(<Future<void>>[
-          completer.future,
-          Future<void>.delayed(const Duration(minutes: 2)),
-        ]);
-
-        process.stdin.writeln('q');
-        final int exitCode = await process.exitCode;
-        await subscription.cancel();
-
-        if (exitCode != 0) {
-          res = TaskResult.failure('Flutter process 1 exited with non-zero exit code: $exitCode');
-          return;
-        } else if (!sawImpellerBackendMessage) {
-          res = TaskResult.failure(
-            'Did not see "$vulkanBackendMessage" or '
-            '"$openGLBackendMessage" in output (Step 1)',
+        final (bool sawImpeller, String? failure) = await _runApp('1', <String>[]);
+        if (failure != null) {
+          return TaskResult.failure(failure);
+        } else if (sawImpeller) {
+          return TaskResult.failure(
+            'Saw "$_impellerBackendMessage" in output but Impeller should be disabled (Step 1)',
           );
-          return;
         }
       }
 
-      // Step 2: Test disabling using project flag.
+      // Step 2: Impeller is enabled with the command line flag.
       {
-        if (!myApplicationFile.existsSync()) {
-          res = TaskResult.failure('my_application.cc not found at $myApplicationPath');
-          return;
-        }
-
-        final String originalContent = myApplicationFile.readAsStringSync();
-        final String modifiedContent = originalContent.replaceFirst(
-          'g_autoptr(FlDartProject) project = fl_dart_project_new();',
-          'g_autoptr(FlDartProject) project = fl_dart_project_new();\n  fl_dart_project_set_enable_impeller(project, FALSE);',
-        );
-        if (modifiedContent == originalContent) {
-          res = TaskResult.failure('Failed to modify my_application.cc');
-          return;
-        }
-
-        try {
-          myApplicationFile.writeAsStringSync(modifiedContent);
-
-          // Run 'flutter run' without command-line flag.
-          final Process process = await startFlutter('run', options: <String>['-d', 'linux']);
-
-          final completer = Completer<void>();
-          var sawImpellerBackendMessage = false;
-          var sawVMServiceMessage = false;
-
-          final StreamSubscription<String> subscription = process.stdout
-              .transform(utf8.decoder)
-              .transform(const LineSplitter())
-              .listen((String line) {
-                print('[STDOUT 2]: $line');
-                if (line.contains(vulkanBackendMessage) || line.contains(openGLBackendMessage)) {
-                  sawImpellerBackendMessage = true;
-                }
-                if (line.contains('The Dart VM service is listening on') ||
-                    line.contains('A Dart VM Service')) {
-                  sawVMServiceMessage = true;
-                  if (!completer.isCompleted) {
-                    completer.complete();
-                  }
-                }
-              });
-
-          await Future.any(<Future<void>>[
-            completer.future,
-            Future<void>.delayed(const Duration(minutes: 2)),
-          ]);
-
-          process.stdin.writeln('q');
-          final int exitCode = await process.exitCode;
-          await subscription.cancel();
-
-          if (exitCode != 0) {
-            res = TaskResult.failure('Flutter process 2 exited with non-zero exit code: $exitCode');
-            return;
-          } else if (sawImpellerBackendMessage) {
-            res = TaskResult.failure(
-              'Saw "$vulkanBackendMessage" or '
-              '"$openGLBackendMessage" in output but Impeller should be disabled (Step 2)',
-            );
-            return;
-          } else if (!sawVMServiceMessage) {
-            res = TaskResult.failure('Did not see VM Service message (Step 2)');
-            return;
-          }
-        } finally {
-          myApplicationFile.writeAsStringSync(originalContent);
-        }
-      }
-
-      // Step 3: Test disabling using command line flag.
-      {
-        final Process process = await startFlutter(
-          'run',
-          options: <String>['--no-enable-impeller', '-d', 'linux'],
-        );
-
-        final completer = Completer<void>();
-        var sawImpellerBackendMessage = false;
-        var sawVMServiceMessage = false;
-
-        final StreamSubscription<String> subscription = process.stdout
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())
-            .listen((String line) {
-              print('[STDOUT 3]: $line');
-              if (line.contains(vulkanBackendMessage) || line.contains(openGLBackendMessage)) {
-                sawImpellerBackendMessage = true;
-              }
-              if (line.contains('The Dart VM service is listening on') ||
-                  line.contains('A Dart VM Service')) {
-                sawVMServiceMessage = true;
-                if (!completer.isCompleted) {
-                  completer.complete();
-                }
-              }
-            });
-
-        await Future.any(<Future<void>>[
-          completer.future,
-          Future<void>.delayed(const Duration(minutes: 2)),
+        final (bool sawImpeller, String? failure) = await _runApp('2', <String>[
+          '--enable-impeller',
         ]);
-
-        process.stdin.writeln('q');
-        final int exitCode = await process.exitCode;
-        await subscription.cancel();
-
-        if (exitCode != 0) {
-          res = TaskResult.failure('Flutter process 3 exited with non-zero exit code: $exitCode');
-          return;
-        } else if (sawImpellerBackendMessage) {
-          res = TaskResult.failure(
-            'Saw "$vulkanBackendMessage" or '
-            '"$openGLBackendMessage" in output but Impeller should be disabled (Step 3)',
-          );
-          return;
-        } else if (!sawVMServiceMessage) {
-          res = TaskResult.failure('Did not see VM Service message (Step 3)');
-          return;
+        if (failure != null) {
+          return TaskResult.failure(failure);
+        } else if (!sawImpeller) {
+          return TaskResult.failure('Did not see "$_impellerBackendMessage" in output (Step 2)');
         }
       }
+
+      return TaskResult.success(null);
     });
   } catch (e) {
-    res = TaskResult.failure('Test failed with exception: $e');
-  } finally {
-    if (myApplicationFile.existsSync()) {
-      await exec('git', <String>['checkout', myApplicationPath]);
-    }
+    return TaskResult.failure('Test failed with exception: $e');
   }
-
-  return res;
 }
 
 Future<void> main() async {

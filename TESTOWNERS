@@ -322,14 +322,12 @@
 /dev/devicelab/bin/tasks/run_release_test_macos.dart @cbracken @flutter/tool
 /dev/devicelab/bin/tasks/run_release_test_windows.dart @loic-sharma @flutter/tool
 /dev/devicelab/bin/tasks/technical_debt__cost.dart @justinmc @flutter/framework
-/dev/devicelab/bin/tasks/texture_impeller_linux.dart @gaaclarke @flutter/desktop
 /dev/devicelab/bin/tasks/texture_impeller_windows.dart @gaaclarke @flutter/desktop
 /dev/devicelab/bin/tasks/web_benchmarks_canvaskit.dart @yjbanov @flutter/web
 /dev/devicelab/bin/tasks/web_benchmarks_ddc.dart @yjbanov @flutter/web
 /dev/devicelab/bin/tasks/web_benchmarks_ddc_hot_reload.dart @yjbanov @flutter/web
 /dev/devicelab/bin/tasks/web_benchmarks_skwasm.dart @eyebrowsoffire @flutter/web
 /dev/devicelab/bin/tasks/web_benchmarks_skwasm_st.dart @eyebrowsoffire @flutter/web
-/dev/devicelab/bin/tasks/windowing_test_linux.dart @robert-ancell @flutter/desktop
 /dev/devicelab/bin/tasks/windowing_test_macos.dart @knopp @flutter/desktop
 /dev/devicelab/bin/tasks/windowing_test_windows.dart @mattkae @flutter/desktop
 /dev/devicelab/bin/tasks/windows_desktop_impeller.dart @jonahwilliams @flutter/engine

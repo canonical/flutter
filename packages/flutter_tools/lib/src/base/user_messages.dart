@@ -153,16 +153,6 @@ class UserMessages {
       'It is likely available from your distribution (e.g.: apt install ninja-build), or '
       'can be downloaded from https://github.com/ninja-build/ninja/releases';
   String ninjaTooOld(String minimumVersion) => 'ninja $minimumVersion or later is required.';
-  String pkgConfigVersion(String version) => 'pkg-config version $version';
-  String get pkgConfigMissing =>
-      'pkg-config is required for Linux development.\n'
-      'It is likely available from your distribution (e.g.: apt install pkg-config), or '
-      'can be downloaded from https://www.freedesktop.org/wiki/Software/pkg-config/';
-  String pkgConfigTooOld(String minimumVersion) =>
-      'pkg-config $minimumVersion or later is required.';
-  String get gtkLibrariesMissing =>
-      'GTK 3.0 development libraries are required for Linux development.\n'
-      'They are likely available from your distribution (e.g.: apt install libgtk-3-dev)';
   String get eglinfoMissing =>
       "Unable to access driver information using 'eglinfo'.\n"
       'It is likely available from your distribution (e.g.: apt install mesa-utils)';
