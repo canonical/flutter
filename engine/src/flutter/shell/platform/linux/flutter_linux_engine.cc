@@ -152,10 +152,10 @@ bool FlutterLinuxEngine::Initialize() {
 }
 
 bool FlutterLinuxEngine::IsImpellerEnabled() const {
-  return std::any_of(
-      switches_.begin(), switches_.end(), [](const std::string& s) {
-        return s == "--enable-impeller" || s == "--enable-impeller=true";
-      });
+  // Impeller is the default, but can be disabled while Skia remains.
+  return std::none_of(
+      switches_.begin(), switches_.end(),
+      [](const std::string& s) { return s == "--enable-impeller=false"; });
 }
 
 bool FlutterLinuxEngine::Run() {
@@ -182,6 +182,11 @@ bool FlutterLinuxEngine::Run() {
   std::vector<const char*> argv = {"flutter"};
   for (const std::string& s : switches_) {
     argv.push_back(s.c_str());
+  }
+  if (IsImpellerEnabled()) {
+    argv.push_back("--enable-impeller");
+    // Desktop platforms draw shapes with signed distance fields.
+    argv.push_back("--impeller-use-sdfs");
   }
   std::vector<const char*> entrypoint_argv;
   for (const std::string& s : properties_.dart_entrypoint_arguments) {

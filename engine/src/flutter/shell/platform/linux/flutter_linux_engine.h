@@ -73,7 +73,8 @@ class FlutterLinuxEngine : public PlatformMessenger,
 
   FlutterLinuxApplication* application() const { return application_; }
 
-  // Returns true if Impeller has been enabled with a command line switch.
+  // Returns true if rendering with Impeller, which is the default unless
+  // disabled with --enable-impeller=false.
   bool IsImpellerEnabled() const;
 
   // The EGL contexts the engine renders with.
