@@ -328,6 +328,40 @@ class PlatformViewsService {
     }
     return AppKitViewController._(id, layoutDirection);
   }
+
+  /// Factory method to create a [LinuxViewController].
+  ///
+  /// The `id` parameter is an unused unique identifier generated with
+  /// [platformViewsRegistry].
+  ///
+  /// The `viewType` parameter is the identifier of the Linux view type to be
+  /// created, a factory for this view type must have been registered on the
+  /// platform side. Platform view factories are typically registered by plugin
+  /// code.
+  ///
+  /// The platform view is not created until [LinuxViewController.create] is
+  /// called. If `creationParams` is non null then `creationParamsCodec` must
+  /// not be null.
+  static LinuxViewController initLinuxView({
+    required int id,
+    required String viewType,
+    required TextDirection layoutDirection,
+    dynamic creationParams,
+    MessageCodec<dynamic>? creationParamsCodec,
+    VoidCallback? onFocus,
+  }) {
+    assert(creationParams == null || creationParamsCodec != null);
+    if (onFocus != null) {
+      _instance._focusCallbacks[id] = onFocus;
+    }
+    return LinuxViewController._(
+      id,
+      viewType,
+      layoutDirection,
+      creationParams,
+      creationParamsCodec,
+    );
+  }
 }
 
 /// Properties of an Android pointer.
@@ -1713,6 +1747,143 @@ class UiKitViewController extends DarwinPlatformViewController {
 /// Controller for a macOS platform view.
 class AppKitViewController extends DarwinPlatformViewController {
   AppKitViewController._(super.id, super.layoutDirection);
+}
+
+/// Controller for a Linux platform view.
+///
+/// The platform view is shown in a Wayland subsurface that is composited
+/// above the Flutter content below it, with Flutter content drawn above it
+/// placed in overlay subsurfaces.
+///
+/// Typically created with [PlatformViewsService.initLinuxView].
+class LinuxViewController extends PlatformViewController {
+  LinuxViewController._(
+    this.viewId,
+    this.viewType,
+    this.layoutDirection,
+    this._creationParams,
+    this._creationParamsCodec,
+  );
+
+  @override
+  final int viewId;
+
+  /// The unique identifier of the Linux view type to be embedded.
+  final String viewType;
+
+  /// The layout direction of the platform view.
+  // TODO(robert-ancell): pass the layout direction to the platform view.
+  TextDirection layoutDirection;
+
+  final dynamic _creationParams;
+
+  final MessageCodec<dynamic>? _creationParamsCodec;
+
+  final List<PlatformViewCreatedCallback> _platformViewCreatedCallbacks =
+      <PlatformViewCreatedCallback>[];
+
+  bool _created = false;
+
+  bool _disposed = false;
+
+  /// Adds a callback that will get invoked after the platform view has been
+  /// created.
+  void addOnPlatformViewCreatedListener(PlatformViewCreatedCallback listener) {
+    assert(!_disposed);
+    _platformViewCreatedCallbacks.add(listener);
+  }
+
+  /// Removes a callback added with [addOnPlatformViewCreatedListener].
+  void removeOnPlatformViewCreatedListener(PlatformViewCreatedCallback listener) {
+    assert(!_disposed);
+    _platformViewCreatedCallbacks.remove(listener);
+  }
+
+  @override
+  bool get awaitingCreation => !_created;
+
+  @override
+  Future<void> create({Size? size, Offset? position}) async {
+    assert(!_disposed, 'trying to create a disposed Linux view');
+    assert(!_created, 'trying to create an already created Linux view');
+    _created = true;
+    final args = <String, dynamic>{'id': viewId, 'viewType': viewType};
+    if (size != null) {
+      args['width'] = size.width;
+      args['height'] = size.height;
+    }
+    if (_creationParams != null) {
+      final ByteData paramsByteData = _creationParamsCodec!.encodeMessage(_creationParams)!;
+      args['params'] = Uint8List.view(paramsByteData.buffer, 0, paramsByteData.lengthInBytes);
+    }
+    await SystemChannels.platform_views.invokeMethod<void>('create', args);
+    if (_disposed) {
+      return;
+    }
+    for (final PlatformViewCreatedCallback callback in _platformViewCreatedCallbacks) {
+      callback(viewId);
+    }
+  }
+
+  @override
+  Future<void> dispatchPointerEvent(PointerEvent event) async {
+    if (!_created || _disposed) {
+      return;
+    }
+    final String? kind = switch (event) {
+      PointerDownEvent() => 'down',
+      PointerMoveEvent() => 'move',
+      PointerUpEvent() => 'up',
+      PointerCancelEvent() => 'cancel',
+      PointerHoverEvent() => 'hover',
+      PointerExitEvent() => 'exit',
+      PointerScrollEvent() => 'scroll',
+      _ => null,
+    };
+    if (kind == null) {
+      return;
+    }
+    final String deviceKind = switch (event.kind) {
+      PointerDeviceKind.touch => 'touch',
+      PointerDeviceKind.stylus || PointerDeviceKind.invertedStylus => 'stylus',
+      PointerDeviceKind.trackpad => 'trackpad',
+      PointerDeviceKind.mouse || PointerDeviceKind.unknown => 'mouse',
+    };
+    final Offset scrollDelta = event is PointerScrollEvent ? event.scrollDelta : Offset.zero;
+    await SystemChannels.platform_views.invokeMethod<void>('pointer', <String, dynamic>{
+      'id': viewId,
+      'kind': kind,
+      'deviceKind': deviceKind,
+      'device': event.device,
+      'buttons': event.buttons,
+      'x': event.localPosition.dx,
+      'y': event.localPosition.dy,
+      'scrollDeltaX': scrollDelta.dx,
+      'scrollDeltaY': scrollDelta.dy,
+      'timestamp': event.timeStamp.inMicroseconds,
+    });
+  }
+
+  @override
+  Future<void> clearFocus() async {
+    if (!_created || _disposed) {
+      return;
+    }
+    await SystemChannels.platform_views.invokeMethod<void>('clearFocus', viewId);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    _platformViewCreatedCallbacks.clear();
+    PlatformViewsService._instance._focusCallbacks.remove(viewId);
+    if (_created) {
+      await SystemChannels.platform_views.invokeMethod<void>('dispose', viewId);
+    }
+  }
 }
 
 /// An interface for controlling a single platform view.

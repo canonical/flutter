@@ -367,6 +367,76 @@ class AppKitView extends _DarwinView {
   State<AppKitView> createState() => _AppKitViewState();
 }
 
+/// Embeds a Linux platform view in the Widget hierarchy.
+///
+/// The platform view is shown in a Wayland subsurface positioned to match
+/// the widget, with Flutter content painted above it shown in overlay
+/// subsurfaces. Translation, scaling, rectangular clips and opacity are
+/// supported. Other transforms and clips are approximated by their bounding
+/// rectangle.
+///
+/// {@macro flutter.widgets.AndroidView.layout}
+///
+/// {@macro flutter.widgets.AndroidView.gestures}
+///
+/// {@macro flutter.widgets.AndroidView.lifetime}
+///
+/// The platform view is created after the widget is first laid out with a
+/// non-empty size. Until it is created this widget paints nothing while
+/// maintaining the same layout constraints.
+class LinuxView extends StatefulWidget {
+  /// Creates a widget that embeds a Linux platform view.
+  ///
+  /// {@macro flutter.widgets.AndroidView.constructorArgs}
+  const LinuxView({
+    super.key,
+    required this.viewType,
+    this.onPlatformViewCreated,
+    this.hitTestBehavior = PlatformViewHitTestBehavior.opaque,
+    this.layoutDirection,
+    this.creationParams,
+    this.creationParamsCodec,
+    this.gestureRecognizers,
+  }) : assert(creationParams == null || creationParamsCodec != null);
+
+  /// The unique identifier for the Linux view type to be embedded by this
+  /// widget.
+  ///
+  /// A platform view factory for this type must have been registered.
+  final String viewType;
+
+  /// {@macro flutter.widgets.AndroidView.onPlatformViewCreated}
+  final PlatformViewCreatedCallback? onPlatformViewCreated;
+
+  /// {@macro flutter.widgets.AndroidView.hitTestBehavior}
+  final PlatformViewHitTestBehavior hitTestBehavior;
+
+  /// {@macro flutter.widgets.AndroidView.layoutDirection}
+  final TextDirection? layoutDirection;
+
+  /// Passed to the platform view factory when the platform view is created.
+  ///
+  /// This can be used by plugins to pass constructor parameters to the
+  /// embedded view.
+  final dynamic creationParams;
+
+  /// The codec used to encode `creationParams` before sending it to the
+  /// platform side.
+  ///
+  /// This must not be null if [creationParams] is not null.
+  final MessageCodec<dynamic>? creationParamsCodec;
+
+  /// Which gestures should be forwarded to the Linux view.
+  ///
+  /// {@macro flutter.widgets.AndroidView.gestureRecognizers.descHead}
+  ///
+  /// {@macro flutter.widgets.AndroidView.gestureRecognizers.descFoot}
+  final Set<Factory<OneSequenceGestureRecognizer>>? gestureRecognizers;
+
+  @override
+  State<LinuxView> createState() => _LinuxViewState();
+}
+
 /// The signature of the function that gets called when the [HtmlElementView]
 /// DOM element is created.
 ///
@@ -1054,6 +1124,59 @@ class _AppKitViewState
       controller: _controller!,
       hitTestBehavior: widget.hitTestBehavior,
       gestureRecognizers: widget.gestureRecognizers ?? _DarwinViewState._emptyRecognizersSet,
+    );
+  }
+}
+
+class _LinuxViewState extends State<LinuxView> {
+  static final Set<Factory<OneSequenceGestureRecognizer>> _emptyRecognizersSet =
+      <Factory<OneSequenceGestureRecognizer>>{};
+
+  LinuxViewController? _controller;
+
+  TextDirection _findLayoutDirection() {
+    return widget.layoutDirection ?? Directionality.maybeOf(context) ?? TextDirection.ltr;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller?.layoutDirection = _findLayoutDirection();
+  }
+
+  @override
+  void didUpdateWidget(LinuxView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _controller?.layoutDirection = _findLayoutDirection();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PlatformViewLink(
+      viewType: widget.viewType,
+      onCreatePlatformView: (PlatformViewCreationParams params) {
+        final LinuxViewController controller = PlatformViewsService.initLinuxView(
+          id: params.id,
+          viewType: params.viewType,
+          layoutDirection: _findLayoutDirection(),
+          creationParams: widget.creationParams,
+          creationParamsCodec: widget.creationParamsCodec,
+          onFocus: () => params.onFocusChanged(true),
+        );
+        controller.addOnPlatformViewCreatedListener(params.onPlatformViewCreated);
+        controller.addOnPlatformViewCreatedListener((int id) {
+          widget.onPlatformViewCreated?.call(id);
+        });
+        _controller = controller;
+        return controller;
+      },
+      surfaceFactory: (BuildContext context, PlatformViewController controller) {
+        return PlatformViewSurface(
+          controller: controller,
+          gestureRecognizers: widget.gestureRecognizers ?? _emptyRecognizersSet,
+          hitTestBehavior: widget.hitTestBehavior,
+        );
+      },
     );
   }
 }

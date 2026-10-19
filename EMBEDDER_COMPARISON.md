@@ -216,7 +216,7 @@ In the excluded screen-off run:
 | Impeller | ✅ default (GLES, SDF) | ✅ default (GLES, SDF) | ⚠️ accepts the switch, GL only | ✅ (partial repaint disabled with Impeller) | ❌ no specific support |
 | Vulkan | ❌ | ❌ | ❌ | ✅ | ⚠️ optional, off by default |
 | External textures | ✅ GL and pixel buffer | ✅ pixel buffer and dmabuf (zero-copy, incl. YUV) | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
-| Platform views | ❌ | ❌ | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
+| Platform views | ❌ | ✅ zero-copy plugin dmabufs in Wayland subsurfaces, Flutter overlays in subsurfaces above them | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
 
 ### Windows and displays
 
@@ -374,7 +374,9 @@ These are ordered by how much they affect apps:
 2. **`flutter/settings`**: dark mode, text scale, 24-hour time, accent colour,
    from the XDG settings portal over the existing D-Bus code.
 3. **Lifecycle and locales.**
-4. **Platform views.**
+4. **Platform view follow-ups**: keyboard focus, a texture fallback for
+   rotations and rounded clips (currently approximated by their bounding box),
+   plugin access to a raw `wl_surface`, acquire fences for plugin buffers.
 5. **Drag and drop, primary selection, high-resolution scrolling
    (`axis_value120`, `wl_seat` v8+), tablet input.**
 6. **Vulkan / Impeller-Vulkan.**

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 
@@ -161,19 +162,20 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
   if (layers_count == 0) {
     return true;
   }
-
-  // Only a single layer is currently supported. Multiple layers will be
-  // presented using subsurfaces.
-  if (layers_count > 1 && !warned_multiple_layers_) {
-    FML_LOG(WARNING) << "Platform views are not supported, only the first "
-                        "layer will be shown";
-    warned_multiple_layers_ = true;
-  }
-  const FlutterLayer* layer = layers[0];
-  if (layer->type != kFlutterLayerContentTypeBackingStore) {
+  // The engine always draws the bottom layer into a backing store, which is
+  // shown in the window's surface.
+  if (layers[0]->type != kFlutterLayerContentTypeBackingStore) {
+    FML_LOG(ERROR) << "The bottom layer must be a backing store";
     return false;
   }
-  auto* pool_buffer = static_cast<PoolBuffer*>(layer->backing_store->user_data);
+
+  size_t n_backing_stores = 0;
+  for (size_t i = 0; i < layers_count; i++) {
+    if (layers[i]->type == kFlutterLayerContentTypeBackingStore) {
+      n_backing_stores++;
+    }
+  }
+  backing_stores_per_frame_[view_id] = n_backing_stores;
 
   FlutterLinuxView* view;
   {
@@ -185,7 +187,7 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     view = it->second;
     presenting_view_ = view_id;
   }
-  bool result = PresentToView(view, pool_buffer);
+  bool result = PresentToView(view, layers, layers_count);
   {
     std::scoped_lock lock(views_mutex_);
     presenting_view_.reset();
@@ -194,65 +196,166 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
   return result;
 }
 
+void CompositorOpenGL::SetPlatformViewLookup(PlatformViewLookup lookup) {
+  platform_view_lookup_ = std::move(lookup);
+}
+
 bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
-                                     PoolBuffer* pool_buffer) {
-  RenderBuffer* buffer = pool_buffer->buffer.get();
-  double corner_radius =
-      view->window()->ContentCornerRadius(buffer->width(), buffer->height());
+                                     const FlutterLayer** layers,
+                                     size_t layers_count) {
+  auto* root = static_cast<PoolBuffer*>(layers[0]->backing_store->user_data);
+  RenderBuffer* root_buffer = root->buffer.get();
+  int width = root_buffer->width();
+  int height = root_buffer->height();
+  double corner_radius = view->window()->ContentCornerRadius(width, height);
   if (corner_radius > 0) {
     if (!corner_mask_) {
       corner_mask_ = std::make_unique<CornerMask>();
     }
-    corner_mask_->Apply(buffer->framebuffer(), buffer->width(),
-                        buffer->height(), corner_radius);
-  }
-  if (!buffer->PrepareToPresent()) {
-    return false;
+    corner_mask_->Apply(root_buffer->framebuffer(), width, height,
+                        corner_radius);
   }
 
-  if (pool_buffer->timeline == nullptr) {
+  // The buffers to show, the root first.
+  std::vector<PoolBuffer*> buffers = {root};
+  std::vector<WaylandWindow::Layer> window_layers;
+  double scale = view->window()->scale();
+  for (size_t i = 1; i < layers_count; i++) {
+    const FlutterLayer* layer = layers[i];
+    if (layer->type == kFlutterLayerContentTypePlatformView) {
+      std::shared_ptr<LinuxPlatformView> platform_view =
+          platform_view_lookup_
+              ? platform_view_lookup_(layer->platform_view->identifier)
+              : nullptr;
+      if (platform_view == nullptr) {
+        continue;
+      }
+      WaylandWindow::Layer window_layer;
+      window_layer.platform_view = std::move(platform_view);
+      window_layer.geometry = GetPlatformViewGeometry(*layer, scale);
+      window_layers.push_back(std::move(window_layer));
+      continue;
+    }
+
+    auto* pool_buffer =
+        static_cast<PoolBuffer*>(layer->backing_store->user_data);
+    RenderBuffer* buffer = pool_buffer->buffer.get();
+    PixelRect content =
+        GetPaintBounds(layer, buffer->width(), buffer->height());
+    if (content.empty() || buffer->width() != width ||
+        buffer->height() != height) {
+      continue;
+    }
+    WaylandWindow::Layer window_layer;
+    window_layer.buffer = buffer->buffer();
+    window_layer.content = content;
+    window_layers.push_back(std::move(window_layer));
+    buffers.push_back(pool_buffer);
+  }
+
+  for (PoolBuffer* pool_buffer : buffers) {
+    if (!pool_buffer->buffer->PrepareToPresent()) {
+      return false;
+    }
+  }
+
+  if (root->timeline == nullptr) {
     // Submit the rendering commands. The compositor waits for them to
-    // complete using the implicit fence on the dmabuf.
+    // complete using the implicit fences on the dmabufs.
     glFlush();
-    buffer->set_busy(true);
-    view->PresentBuffer(buffer, nullptr);
+    for (PoolBuffer* pool_buffer : buffers) {
+      pool_buffer->buffer->set_busy(true);
+    }
+    view->PresentBuffer(root_buffer, nullptr, window_layers);
     return true;
   }
 
-  DrmTimeline* timeline = pool_buffer->timeline.get();
-  WaylandWindow::SyncPoints sync = {
-      .timeline = timeline->timeline(),
-      .acquire_point = ++pool_buffer->last_point,
-      .release_point = ++pool_buffer->last_point,
-  };
-  if (!SignalWhenRenderingComplete(timeline, sync.acquire_point)) {
+  std::vector<WaylandWindow::SyncPoints> sync(buffers.size());
+  for (size_t i = 0; i < buffers.size(); i++) {
+    PoolBuffer* pool_buffer = buffers[i];
+    sync[i] = {
+        .timeline = pool_buffer->timeline->timeline(),
+        .acquire_point = ++pool_buffer->last_point,
+        .release_point = ++pool_buffer->last_point,
+    };
+  }
+  if (!SignalWhenRenderingComplete(buffers, sync)) {
     return false;
   }
-  pool_buffer->release_point = sync.release_point;
-  view->PresentBuffer(buffer, &sync);
+  for (size_t i = 0; i < buffers.size(); i++) {
+    buffers[i]->release_point = sync[i].release_point;
+  }
+  size_t overlay = 1;
+  for (WaylandWindow::Layer& window_layer : window_layers) {
+    if (window_layer.buffer != nullptr) {
+      window_layer.sync = sync[overlay++];
+    }
+  }
+  view->PresentBuffer(root_buffer, &sync[0], window_layers);
   return true;
 }
 
-bool CompositorOpenGL::SignalWhenRenderingComplete(DrmTimeline* timeline,
-                                                   uint64_t point) {
+PixelRect CompositorOpenGL::GetPaintBounds(const FlutterLayer* layer,
+                                           int width,
+                                           int height) {
+  PixelRect full = {0, 0, static_cast<double>(width),
+                    static_cast<double>(height)};
+  const FlutterBackingStorePresentInfo* info =
+      layer->backing_store_present_info;
+  if (info == nullptr || info->paint_region == nullptr) {
+    return full;
+  }
+  const FlutterRegion* region = info->paint_region;
+  double left = INFINITY, top = INFINITY;
+  double right = -INFINITY, bottom = -INFINITY;
+  for (size_t i = 0; i < region->rects_count; i++) {
+    const FlutterRect& rect = region->rects[i];
+    if (rect.right <= rect.left || rect.bottom <= rect.top) {
+      continue;
+    }
+    left = std::min(left, rect.left);
+    top = std::min(top, rect.top);
+    right = std::max(right, rect.right);
+    bottom = std::max(bottom, rect.bottom);
+  }
+  if (right <= left || bottom <= top) {
+    return {};
+  }
+  return PixelRect{left, top, right - left, bottom - top}.Intersect(full);
+}
+
+bool CompositorOpenGL::SignalWhenRenderingComplete(
+    const std::vector<PoolBuffer*>& buffers,
+    const std::vector<WaylandWindow::SyncPoints>& sync) {
   GpuDevice* gpu = egl_->gpu();
   const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
                                EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
-  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
-                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  EGLSyncKHR egl_sync = gpu->CreateSync(
+      gpu->display(), EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
   // The fence is only created once the commands are submitted.
   glFlush();
-  if (sync != EGL_NO_SYNC_KHR) {
-    fml::UniqueFD fence(gpu->DupNativeFenceFD(gpu->display(), sync));
-    gpu->DestroySync(gpu->display(), sync);
-    if (fence.is_valid() && timeline->ImportSyncFile(point, fence)) {
+  if (egl_sync != EGL_NO_SYNC_KHR) {
+    // One fence covers the rendering into all the buffers.
+    fml::UniqueFD fence(gpu->DupNativeFenceFD(gpu->display(), egl_sync));
+    gpu->DestroySync(gpu->display(), egl_sync);
+    bool imported = fence.is_valid();
+    for (size_t i = 0; imported && i < buffers.size(); i++) {
+      imported =
+          buffers[i]->timeline->ImportSyncFile(sync[i].acquire_point, fence);
+    }
+    if (imported) {
       return true;
     }
   }
 
   FML_DLOG(WARNING) << "Unable to create fence, waiting for rendering";
   glFinish();
-  return timeline->Signal(point);
+  for (size_t i = 0; i < buffers.size(); i++) {
+    if (!buffers[i]->timeline->Signal(sync[i].acquire_point)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
@@ -270,7 +373,11 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
     return pool_buffer;
   }
 
-  if (pool.size() >= kMaxPoolSize) {
+  // Each backing store in a frame needs its own set of buffers.
+  size_t in_use = std::count_if(pool.begin(), pool.end(),
+                                [](const auto& b) { return b->in_use; });
+  size_t per_frame = std::max(backing_stores_per_frame_[view_id], in_use + 1);
+  if (pool.size() >= kMaxPoolSize * per_frame) {
     // Wait for the compositor to release a buffer.
     auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::milliseconds(kBufferWaitTimeoutMs);
@@ -338,6 +445,7 @@ void CompositorOpenGL::RemoveUnusedPools() {
     bool in_use = std::any_of(it->second.begin(), it->second.end(),
                               [](const auto& b) { return b->in_use; });
     if (views_.count(it->first) == 0 && !in_use) {
+      backing_stores_per_frame_.erase(it->first);
       it = pools_.erase(it);
     } else {
       ++it;

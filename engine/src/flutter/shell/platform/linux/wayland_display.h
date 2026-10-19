@@ -17,6 +17,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/event_loop.h"
+#include "flutter/shell/platform/linux/protocols/alpha-modifier-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/fifo-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/fractional-scale-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
@@ -81,6 +82,7 @@ class WaylandDisplay : public EventLoop::Source {
     return fractional_scale_manager_;
   }
   wp_presentation* presentation() const { return presentation_; }
+  wp_alpha_modifier_v1* alpha_modifier() const { return alpha_modifier_; }
   wp_fifo_manager_v1* fifo_manager() const { return fifo_manager_; }
   wp_linux_drm_syncobj_manager_v1* syncobj_manager() const {
     return syncobj_manager_;
@@ -226,6 +228,7 @@ class WaylandDisplay : public EventLoop::Source {
   wp_viewporter* viewporter_ = nullptr;
   wp_fractional_scale_manager_v1* fractional_scale_manager_ = nullptr;
   wp_presentation* presentation_ = nullptr;
+  wp_alpha_modifier_v1* alpha_modifier_ = nullptr;
   std::vector<Protocol> protocols_;
   wp_fifo_manager_v1* fifo_manager_ = nullptr;
   wp_linux_drm_syncobj_manager_v1* syncobj_manager_ = nullptr;

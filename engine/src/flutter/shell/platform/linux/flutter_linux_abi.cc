@@ -26,6 +26,7 @@
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
+#include "flutter/shell/platform/linux/platform_view_manager.h"
 #include "flutter/shell/platform/linux/plugin_messenger.h"
 
 namespace {
@@ -37,6 +38,15 @@ flutter::FlutterLinuxApplication* ToApplication(
 
 flutter::FlutterLinuxEngine* ToEngine(FlutterLinuxEngine* engine) {
   return reinterpret_cast<flutter::FlutterLinuxEngine*>(engine);
+}
+
+flutter::LinuxPlatformView* ToPlatformView(FlutterLinuxPlatformView* view) {
+  return reinterpret_cast<flutter::LinuxPlatformView*>(view);
+}
+
+flutter::LinuxPlatformView::Buffer* ToPlatformViewBuffer(
+    FlutterLinuxPlatformViewBuffer* buffer) {
+  return reinterpret_cast<flutter::LinuxPlatformView::Buffer*>(buffer);
 }
 
 flutter::FlutterLinuxView* ToView(FlutterLinuxView* view) {
@@ -497,6 +507,105 @@ void flutter_linux_engine_unregister_texture(FlutterLinuxEngine* engine,
   }
   ToEngine(engine)->texture_registrar()->UnregisterTexture(texture_id,
                                                            std::move(callback));
+}
+
+void flutter_linux_engine_register_platform_view_type(
+    FlutterLinuxEngine* engine,
+    const char* view_type,
+    FlutterLinuxPlatformViewFactory factory,
+    FlutterLinuxCallback destroy,
+    void* user_data) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  ToEngine(engine)->platform_view_manager()->RegisterViewType(
+      view_type, [notify = std::move(notify), factory, user_data](
+                     flutter::LinuxPlatformView* view,
+                     const std::vector<uint8_t>& params) {
+        return factory(reinterpret_cast<FlutterLinuxPlatformView*>(view),
+                       view->id(), params.data(), params.size(), user_data);
+      });
+}
+
+void flutter_linux_platform_view_set_callbacks(
+    FlutterLinuxPlatformView* view,
+    const FlutterLinuxPlatformViewCallbacks* callbacks,
+    void* user_data,
+    FlutterLinuxCallback destroy) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  FlutterLinuxPlatformViewCallbacks c = {};
+  if (callbacks != nullptr) {
+    std::memcpy(&c, callbacks, std::min(callbacks->struct_size, sizeof(c)));
+  }
+  flutter::LinuxPlatformView::ResizeCallback on_resize;
+  if (c.resize != nullptr) {
+    on_resize = [notify, resize = c.resize, user_data](int width, int height,
+                                                       double scale) {
+      resize(width, height, scale, user_data);
+    };
+  }
+  flutter::LinuxPlatformView::PointerCallback on_pointer =
+      [notify, pointer_event = c.pointer_event,
+       user_data](const flutter::PlatformViewPointerEvent& event) {
+        if (pointer_event == nullptr) {
+          return;
+        }
+        FlutterLinuxPlatformViewPointerEvent e = {};
+        e.struct_size = sizeof(e);
+        e.kind = static_cast<FlutterLinuxPointerEventKind>(event.kind);
+        e.device_kind =
+            static_cast<FlutterLinuxPointerDeviceKind>(event.device_kind);
+        e.device = event.device;
+        e.buttons = event.buttons;
+        e.x = event.x;
+        e.y = event.y;
+        e.scroll_delta_x = event.scroll_delta_x;
+        e.scroll_delta_y = event.scroll_delta_y;
+        e.timestamp_us = event.timestamp_us;
+        pointer_event(&e, user_data);
+      };
+  ToPlatformView(view)->SetCallbacks(std::move(on_resize),
+                                     std::move(on_pointer));
+}
+
+int64_t flutter_linux_platform_view_get_id(FlutterLinuxPlatformView* view) {
+  return ToPlatformView(view)->id();
+}
+
+FlutterLinuxPlatformViewBuffer* flutter_linux_platform_view_create_buffer(
+    FlutterLinuxPlatformView* view,
+    const FlutterLinuxDmabuf* dmabuf) {
+  if (dmabuf == nullptr || dmabuf->struct_size < sizeof(FlutterLinuxDmabuf) ||
+      dmabuf->n_planes > FLUTTER_LINUX_DMABUF_MAX_PLANES) {
+    FML_LOG(ERROR) << "Invalid FlutterLinuxDmabuf";
+    return nullptr;
+  }
+  flutter::DmabufFrame frame;
+  frame.width = dmabuf->width;
+  frame.height = dmabuf->height;
+  frame.format = dmabuf->format;
+  frame.modifier = dmabuf->modifier;
+  for (uint32_t i = 0; i < dmabuf->n_planes; i++) {
+    frame.planes.push_back({dmabuf->planes[i].fd, dmabuf->planes[i].offset,
+                            dmabuf->planes[i].stride});
+  }
+  if (dmabuf->release_callback != nullptr) {
+    frame.release = [release = dmabuf->release_callback,
+                     release_user_data = dmabuf->release_user_data]() {
+      release(release_user_data);
+    };
+  }
+  return reinterpret_cast<FlutterLinuxPlatformViewBuffer*>(
+      ToPlatformView(view)->CreateBuffer(frame).release());
+}
+
+void flutter_linux_platform_view_present(
+    FlutterLinuxPlatformView* view,
+    FlutterLinuxPlatformViewBuffer* buffer) {
+  ToPlatformView(view)->Present(ToPlatformViewBuffer(buffer));
+}
+
+void flutter_linux_platform_view_buffer_free(
+    FlutterLinuxPlatformViewBuffer* buffer) {
+  delete ToPlatformViewBuffer(buffer);
 }
 
 wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {

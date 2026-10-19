@@ -383,6 +383,120 @@ FLUTTER_EXPORT void flutter_linux_engine_unregister_texture(
     FlutterLinuxCallback done,
     void* user_data);
 
+// Platform views show native content (e.g. video or a web page) in a
+// PlatformView widget, such as LinuxView. The content is shown in its own
+// Wayland surface, so the compositor can put it on screen directly without it
+// being drawn by Flutter. The plugin provides the content as dmabufs, and the
+// engine places, clips and stacks the surface to match the widget.
+
+typedef struct _FlutterLinuxPlatformView FlutterLinuxPlatformView;
+typedef struct _FlutterLinuxPlatformViewBuffer FlutterLinuxPlatformViewBuffer;
+
+// Sets up |view| when the framework creates a platform view. |params| are the
+// widget's creationParams, encoded with its codec. Returns false if the view
+// can't be created.
+typedef bool (*FlutterLinuxPlatformViewFactory)(FlutterLinuxPlatformView* view,
+                                                int64_t view_id,
+                                                const uint8_t* params,
+                                                size_t params_size,
+                                                void* user_data);
+
+// Registers |factory| to create views of |view_type|, replacing any existing
+// factory. |destroy|, which may be NULL, is called when the factory is
+// replaced or the engine is freed.
+FLUTTER_EXPORT void flutter_linux_engine_register_platform_view_type(
+    FlutterLinuxEngine* engine,
+    const char* view_type,
+    FlutterLinuxPlatformViewFactory factory,
+    FlutterLinuxCallback destroy,
+    void* user_data);
+
+typedef enum {
+  FLUTTER_LINUX_POINTER_EVENT_DOWN,
+  FLUTTER_LINUX_POINTER_EVENT_MOVE,
+  FLUTTER_LINUX_POINTER_EVENT_UP,
+  FLUTTER_LINUX_POINTER_EVENT_CANCEL,
+  // The pointer moved while no buttons are pressed.
+  FLUTTER_LINUX_POINTER_EVENT_HOVER,
+  // The pointer left the view.
+  FLUTTER_LINUX_POINTER_EVENT_EXIT,
+  FLUTTER_LINUX_POINTER_EVENT_SCROLL,
+} FlutterLinuxPointerEventKind;
+
+typedef enum {
+  FLUTTER_LINUX_POINTER_DEVICE_MOUSE,
+  FLUTTER_LINUX_POINTER_DEVICE_TOUCH,
+  FLUTTER_LINUX_POINTER_DEVICE_STYLUS,
+  FLUTTER_LINUX_POINTER_DEVICE_TRACKPAD,
+} FlutterLinuxPointerDeviceKind;
+
+// A pointer event in a platform view.
+typedef struct {
+  // The size of this struct.
+  size_t struct_size;
+  FlutterLinuxPointerEventKind kind;
+  FlutterLinuxPointerDeviceKind device_kind;
+  // Identifies the pointer, e.g. a touch point.
+  int32_t device;
+  // The pressed buttons, as Flutter's kPrimaryButton etc. flags.
+  int64_t buttons;
+  // The position in logical pixels relative to the view's top left, before
+  // any transforms the view is shown with.
+  double x;
+  double y;
+  // For FLUTTER_LINUX_POINTER_EVENT_SCROLL, the logical pixels to scroll.
+  double scroll_delta_x;
+  double scroll_delta_y;
+  int64_t timestamp_us;
+} FlutterLinuxPlatformViewPointerEvent;
+
+typedef struct {
+  // The size of this struct. Must be sizeof(FlutterLinuxPlatformViewCallbacks).
+  size_t struct_size;
+  // Called when the size the view is shown at changes. Buffers of
+  // |width|x|height| physical pixels are shown without scaling. |scale| is
+  // the number of physical pixels per logical pixel. May be NULL.
+  void (*resize)(int width, int height, double scale, void* user_data);
+  // Called with pointer events in the view. May be NULL.
+  void (*pointer_event)(const FlutterLinuxPlatformViewPointerEvent* event,
+                        void* user_data);
+} FlutterLinuxPlatformViewCallbacks;
+
+// Sets the callbacks for |view|, typically in the factory. |destroy|, which
+// may be NULL, is called when the callbacks are replaced or the framework
+// disposes the view, after which |view| must no longer be used.
+FLUTTER_EXPORT void flutter_linux_platform_view_set_callbacks(
+    FlutterLinuxPlatformView* view,
+    const FlutterLinuxPlatformViewCallbacks* callbacks,
+    void* user_data,
+    FlutterLinuxCallback destroy);
+
+// Returns the ID the framework uses for |view|.
+FLUTTER_EXPORT int64_t
+flutter_linux_platform_view_get_id(FlutterLinuxPlatformView* view);
+
+// Creates a buffer that can be presented in |view| from |dmabuf|. The file
+// descriptors are not closed or kept. The format and modifier must be
+// supported by the Wayland compositor; DRM_FORMAT_ARGB8888,
+// DRM_FORMAT_XRGB8888 and DRM_FORMAT_NV12 usually are. |dmabuf|'s release
+// callback is called each time the buffer can be reused after it has been
+// presented: once another buffer has replaced it and the compositor has
+// finished with it. The color space and range are not used. Returns NULL if
+// the buffer can't be used.
+FLUTTER_EXPORT FlutterLinuxPlatformViewBuffer*
+flutter_linux_platform_view_create_buffer(FlutterLinuxPlatformView* view,
+                                          const FlutterLinuxDmabuf* dmabuf);
+
+// Shows |buffer| in |view|, replacing the previous buffer. Rendering into the
+// buffer must be complete. Pass NULL to show nothing.
+FLUTTER_EXPORT void flutter_linux_platform_view_present(
+    FlutterLinuxPlatformView* view,
+    FlutterLinuxPlatformViewBuffer* buffer);
+
+// Frees |buffer|. This may be after its view is disposed.
+FLUTTER_EXPORT void flutter_linux_platform_view_buffer_free(
+    FlutterLinuxPlatformViewBuffer* buffer);
+
 // The surface the view's Flutter content is shown in. Its origin is the
 // origin of the view's content, and it is the root of the window's surface
 // tree, so it can be used to identify the window (e.g. with xdg-foreign).

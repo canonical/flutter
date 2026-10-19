@@ -16,6 +16,8 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/linux_platform_view.h"
+#include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 #include "flutter/shell/platform/linux/window_decoration.h"
@@ -254,11 +256,41 @@ class WaylandWindow : public WindowDecoration::Delegate,
   // If a popup changes size, it is repositioned first and this blocks until
   // the compositor has placed it, so it moves and resizes in the same frame.
   //
+  // A layer shown above the content, either Flutter content drawn above a
+  // platform view (an overlay) or a platform view.
+  struct Layer {
+    // The overlay's buffer, the same size as the content, or nullptr for a
+    // platform view.
+    wl_buffer* buffer = nullptr;
+
+    // Used to synchronize the overlay's buffer, as with |sync| for the
+    // content. Ignored unless |sync| is provided.
+    SyncPoints sync = {};
+
+    // The part of the overlay that has content, in physical pixels.
+    PixelRect content;
+
+    // The platform view and where it is shown.
+    std::shared_ptr<LinuxPlatformView> platform_view;
+    PlatformViewGeometry geometry;
+  };
+
   // May be called from any thread, but only from one thread at a time.
+  //
+  // |layers| are shown above the content in the order given. Overlays and
+  // platform views not in |layers| are hidden.
   void Present(wl_buffer* buffer,
                int width,
                int height,
-               const SyncPoints* sync);
+               const SyncPoints* sync,
+               const std::vector<Layer>& layers = {});
+
+  // Shows the latest buffer of |view|, if it is in this window. Called on
+  // the platform thread.
+  void CommitPlatformView(LinuxPlatformView* view);
+
+  // Removes |view| from this window. Called on the platform thread.
+  void RemovePlatformView(LinuxPlatformView* view);
 
   // The radius in physical pixels to round the bottom corners of a buffer
   // of |width| x |height| pixels to, so it matches the decorations it will
@@ -463,6 +495,46 @@ class WaylandWindow : public WindowDecoration::Delegate,
 
   // Created on the first present with explicit synchronization.
   wp_linux_drm_syncobj_surface_v1* syncobj_surface_ = nullptr;
+
+  // A subsurface showing Flutter content above a platform view.
+  struct Overlay {
+    explicit Overlay(WaylandDisplay* display, wl_surface* parent);
+    ~Overlay();
+
+    WaylandDisplay* display;
+    wl_surface* surface = nullptr;
+    wl_subsurface* subsurface = nullptr;
+    wp_viewport* viewport = nullptr;
+    wp_linux_drm_syncobj_surface_v1* syncobj_surface = nullptr;
+    bool mapped = false;
+    SurfacePlacement placement;
+    bool placed = false;
+
+    FML_DISALLOW_COPY_AND_ASSIGN(Overlay);
+  };
+
+  // Shows |layers| above the content, and hides overlays and platform views
+  // that aren't in them. Called with |surface_mutex_| held.
+  void PresentLayers(const std::vector<Layer>& layers,
+                     int width,
+                     int height,
+                     bool explicit_sync);
+
+  // Shows |layer| in |overlay| above |above|. Called with |surface_mutex_|
+  // held.
+  void PresentOverlay(Overlay* overlay,
+                      wl_surface* above,
+                      const Layer& layer,
+                      int width,
+                      int height,
+                      bool explicit_sync);
+
+  // Overlays, reused between frames. Guarded by |surface_mutex_|.
+  std::vector<std::unique_ptr<Overlay>> overlays_;
+
+  // Platform views that have been shown in this window. Guarded by
+  // |surface_mutex_|.
+  std::vector<std::shared_ptr<LinuxPlatformView>> platform_views_;
 
   bool configured_ = false;
 

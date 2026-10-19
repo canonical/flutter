@@ -128,11 +128,13 @@ void FlutterLinuxView::SendWindowMetrics() {
   engine_->SendWindowMetrics(GetWindowMetrics());
 }
 
-void FlutterLinuxView::PresentBuffer(RenderBuffer* buffer,
-                                     const WaylandWindow::SyncPoints* sync) {
+void FlutterLinuxView::PresentBuffer(
+    RenderBuffer* buffer,
+    const WaylandWindow::SyncPoints* sync,
+    const std::vector<WaylandWindow::Layer>& layers) {
   int width = buffer->width();
   int height = buffer->height();
-  window_->Present(buffer->buffer(), width, height, sync);
+  window_->Present(buffer->buffer(), width, height, sync, layers);
 
   if (sizing_ != Sizing::kWindow &&
       (width != presented_width_ || height != presented_height_)) {

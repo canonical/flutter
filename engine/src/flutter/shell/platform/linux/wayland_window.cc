@@ -100,6 +100,14 @@ WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
 
 WaylandWindow::~WaylandWindow() {
   display_->RemoveOutputObserver(this);
+  {
+    std::lock_guard<std::mutex> lock(surface_mutex_);
+    for (const auto& view : platform_views_) {
+      view->Detach(this);
+    }
+    platform_views_.clear();
+    overlays_.clear();
+  }
   decoration_.reset();
   if (toplevel_decoration_ != nullptr) {
     zxdg_toplevel_decoration_v1_destroy(toplevel_decoration_);
@@ -710,7 +718,8 @@ void WaylandWindow::SetApplicationId(const std::string& application_id) {
 void WaylandWindow::Present(wl_buffer* buffer,
                             int width,
                             int height,
-                            const SyncPoints* sync) {
+                            const SyncPoints* sync,
+                            const std::vector<Layer>& layers) {
   std::unique_lock<std::mutex> surface_lock(surface_mutex_);
   if (popup_ != nullptr) {
     // The popup is placed using its logical size, matching the viewport
@@ -756,6 +765,7 @@ void WaylandWindow::Present(wl_buffer* buffer,
                                 static_cast<int>(std::round(width / scale)),
                                 static_cast<int>(std::round(height / scale)));
   }
+  PresentLayers(layers, width, height, sync != nullptr);
   if (fifo_ != nullptr) {
     // Keep the previous frame on screen for at least one refresh, so frames
     // are not discarded if they are drawn faster than the display refreshes.
@@ -785,6 +795,170 @@ void WaylandWindow::Present(wl_buffer* buffer,
   }
   wl_surface_commit(surface_);
   wl_display_flush(display_->display());
+}
+
+void WaylandWindow::PresentLayers(const std::vector<Layer>& layers,
+                                  int width,
+                                  int height,
+                                  bool explicit_sync) {
+  if (layers.empty() && overlays_.empty() && platform_views_.empty()) {
+    return;
+  }
+
+  // Each layer is placed above the one before it, starting with the content.
+  wl_surface* above = surface_;
+  size_t n_overlays = 0;
+  std::vector<std::shared_ptr<LinuxPlatformView>> shown_views;
+  for (const Layer& layer : layers) {
+    if (layer.platform_view != nullptr) {
+      wl_surface* view_surface = layer.platform_view->Show(
+          this, surface_, above, layer.geometry, scale_);
+      if (view_surface != nullptr) {
+        above = view_surface;
+      }
+      shown_views.push_back(layer.platform_view);
+      continue;
+    }
+
+    if (n_overlays == overlays_.size()) {
+      overlays_.push_back(std::make_unique<Overlay>(display_, surface_));
+    }
+    Overlay* overlay = overlays_[n_overlays++].get();
+    PresentOverlay(overlay, above, layer, width, height, explicit_sync);
+    above = overlay->surface;
+  }
+
+  // Hide what isn't in this frame.
+  for (size_t i = n_overlays; i < overlays_.size(); i++) {
+    Overlay* overlay = overlays_[i].get();
+    if (overlay->mapped) {
+      wl_surface_attach(overlay->surface, nullptr, 0, 0);
+      wl_surface_commit(overlay->surface);
+      overlay->mapped = false;
+    }
+  }
+  for (const auto& view : platform_views_) {
+    if (std::find(shown_views.begin(), shown_views.end(), view) ==
+            shown_views.end() &&
+        view->IsInWindow(this)) {
+      view->Hide(this);
+      shown_views.push_back(view);
+    }
+  }
+  platform_views_ = std::move(shown_views);
+}
+
+void WaylandWindow::PresentOverlay(Overlay* overlay,
+                                   wl_surface* above,
+                                   const Layer& layer,
+                                   int width,
+                                   int height,
+                                   bool explicit_sync) {
+  wl_subsurface_place_above(overlay->subsurface, above);
+
+  // Only show the part with content, so the compositor has less to blend.
+  // The area is expanded to whole logical pixels, as that is how
+  // subsurfaces are placed.
+  double scale = overlay->viewport != nullptr ? scale_.load() : 1.0;
+  PixelRect content = layer.content.Intersect(
+      {0, 0, static_cast<double>(width), static_cast<double>(height)});
+  if (!content.empty()) {
+    double left = std::floor(content.x / scale) * scale;
+    double top = std::floor(content.y / scale) * scale;
+    double right = std::ceil(content.right() / scale) * scale;
+    double bottom = std::ceil(content.bottom() / scale) * scale;
+    content = PixelRect{left, top, right - left, bottom - top}.Intersect(
+        {0, 0, static_cast<double>(width), static_cast<double>(height)});
+  }
+  PixelRect full = {0, 0, static_cast<double>(width),
+                    static_cast<double>(height)};
+  SurfacePlacement placement;
+  if (!PlaceBuffer(width, height, full, content, scale, &placement) &&
+      !PlaceBuffer(width, height, full, full, scale, &placement)) {
+    return;
+  }
+
+  if (!overlay->placed || placement.x != overlay->placement.x ||
+      placement.y != overlay->placement.y) {
+    wl_subsurface_set_position(overlay->subsurface, placement.x, placement.y);
+  }
+  if (overlay->viewport != nullptr &&
+      (!overlay->placed || !(placement == overlay->placement))) {
+    wp_viewport_set_source(overlay->viewport, placement.source_x,
+                           placement.source_y, placement.source_width,
+                           placement.source_height);
+    wp_viewport_set_destination(overlay->viewport, placement.width,
+                                placement.height);
+  }
+  overlay->placement = placement;
+  overlay->placed = true;
+
+  if (explicit_sync) {
+    if (overlay->syncobj_surface == nullptr) {
+      overlay->syncobj_surface = wp_linux_drm_syncobj_manager_v1_get_surface(
+          display_->syncobj_manager(), overlay->surface);
+    }
+    const SyncPoints& sync = layer.sync;
+    wp_linux_drm_syncobj_surface_v1_set_acquire_point(
+        overlay->syncobj_surface, sync.timeline, sync.acquire_point >> 32,
+        sync.acquire_point & 0xffffffff);
+    wp_linux_drm_syncobj_surface_v1_set_release_point(
+        overlay->syncobj_surface, sync.timeline, sync.release_point >> 32,
+        sync.release_point & 0xffffffff);
+  }
+  wl_surface_attach(overlay->surface, layer.buffer, 0, 0);
+  wl_surface_damage_buffer(overlay->surface, 0, 0, width, height);
+  wl_surface_commit(overlay->surface);
+  overlay->mapped = true;
+}
+
+void WaylandWindow::CommitPlatformView(LinuxPlatformView* view) {
+  std::lock_guard<std::mutex> lock(surface_mutex_);
+  if (!view->CommitBuffer(this)) {
+    return;
+  }
+  // The view's surface is synchronized with this one, so commit this to
+  // apply it. Nothing else is pending, as the content and decorations are
+  // only changed with this lock held and committed straight away.
+  wl_surface_commit(surface_);
+  wl_display_flush(display_->display());
+}
+
+void WaylandWindow::RemovePlatformView(LinuxPlatformView* view) {
+  std::lock_guard<std::mutex> lock(surface_mutex_);
+  view->Detach(this);
+  platform_views_.erase(
+      std::remove_if(platform_views_.begin(), platform_views_.end(),
+                     [view](const auto& v) { return v.get() == view; }),
+      platform_views_.end());
+}
+
+WaylandWindow::Overlay::Overlay(WaylandDisplay* display, wl_surface* parent)
+    : display(display) {
+  surface = wl_compositor_create_surface(display->compositor());
+  subsurface = wl_subcompositor_get_subsurface(display->subcompositor(),
+                                               surface, parent);
+  // Changes are applied with the content, so frames are atomic.
+  wl_subsurface_set_sync(subsurface);
+  wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+  if (display->viewporter() != nullptr) {
+    viewport = wp_viewporter_get_viewport(display->viewporter(), surface);
+  }
+  // Input goes to the content surface below.
+  wl_region* region = wl_compositor_create_region(display->compositor());
+  wl_surface_set_input_region(surface, region);
+  wl_region_destroy(region);
+}
+
+WaylandWindow::Overlay::~Overlay() {
+  if (syncobj_surface != nullptr) {
+    wp_linux_drm_syncobj_surface_v1_destroy(syncobj_surface);
+  }
+  if (viewport != nullptr) {
+    wp_viewport_destroy(viewport);
+  }
+  wl_subsurface_destroy(subsurface);
+  wl_surface_destroy(surface);
 }
 
 double WaylandWindow::ContentCornerRadius(int width, int height) {

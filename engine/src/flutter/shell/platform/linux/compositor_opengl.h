@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -18,9 +19,12 @@
 #include "flutter/shell/platform/linux/corner_mask.h"
 #include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/linux_platform_view.h"
+#include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland_window.h"
 
 namespace flutter {
 
@@ -85,6 +89,15 @@ class CompositorOpenGL {
                const FlutterLayer** layers,
                size_t layers_count);
 
+  // Returns the platform view with an ID, or nullptr. Called on the raster
+  // thread.
+  using PlatformViewLookup =
+      std::function<std::shared_ptr<LinuxPlatformView>(int64_t id)>;
+
+  // Sets how platform views in frames are found. Must be called before the
+  // engine runs.
+  void SetPlatformViewLookup(PlatformViewLookup lookup);
+
  private:
   // A buffer that can be used as a backing store.
   struct PoolBuffer {
@@ -145,12 +158,22 @@ class CompositorOpenGL {
   bool WaitForReleasedBuffer(std::vector<std::unique_ptr<PoolBuffer>>& pool,
                              int timeout_ms);
 
-  // Shows the rendering in |pool_buffer| in |view|.
-  bool PresentToView(FlutterLinuxView* view, PoolBuffer* pool_buffer);
+  // Shows |layers| in |view|. The first layer is a backing store.
+  bool PresentToView(FlutterLinuxView* view,
+                     const FlutterLayer** layers,
+                     size_t layers_count);
 
-  // Flushes rendering and sets |point| on |timeline| to signal when it
-  // completes.
-  bool SignalWhenRenderingComplete(DrmTimeline* timeline, uint64_t point);
+  // The bounds of the content drawn in a backing store |layer| of
+  // |width| x |height| pixels. Empty if nothing was drawn.
+  static PixelRect GetPaintBounds(const FlutterLayer* layer,
+                                  int width,
+                                  int height);
+
+  // Flushes rendering and sets the acquire point in |sync| on the timeline
+  // of each of |buffers| to signal when it completes.
+  bool SignalWhenRenderingComplete(
+      const std::vector<PoolBuffer*>& buffers,
+      const std::vector<WaylandWindow::SyncPoints>& sync);
 
   // Processes buffer release events from the compositor.
   void DispatchBufferEvents();
@@ -193,7 +216,11 @@ class CompositorOpenGL {
   std::optional<FlutterViewId> presenting_view_;
   std::condition_variable presented_condition_;
 
-  bool warned_multiple_layers_ = false;
+  // The number of backing stores in the last frame of each view. Only
+  // accessed on the raster thread.
+  std::map<FlutterViewId, size_t> backing_stores_per_frame_;
+
+  PlatformViewLookup platform_view_lookup_;
 
   // Rounds the corners of decorated windows. Only used on the raster thread.
   std::unique_ptr<CornerMask> corner_mask_;

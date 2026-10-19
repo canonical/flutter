@@ -22,6 +22,7 @@
 #include "flutter/shell/platform/linux/keyboard_manager.h"
 #include "flutter/shell/platform/linux/mouse_cursor_plugin.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
+#include "flutter/shell/platform/linux/platform_view_manager.h"
 #include "flutter/shell/platform/linux/plugin_messenger.h"
 #include "flutter/shell/platform/linux/scoped_event_loop.h"
 #include "flutter/shell/platform/linux/texture_registrar.h"
@@ -165,6 +166,11 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // The textures plugins have registered.
   TextureRegistrar* texture_registrar() { return texture_registrar_.get(); }
 
+  // The platform views plugins provide.
+  PlatformViewManager* platform_view_manager() {
+    return platform_view_manager_.get();
+  }
+
   // |TextureRegistrar::Delegate|
   bool IsEngineRunning() const override;
 
@@ -237,6 +243,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   std::unique_ptr<EGLManager> egl_;
   std::unique_ptr<CompositorOpenGL> compositor_;
   std::unique_ptr<TextureRegistrar> texture_registrar_;
+  std::unique_ptr<PlatformViewManager> platform_view_manager_;
 
   // Predicts when to draw frames, from when previous frames were shown.
   VsyncPredictor vsync_predictor_;

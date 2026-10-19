@@ -40,6 +40,7 @@ constexpr uint32_t kMaxDmabufVersion = 5;
 constexpr uint32_t kMaxViewporterVersion = 1;
 constexpr uint32_t kMaxFractionalScaleManagerVersion = 1;
 constexpr uint32_t kMaxPresentationVersion = 2;
+constexpr uint32_t kMaxAlphaModifierVersion = 1;
 constexpr uint32_t kMaxFifoManagerVersion = 1;
 constexpr uint32_t kMaxSyncobjManagerVersion = 1;
 constexpr uint32_t kMaxWmDialogVersion = 1;
@@ -139,6 +140,9 @@ WaylandDisplay::~WaylandDisplay() {
   }
   if (presentation_ != nullptr) {
     wp_presentation_destroy(presentation_);
+  }
+  if (alpha_modifier_ != nullptr) {
+    wp_alpha_modifier_v1_destroy(alpha_modifier_);
   }
   if (viewporter_ != nullptr) {
     wp_viewporter_destroy(viewporter_);
@@ -425,6 +429,10 @@ void WaylandDisplay::RegistryGlobal(void* data,
         &self->protocols_, registry, name,
         &wp_fractional_scale_manager_v1_interface, version,
         kMaxFractionalScaleManagerVersion);
+  } else if (strcmp(interface, wp_alpha_modifier_v1_interface.name) == 0) {
+    self->alpha_modifier_ = Bind<wp_alpha_modifier_v1>(
+        &self->protocols_, registry, name, &wp_alpha_modifier_v1_interface,
+        version, kMaxAlphaModifierVersion);
   } else if (strcmp(interface, wp_presentation_interface.name) == 0) {
     self->presentation_ = Bind<wp_presentation>(
         &self->protocols_, registry, name, &wp_presentation_interface, version,

@@ -175,6 +175,104 @@ using FlutterDesktopPixelBuffer = FlutterLinuxPixelBuffer;
 // A frame for a dmabuf texture. See FlutterLinuxDmabuf.
 using FlutterDesktopDmabuf = FlutterLinuxDmabuf;
 
+// A pointer event in a platform view. See
+// FlutterLinuxPlatformViewPointerEvent.
+using FlutterDesktopPlatformViewPointerEvent =
+    FlutterLinuxPlatformViewPointerEvent;
+
+// A buffer that can be presented in a platform view. It may outlive the
+// view.
+class FlutterDesktopPlatformViewBuffer {
+ public:
+  ~FlutterDesktopPlatformViewBuffer() {
+    flutter_linux_platform_view_buffer_free(buffer_);
+  }
+
+  FlutterDesktopPlatformViewBuffer(const FlutterDesktopPlatformViewBuffer&) =
+      delete;
+  FlutterDesktopPlatformViewBuffer& operator=(
+      const FlutterDesktopPlatformViewBuffer&) = delete;
+
+ private:
+  friend class FlutterDesktopPlatformViewSurface;
+
+  explicit FlutterDesktopPlatformViewBuffer(std::function<void()> release)
+      : release_(std::move(release)) {}
+
+  FlutterLinuxPlatformViewBuffer* buffer_ = nullptr;
+  std::function<void()> release_;
+};
+
+// Shows the content of a platform view. Valid until the view's
+// FlutterDesktopPlatformView is destroyed.
+class FlutterDesktopPlatformViewSurface {
+ public:
+  explicit FlutterDesktopPlatformViewSurface(FlutterLinuxPlatformView* view)
+      : view_(view) {}
+
+  // The ID the framework uses for the view.
+  int64_t id() const { return flutter_linux_platform_view_get_id(view_); }
+
+  // Creates a buffer from |dmabuf|, ignoring its release callback.
+  // |release| is called each time the buffer can be reused after being
+  // presented. Returns nullptr if the compositor doesn't support the
+  // buffer. See flutter_linux_platform_view_create_buffer.
+  std::unique_ptr<FlutterDesktopPlatformViewBuffer> create_buffer(
+      const FlutterDesktopDmabuf& dmabuf,
+      std::function<void()> release = nullptr) {
+    std::unique_ptr<FlutterDesktopPlatformViewBuffer> buffer(
+        new FlutterDesktopPlatformViewBuffer(std::move(release)));
+    FlutterDesktopDmabuf d = dmabuf;
+    d.release_callback = [](void* user_data) {
+      auto* b = static_cast<FlutterDesktopPlatformViewBuffer*>(user_data);
+      if (b->release_) {
+        b->release_();
+      }
+    };
+    d.release_user_data = buffer.get();
+    buffer->buffer_ = flutter_linux_platform_view_create_buffer(view_, &d);
+    if (buffer->buffer_ == nullptr) {
+      return nullptr;
+    }
+    return buffer;
+  }
+
+  // Shows |buffer|, replacing the previous buffer. Rendering into it must be
+  // complete. Pass nullptr to show nothing.
+  void present(FlutterDesktopPlatformViewBuffer* buffer) {
+    flutter_linux_platform_view_present(
+        view_, buffer != nullptr ? buffer->buffer_ : nullptr);
+  }
+
+ private:
+  FlutterLinuxPlatformView* view_;
+};
+
+// Native content shown in a platform view widget, such as LinuxView. Created
+// by the factory registered with
+// FlutterDesktopEngine::register_platform_view_type and destroyed when the
+// framework disposes the view.
+class FlutterDesktopPlatformView {
+ public:
+  virtual ~FlutterDesktopPlatformView() = default;
+
+  // Called when the size the view is shown at changes. Buffers of
+  // |width| x |height| physical pixels are shown without scaling.
+  virtual void on_resize(int width, int height, double scale) {}
+
+  // Called with pointer events in the view.
+  virtual void on_pointer_event(
+      const FlutterDesktopPlatformViewPointerEvent& event) {}
+};
+
+// Creates the content for a platform view shown in |surface|, with |params|
+// from the widget's creationParams encoded with its codec. Returns nullptr if
+// the view can't be created.
+using FlutterDesktopPlatformViewFactory =
+    std::function<std::unique_ptr<FlutterDesktopPlatformView>(
+        FlutterDesktopPlatformViewSurface surface,
+        const std::vector<uint8_t>& params)>;
+
 // Sends and receives messages on platform channels with the framework
 // running in an engine.
 //
@@ -557,6 +655,51 @@ class FlutterDesktopEngine {
   // The application this engine is in.
   const std::shared_ptr<FlutterDesktopApplication>& application() const {
     return application_;
+  }
+
+  // Registers |factory| to create platform views of |view_type|, replacing
+  // any existing factory.
+  void register_platform_view_type(const std::string& view_type,
+                                   FlutterDesktopPlatformViewFactory factory) {
+    flutter_linux_engine_register_platform_view_type(
+        engine_, view_type.c_str(),
+        [](FlutterLinuxPlatformView* view, int64_t view_id,
+           const uint8_t* params, size_t params_size, void* user_data) -> bool {
+          auto* factory =
+              static_cast<FlutterDesktopPlatformViewFactory*>(user_data);
+          std::vector<uint8_t> p;
+          if (params != nullptr) {
+            p.assign(params, params + params_size);
+          }
+          std::unique_ptr<FlutterDesktopPlatformView> platform_view =
+              (*factory)(FlutterDesktopPlatformViewSurface(view), p);
+          if (!platform_view) {
+            return false;
+          }
+          static const FlutterLinuxPlatformViewCallbacks callbacks = {
+              .struct_size = sizeof(FlutterLinuxPlatformViewCallbacks),
+              .resize =
+                  [](int width, int height, double scale, void* user_data) {
+                    static_cast<FlutterDesktopPlatformView*>(user_data)
+                        ->on_resize(width, height, scale);
+                  },
+              .pointer_event =
+                  [](const FlutterLinuxPlatformViewPointerEvent* event,
+                     void* user_data) {
+                    static_cast<FlutterDesktopPlatformView*>(user_data)
+                        ->on_pointer_event(*event);
+                  },
+          };
+          flutter_linux_platform_view_set_callbacks(
+              view, &callbacks, platform_view.release(), [](void* user_data) {
+                delete static_cast<FlutterDesktopPlatformView*>(user_data);
+              });
+          return true;
+        },
+        [](void* user_data) {
+          delete static_cast<FlutterDesktopPlatformViewFactory*>(user_data);
+        },
+        new FlutterDesktopPlatformViewFactory(std::move(factory)));
   }
 
   // Information about how this engine renders and presents frames. Some

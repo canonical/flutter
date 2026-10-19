@@ -124,6 +124,7 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
 
   // Plugins may not have unregistered their textures.
   texture_registrar_.reset();
+  platform_view_manager_.reset();
 
   mouse_cursor_plugin_.reset();
   keyboard_manager_.reset();
@@ -152,6 +153,12 @@ bool FlutterLinuxEngine::Initialize() {
   compositor_ = std::make_unique<CompositorOpenGL>(
       egl_.get(), application_->display(), IsImpellerEnabled());
   texture_registrar_ = std::make_unique<TextureRegistrar>(this);
+  platform_view_manager_ = std::make_unique<PlatformViewManager>(
+      this, application_->display(), application_->event_loop());
+  compositor_->SetPlatformViewLookup(
+      [manager = platform_view_manager_.get()](int64_t id) {
+        return manager->GetView(id);
+      });
   return true;
 }
 
@@ -267,6 +274,11 @@ bool FlutterLinuxEngine::Run() {
   args.update_semantics_callback2 = [](const FlutterSemanticsUpdate2* update,
                                        void* user_data) {
     static_cast<FlutterLinuxEngine*>(user_data)->OnSemanticsUpdate(update);
+  };
+  // Platform views belong to the framework that created them.
+  args.on_pre_engine_restart_callback = [](void* user_data) {
+    static_cast<FlutterLinuxEngine*>(user_data)
+        ->platform_view_manager_->DisposeAll();
   };
   args.custom_task_runners = &custom_task_runners;
   args.compositor = &compositor;
