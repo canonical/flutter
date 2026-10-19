@@ -17,7 +17,7 @@ namespace {{projectName}} {
 namespace test {
 
 TEST({{pluginClass}}, GetPlatformVersion) {
-  {{pluginClass}} plugin;
+  {{pluginClass}} plugin(nullptr);
   ErrorOr<std::string> result = plugin.GetPlatformVersion();
 
   EXPECT_FALSE(result.has_error());

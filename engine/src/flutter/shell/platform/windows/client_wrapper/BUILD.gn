@@ -100,6 +100,7 @@ executable("client_wrapper_windows_unittests") {
 }
 
 client_wrapper_file_archive_list = [
+  "channel_implementations.cc",
   "core_implementations.cc",
   "engine_method_result.cc",
   "plugin_registrar.cc",

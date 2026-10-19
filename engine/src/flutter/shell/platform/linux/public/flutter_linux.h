@@ -11,8 +11,7 @@
 // library. It is a thin layer over flutter_linux_abi.h.
 //
 // All objects must be created, used and destroyed on the same thread, which
-// becomes the platform thread. The exception is
-// FlutterDesktopApplication::quit, which may be called from any thread.
+// becomes the platform thread. Exceptions are noted.
 //
 // An application can contain multiple engines, which share the platform
 // thread, the connection to the compositor and the GPU:
@@ -20,21 +19,33 @@
 //   auto application = flutter::FlutterDesktopApplication::create();
 //   auto engine = flutter::FlutterDesktopEngine::create(application, props);
 //   auto view = flutter::FlutterDesktopView::create(engine, 1280, 720);
-//   RegisterPlugins(engine.get());
+//   RegisterPlugins(*engine);
 //   engine->run();
 //   application->run();
 //
-// Plugins are registered separately with each engine (see
-// flutter/plugin_registrar_linux.h).
+// Plugins are added separately to each engine, which owns them:
+//
+//   void MyPluginRegisterWithEngine(flutter::FlutterDesktopEngine& engine) {
+//     engine.add_plugin(std::make_unique<MyPlugin>(engine));
+//   }
+//
+// Plugins communicate with the framework using the channels in
+// cpp_client_wrapper (e.g. flutter::MethodChannel) with the engine's
+// messenger. Plugins are destroyed before their engine, so they can keep a
+// reference to it, but must not keep a std::shared_ptr to it (or its views)
+// as that would stop it from being destroyed.
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <flutter/plugin_registry.h>
+#include <flutter/binary_messenger.h>
 
 #include "flutter_linux_abi.h"
 
@@ -126,6 +137,134 @@ struct FlutterDesktopRenderingInfo {
   bool fractional_scale = false;
 };
 
+class FlutterDesktopView;
+
+// A plugin added to an engine. Plugins are destroyed before their engine, in
+// the reverse order they were added.
+class FlutterDesktopPlugin {
+ public:
+  virtual ~FlutterDesktopPlugin() = default;
+};
+
+// Receives notifications when views are added to or removed from an engine.
+class FlutterDesktopViewObserver {
+ public:
+  virtual ~FlutterDesktopViewObserver() = default;
+
+  // Called after |view| is added.
+  virtual void on_view_added(FlutterDesktopView& view) {}
+
+  // Called before |view| is removed. The view is destroyed after this
+  // returns.
+  virtual void on_view_removed(FlutterDesktopView& view) {}
+};
+
+// Events on a file descriptor being watched with
+// FlutterDesktopEngine::add_fd_watch.
+struct FlutterDesktopFdEvents {
+  static constexpr uint32_t kReadable = FLUTTER_LINUX_FD_EVENT_READABLE;
+  static constexpr uint32_t kWritable = FLUTTER_LINUX_FD_EVENT_WRITABLE;
+  // Always reported, even if not requested.
+  static constexpr uint32_t kError = FLUTTER_LINUX_FD_EVENT_ERROR;
+  static constexpr uint32_t kHangUp = FLUTTER_LINUX_FD_EVENT_HANG_UP;
+};
+
+// Sends and receives messages on platform channels with the framework
+// running in an engine.
+//
+// Send may be called from any thread while the engine exists; replies are
+// called on the platform thread. Handlers are called on the platform thread,
+// and may reply from any thread. A reply that is destroyed without being
+// called sends an empty response, meaning the message was not handled.
+class FlutterDesktopMessenger : public BinaryMessenger {
+ public:
+  explicit FlutterDesktopMessenger(FlutterLinuxMessenger* messenger)
+      : messenger_(messenger) {}
+
+  FlutterDesktopMessenger(const FlutterDesktopMessenger&) = delete;
+  FlutterDesktopMessenger& operator=(const FlutterDesktopMessenger&) = delete;
+
+  // |BinaryMessenger|
+  // |reply| is called exactly once, with nullptr if there was no reply
+  // (including if the engine is destroyed first).
+  void Send(const std::string& channel,
+            const uint8_t* message,
+            size_t message_size,
+            BinaryReply reply = nullptr) const override {
+    if (!reply) {
+      flutter_linux_messenger_send(messenger_, channel.c_str(), message,
+                                   message_size, nullptr, nullptr);
+      return;
+    }
+    flutter_linux_messenger_send(messenger_, channel.c_str(), message,
+                                 message_size, OnReply,
+                                 new BinaryReply(std::move(reply)));
+  }
+
+  // |BinaryMessenger|
+  // The handler is destroyed when replaced, removed or the engine is
+  // destroyed.
+  void SetMessageHandler(const std::string& channel,
+                         BinaryMessageHandler handler) override {
+    if (!handler) {
+      flutter_linux_messenger_set_handler(messenger_, channel.c_str(), nullptr,
+                                          nullptr, nullptr);
+      return;
+    }
+    flutter_linux_messenger_set_handler(
+        messenger_, channel.c_str(), OnMessage,
+        new BinaryMessageHandler(std::move(handler)), [](void* user_data) {
+          delete static_cast<BinaryMessageHandler*>(user_data);
+        });
+  }
+
+ private:
+  // Sends a response exactly once, with an empty response if destroyed
+  // without being sent.
+  class Responder {
+   public:
+    explicit Responder(FlutterLinuxMessageResponse* response)
+        : response_(response) {}
+    ~Responder() { send(nullptr, 0); }
+
+    Responder(const Responder&) = delete;
+    Responder& operator=(const Responder&) = delete;
+
+    void send(const uint8_t* data, size_t size) {
+      FlutterLinuxMessageResponse* response = response_;
+      response_ = nullptr;
+      if (response != nullptr) {
+        flutter_linux_message_response_send(response, data, size);
+      }
+    }
+
+   private:
+    FlutterLinuxMessageResponse* response_;
+  };
+
+  static void OnReply(const uint8_t* data, size_t size, void* user_data) {
+    std::unique_ptr<BinaryReply> reply(static_cast<BinaryReply*>(user_data));
+    (*reply)(data, size);
+  }
+
+  static void OnMessage(const uint8_t* data,
+                        size_t size,
+                        FlutterLinuxMessageResponse* response,
+                        void* user_data) {
+    auto responder = std::make_shared<Responder>(response);
+    // Copy the handler as it may replace itself.
+    BinaryMessageHandler handler =
+        *static_cast<BinaryMessageHandler*>(user_data);
+    handler(data, size,
+            [responder = std::move(responder)](const uint8_t* reply,
+                                               size_t reply_size) {
+              responder->send(reply, reply_size);
+            });
+  }
+
+  FlutterLinuxMessenger* messenger_;
+};
+
 // The platform resources shared by all engines in a process.
 class FlutterDesktopApplication {
  public:
@@ -153,6 +292,13 @@ class FlutterDesktopApplication {
 
   // Causes run to return. May be called from any thread.
   void quit() { flutter_linux_application_quit(application_); }
+
+  // The connection to the Wayland compositor. Plugins may use this to create
+  // their own Wayland objects, with their own event queue if used from other
+  // threads.
+  struct wl_display* wayland_display() const {
+    return flutter_linux_application_get_wl_display(application_);
+  }
 
   // The Wayland protocols in use.
   std::vector<FlutterDesktopWaylandProtocol> wayland_protocols() const {
@@ -204,7 +350,7 @@ struct FlutterDesktopEngineProperties {
 };
 
 // An instance of the Flutter engine.
-class FlutterDesktopEngine : public PluginRegistry {
+class FlutterDesktopEngine {
  public:
   // Creates an engine in |application|. Returns nullptr on failure.
   static std::shared_ptr<FlutterDesktopEngine> create(
@@ -233,7 +379,14 @@ class FlutterDesktopEngine : public PluginRegistry {
         new FlutterDesktopEngine(std::move(application), engine));
   }
 
-  ~FlutterDesktopEngine() override { flutter_linux_engine_free(engine_); }
+  ~FlutterDesktopEngine() {
+    // Destroy the plugins while the engine is still usable, as they may use
+    // it as they are destroyed.
+    while (!plugins_.empty()) {
+      plugins_.pop_back();
+    }
+    flutter_linux_engine_free(engine_);
+  }
 
   FlutterDesktopEngine(const FlutterDesktopEngine&) = delete;
   FlutterDesktopEngine& operator=(const FlutterDesktopEngine&) = delete;
@@ -245,13 +398,94 @@ class FlutterDesktopEngine : public PluginRegistry {
   // Returns true if the engine is running.
   bool is_running() const { return flutter_linux_engine_is_running(engine_); }
 
-  // |PluginRegistry|
-  // Returns the registrar for the plugin called |plugin_name| in this
-  // engine. The plugin is destroyed with the engine.
-  FlutterDesktopPluginRegistrarRef GetRegistrarForPlugin(
-      const std::string& plugin_name) override {
-    return flutter_linux_engine_get_plugin_registrar(engine_,
-                                                     plugin_name.c_str());
+  // The messenger for communicating with the framework on platform
+  // channels.
+  BinaryMessenger* messenger() { return &messenger_; }
+
+  // Adds |plugin| to this engine, which destroys it before the engine is
+  // destroyed.
+  void add_plugin(std::unique_ptr<FlutterDesktopPlugin> plugin) {
+    plugins_.push_back(std::move(plugin));
+  }
+
+  // Adds |observer| to be notified when views are added and removed.
+  // on_view_added is called for existing views before this returns. The
+  // observer must be removed before it is destroyed.
+  void add_view_observer(FlutterDesktopViewObserver* observer) {
+    view_observers_.push_back(observer);
+    for (FlutterDesktopView* view : views()) {
+      if (!has_view_observer(observer)) {
+        break;
+      }
+      observer->on_view_added(*view);
+    }
+  }
+
+  void remove_view_observer(FlutterDesktopViewObserver* observer) {
+    view_observers_.erase(
+        std::remove(view_observers_.begin(), view_observers_.end(), observer),
+        view_observers_.end());
+  }
+
+  // The view with |view_id|, or nullptr if there is no such view.
+  FlutterDesktopView* view(int64_t view_id) const {
+    auto it = views_.find(view_id);
+    return it != views_.end() ? it->second : nullptr;
+  }
+
+  // The views of this engine.
+  std::vector<FlutterDesktopView*> views() const {
+    std::vector<FlutterDesktopView*> views;
+    views.reserve(views_.size());
+    for (const auto& [view_id, view] : views_) {
+      views.push_back(view);
+    }
+    return views;
+  }
+
+  // Runs |task| on the platform thread after |delay|. Tasks that haven't run
+  // when the engine is destroyed are destroyed without running. May be
+  // called from any thread while the engine exists.
+  void post_task(std::function<void()> task,
+                 std::chrono::nanoseconds delay = {}) {
+    flutter_linux_engine_post_task(
+        engine_, static_cast<uint64_t>(std::max<int64_t>(delay.count(), 0)),
+        [](void* user_data) {
+          (*static_cast<std::function<void()>*>(user_data))();
+        },
+        [](void* user_data) {
+          delete static_cast<std::function<void()>*>(user_data);
+        },
+        new std::function<void()>(std::move(task)));
+  }
+
+  // Calls |callback| on the platform thread when any of |events|
+  // (FlutterDesktopFdEvents flags) occur on |fd|. Returns an ID for the
+  // watch, or zero on failure. Watches are removed when the engine is
+  // destroyed.
+  uint64_t add_fd_watch(int fd,
+                        uint32_t events,
+                        std::function<void(uint32_t events)> callback) {
+    using Callback = std::function<void(uint32_t)>;
+    return flutter_linux_engine_add_fd_watch(
+        engine_, fd, events,
+        [](int fd, uint32_t events, void* user_data) {
+          // Copy the callback as it may remove the watch.
+          Callback callback = *static_cast<Callback*>(user_data);
+          callback(events);
+        },
+        [](void* user_data) { delete static_cast<Callback*>(user_data); },
+        new Callback(std::move(callback)));
+  }
+
+  // Changes the events the watch with |watch_id| waits for.
+  bool set_fd_watch_events(uint64_t watch_id, uint32_t events) {
+    return flutter_linux_engine_set_fd_watch_events(engine_, watch_id, events);
+  }
+
+  // Removes the watch with |watch_id|. May be called from its callback.
+  void remove_fd_watch(uint64_t watch_id) {
+    flutter_linux_engine_remove_fd_watch(engine_, watch_id);
   }
 
   // The application this engine is in.
@@ -300,11 +534,45 @@ class FlutterDesktopEngine : public PluginRegistry {
 
   FlutterDesktopEngine(std::shared_ptr<FlutterDesktopApplication> application,
                        FlutterLinuxEngine* engine)
-      : application_(std::move(application)), engine_(engine) {}
+      : application_(std::move(application)),
+        engine_(engine),
+        messenger_(flutter_linux_engine_get_messenger(engine)) {}
+
+  bool has_view_observer(FlutterDesktopViewObserver* observer) const {
+    return std::find(view_observers_.begin(), view_observers_.end(),
+                     observer) != view_observers_.end();
+  }
+
+  // Called by FlutterDesktopView when it is created and destroyed.
+  void add_view(int64_t view_id, FlutterDesktopView* view) {
+    views_[view_id] = view;
+    // Copied as observers may add or remove observers.
+    std::vector<FlutterDesktopViewObserver*> observers = view_observers_;
+    for (FlutterDesktopViewObserver* observer : observers) {
+      if (has_view_observer(observer)) {
+        observer->on_view_added(*view);
+      }
+    }
+  }
+  void remove_view(int64_t view_id, FlutterDesktopView* view) {
+    std::vector<FlutterDesktopViewObserver*> observers = view_observers_;
+    for (FlutterDesktopViewObserver* observer : observers) {
+      if (has_view_observer(observer)) {
+        observer->on_view_removed(*view);
+      }
+    }
+    views_.erase(view_id);
+  }
 
   // Keeps the application alive while the engine exists.
   std::shared_ptr<FlutterDesktopApplication> application_;
   FlutterLinuxEngine* engine_;
+  FlutterDesktopMessenger messenger_;
+  std::vector<std::unique_ptr<FlutterDesktopPlugin>> plugins_;
+  std::vector<FlutterDesktopViewObserver*> view_observers_;
+
+  // The views of this engine, which keep the engine alive.
+  std::map<int64_t, FlutterDesktopView*> views_;
 };
 
 // A view showing Flutter content in a top-level window.
@@ -321,11 +589,16 @@ class FlutterDesktopView {
     if (view == nullptr) {
       return nullptr;
     }
-    return std::shared_ptr<FlutterDesktopView>(
+    std::shared_ptr<FlutterDesktopView> result(
         new FlutterDesktopView(std::move(engine), view));
+    result->engine_->add_view(result->id(), result.get());
+    return result;
   }
 
-  ~FlutterDesktopView() { flutter_linux_view_free(view_); }
+  ~FlutterDesktopView() {
+    engine_->remove_view(id(), this);
+    flutter_linux_view_free(view_);
+  }
 
   FlutterDesktopView(const FlutterDesktopView&) = delete;
   FlutterDesktopView& operator=(const FlutterDesktopView&) = delete;
@@ -337,6 +610,30 @@ class FlutterDesktopView {
   const std::shared_ptr<FlutterDesktopEngine>& engine() const {
     return engine_;
   }
+
+  // The surface the view's content is shown in. Its origin is the origin of
+  // the content, and it is the root of the window's surface tree, so it can
+  // be used to identify the window (e.g. with xdg-foreign).
+  struct wl_surface* wayland_surface() const {
+    return flutter_linux_view_get_wl_surface(view_);
+  }
+
+  // The logical width of the view's content.
+  int width() const {
+    int width = 0;
+    flutter_linux_view_get_size(view_, &width, nullptr);
+    return width;
+  }
+
+  // The logical height of the view's content.
+  int height() const {
+    int height = 0;
+    flutter_linux_view_get_size(view_, nullptr, &height);
+    return height;
+  }
+
+  // The number of physical pixels per logical pixel.
+  double scale() const { return flutter_linux_view_get_scale(view_); }
 
   // Sets the window title.
   void set_title(const std::string& title) {

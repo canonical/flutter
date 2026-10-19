@@ -62,19 +62,17 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
       });
   mouse_cursor_plugin_ = std::make_unique<MouseCursorPlugin>(
       this, [this](uint32_t shape) { OnCursorChanged(shape); });
-  plugin_messenger_ =
-      new FlutterDesktopMessenger(this, application_->event_loop());
+  plugin_messenger_ = new PluginMessenger(this, application_->event_loop());
+  plugin_event_loop_ =
+      std::make_unique<ScopedEventLoop>(application_->event_loop());
 }
 
 FlutterLinuxEngine::~FlutterLinuxEngine() {
   FML_DCHECK(views_.empty());
 
-  // Destroy the plugins while the engine is still usable, in case they send
-  // messages as they are destroyed.
-  for (auto& [name, registrar] : plugin_registrars_) {
-    registrar->NotifyDestroyed();
-  }
-  plugin_registrars_.clear();
+  // Plugins (which are destroyed before the engine) may have left tasks,
+  // watches and message handlers.
+  plugin_event_loop_.reset();
   plugin_messenger_->Detach();
   plugin_messenger_->Release();
 
@@ -260,18 +258,10 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
   if (running()) {
     view->SendWindowMetrics();
   }
-
-  for (auto& [name, registrar] : plugin_registrars_) {
-    registrar->OnViewAdded(view->view_id());
-  }
   return view;
 }
 
 void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
-  for (auto& [name, registrar] : plugin_registrars_) {
-    registrar->OnViewRemoved(view->view_id());
-  }
-
   compositor_->RemoveView(view->view_id());
   views_.erase(view->view_id());
 
@@ -460,18 +450,6 @@ void FlutterLinuxEngine::SetMessageHandler(const std::string& channel,
   } else {
     message_handlers_.erase(channel);
   }
-}
-
-FlutterDesktopPluginRegistrar* FlutterLinuxEngine::GetPluginRegistrar(
-    const std::string& plugin_name) {
-  std::unique_ptr<FlutterDesktopPluginRegistrar>& registrar =
-      plugin_registrars_[plugin_name];
-  if (!registrar) {
-    registrar = std::make_unique<FlutterDesktopPluginRegistrar>(
-        plugin_messenger_, application_->event_loop(),
-        application_->display()->display(), &views_);
-  }
-  return registrar.get();
 }
 
 void FlutterLinuxEngine::OnCursorChanged(uint32_t shape) {

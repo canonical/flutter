@@ -4,11 +4,17 @@
 
 #include "flutter/shell/platform/linux/public/flutter_linux_abi.h"
 
+#include <sys/epoll.h>
+
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
+#include <vector>
 
+#include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/path_utils.h"
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/dmabuf_buffer.h"
@@ -17,6 +23,7 @@
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
+#include "flutter/shell/platform/linux/plugin_messenger.h"
 
 namespace {
 
@@ -33,6 +40,60 @@ flutter::FlutterLinuxView* ToView(FlutterLinuxView* view) {
   return reinterpret_cast<flutter::FlutterLinuxView*>(view);
 }
 
+FlutterLinuxMessenger* ToMessenger(flutter::PluginMessenger* messenger) {
+  return reinterpret_cast<FlutterLinuxMessenger*>(messenger);
+}
+
+flutter::PluginMessenger* FromMessenger(FlutterLinuxMessenger* messenger) {
+  return reinterpret_cast<flutter::PluginMessenger*>(messenger);
+}
+
+// Calls a destroy notify function when destroyed.
+class DestroyNotify {
+ public:
+  DestroyNotify(FlutterLinuxCallback destroy, void* user_data)
+      : destroy_(destroy), user_data_(user_data) {}
+  ~DestroyNotify() {
+    if (destroy_ != nullptr) {
+      destroy_(user_data_);
+    }
+  }
+
+ private:
+  FlutterLinuxCallback destroy_;
+  void* user_data_;
+
+  FML_DISALLOW_COPY_AND_ASSIGN(DestroyNotify);
+};
+
+uint32_t ToEpollEvents(uint32_t events) {
+  uint32_t result = 0;
+  if (events & FLUTTER_LINUX_FD_EVENT_READABLE) {
+    result |= EPOLLIN;
+  }
+  if (events & FLUTTER_LINUX_FD_EVENT_WRITABLE) {
+    result |= EPOLLOUT;
+  }
+  return result;
+}
+
+uint32_t FromEpollEvents(uint32_t events) {
+  uint32_t result = 0;
+  if (events & EPOLLIN) {
+    result |= FLUTTER_LINUX_FD_EVENT_READABLE;
+  }
+  if (events & EPOLLOUT) {
+    result |= FLUTTER_LINUX_FD_EVENT_WRITABLE;
+  }
+  if (events & EPOLLERR) {
+    result |= FLUTTER_LINUX_FD_EVENT_ERROR;
+  }
+  if (events & EPOLLHUP) {
+    result |= FLUTTER_LINUX_FD_EVENT_HANG_UP;
+  }
+  return result;
+}
+
 // Resolves |path| relative to the executable's directory.
 std::filesystem::path ResolvePath(const char* path) {
   if (path == nullptr || path[0] == '\0') {
@@ -46,6 +107,12 @@ std::filesystem::path ResolvePath(const char* path) {
 }
 
 }  // namespace
+
+// A response to a message, holding a reference to the messenger.
+struct _FlutterLinuxMessageResponse {
+  flutter::PluginMessenger* messenger;
+  uint64_t id;
+};
 
 FlutterLinuxApplication* flutter_linux_application_new(void) {
   return reinterpret_cast<FlutterLinuxApplication*>(
@@ -62,6 +129,11 @@ void flutter_linux_application_run(FlutterLinuxApplication* application) {
 
 void flutter_linux_application_quit(FlutterLinuxApplication* application) {
   ToApplication(application)->Quit();
+}
+
+wl_display* flutter_linux_application_get_wl_display(
+    FlutterLinuxApplication* application) {
+  return ToApplication(application)->display()->display();
 }
 
 size_t flutter_linux_application_get_wayland_protocol_count(
@@ -191,61 +263,101 @@ void flutter_linux_view_set_close_callback(
       [callback, user_data]() { callback(user_data); });
 }
 
-FlutterDesktopPluginRegistrarRef flutter_linux_engine_get_plugin_registrar(
-    FlutterLinuxEngine* engine,
-    const char* plugin_name) {
-  return ToEngine(engine)->GetPluginRegistrar(plugin_name)->ToRef();
+FlutterLinuxMessenger* flutter_linux_engine_get_messenger(
+    FlutterLinuxEngine* engine) {
+  return ToMessenger(ToEngine(engine)->plugin_messenger());
 }
 
-wl_display* flutter_linux_plugin_registrar_get_wl_display(
-    FlutterDesktopPluginRegistrarRef registrar) {
-  return registrar->display();
+void flutter_linux_messenger_send(FlutterLinuxMessenger* messenger,
+                                  const char* channel,
+                                  const uint8_t* data,
+                                  size_t size,
+                                  FlutterLinuxReplyCallback reply,
+                                  void* user_data) {
+  flutter::PluginMessenger::ReplyCallback reply_callback;
+  if (reply != nullptr) {
+    reply_callback = [reply, user_data](const uint8_t* data, size_t size) {
+      reply(data, size, user_data);
+    };
+  }
+  FromMessenger(messenger)->Send(channel,
+                                 std::vector<uint8_t>(data, data + size),
+                                 std::move(reply_callback));
 }
 
-FlutterLinuxView* flutter_linux_plugin_registrar_get_view(
-    FlutterDesktopPluginRegistrarRef registrar,
-    int64_t view_id) {
-  return reinterpret_cast<FlutterLinuxView*>(registrar->GetView(view_id));
+void flutter_linux_messenger_set_handler(FlutterLinuxMessenger* messenger,
+                                         const char* channel,
+                                         FlutterLinuxMessageHandler handler,
+                                         void* user_data,
+                                         FlutterLinuxCallback destroy) {
+  flutter::PluginMessenger* plugin_messenger = FromMessenger(messenger);
+  if (handler == nullptr) {
+    plugin_messenger->SetMessageHandler(channel, nullptr);
+    DestroyNotify notify(destroy, user_data);
+    return;
+  }
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  plugin_messenger->SetMessageHandler(
+      channel,
+      [plugin_messenger, handler, user_data, notify = std::move(notify)](
+          const uint8_t* data, size_t size, uint64_t response_id) {
+        auto* response = new FlutterLinuxMessageResponse{
+            plugin_messenger->AddRef(), response_id};
+        handler(data, size, response, user_data);
+      });
 }
 
-void flutter_linux_plugin_registrar_set_view_callbacks(
-    FlutterDesktopPluginRegistrarRef registrar,
-    FlutterLinuxViewCallback added,
-    FlutterLinuxViewCallback removed,
-    void* user_data) {
-  registrar->SetViewCallbacks(added, removed, user_data);
+void flutter_linux_message_response_send(FlutterLinuxMessageResponse* response,
+                                         const uint8_t* data,
+                                         size_t size) {
+  std::vector<uint8_t> message;
+  if (data != nullptr) {
+    message.assign(data, data + size);
+  }
+  response->messenger->SendResponse(response->id, std::move(message));
+  response->messenger->Release();
+  delete response;
 }
 
-void flutter_linux_plugin_registrar_post_task(
-    FlutterDesktopPluginRegistrarRef registrar,
-    uint64_t delay_ns,
-    FlutterLinuxCallback callback,
-    FlutterLinuxCallback destroy,
-    void* user_data) {
-  registrar->PostTask(delay_ns, callback, destroy, user_data);
+void flutter_linux_engine_post_task(FlutterLinuxEngine* engine,
+                                    uint64_t delay_ns,
+                                    FlutterLinuxCallback callback,
+                                    FlutterLinuxCallback destroy,
+                                    void* user_data) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  // Clamped so the target time doesn't overflow.
+  constexpr uint64_t kMaxDelayNs = std::numeric_limits<int64_t>::max() / 2;
+  ToEngine(engine)->plugin_event_loop()->PostTask(
+      [notify = std::move(notify), callback, user_data]() {
+        callback(user_data);
+      },
+      std::chrono::nanoseconds(std::min(delay_ns, kMaxDelayNs)));
 }
 
-uint64_t flutter_linux_plugin_registrar_add_fd_watch(
-    FlutterDesktopPluginRegistrarRef registrar,
-    int fd,
-    uint32_t events,
-    FlutterLinuxFdCallback callback,
-    FlutterLinuxCallback destroy,
-    void* user_data) {
-  return registrar->AddFdWatch(fd, events, callback, destroy, user_data);
+uint64_t flutter_linux_engine_add_fd_watch(FlutterLinuxEngine* engine,
+                                           int fd,
+                                           uint32_t events,
+                                           FlutterLinuxFdCallback callback,
+                                           FlutterLinuxCallback destroy,
+                                           void* user_data) {
+  auto notify = std::make_shared<DestroyNotify>(destroy, user_data);
+  return ToEngine(engine)->plugin_event_loop()->AddWatch(
+      fd, ToEpollEvents(events),
+      [notify = std::move(notify), fd, callback, user_data](uint32_t events) {
+        callback(fd, FromEpollEvents(events), user_data);
+      });
 }
 
-bool flutter_linux_plugin_registrar_set_fd_watch_events(
-    FlutterDesktopPluginRegistrarRef registrar,
-    uint64_t watch_id,
-    uint32_t events) {
-  return registrar->SetFdWatchEvents(watch_id, events);
+bool flutter_linux_engine_set_fd_watch_events(FlutterLinuxEngine* engine,
+                                              uint64_t watch_id,
+                                              uint32_t events) {
+  return ToEngine(engine)->plugin_event_loop()->SetWatchEvents(
+      watch_id, ToEpollEvents(events));
 }
 
-void flutter_linux_plugin_registrar_remove_fd_watch(
-    FlutterDesktopPluginRegistrarRef registrar,
-    uint64_t watch_id) {
-  registrar->RemoveFdWatch(watch_id);
+void flutter_linux_engine_remove_fd_watch(FlutterLinuxEngine* engine,
+                                          uint64_t watch_id) {
+  ToEngine(engine)->plugin_event_loop()->RemoveWatch(watch_id);
 }
 
 wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {

@@ -20,7 +20,6 @@
 #include <stdint.h>
 
 #include "flutter_export.h"
-#include "flutter_plugin_registrar.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -29,6 +28,8 @@ extern "C" {
 typedef struct _FlutterLinuxApplication FlutterLinuxApplication;
 typedef struct _FlutterLinuxEngine FlutterLinuxEngine;
 typedef struct _FlutterLinuxView FlutterLinuxView;
+typedef struct _FlutterLinuxMessenger FlutterLinuxMessenger;
+typedef struct _FlutterLinuxMessageResponse FlutterLinuxMessageResponse;
 
 // Wayland objects, from libwayland-client.
 struct wl_display;
@@ -95,6 +96,12 @@ FLUTTER_EXPORT void flutter_linux_application_run(
 FLUTTER_EXPORT void flutter_linux_application_quit(
     FlutterLinuxApplication* application);
 
+// Returns the connection to the Wayland compositor shared by all engines.
+// Plugins may create their own event queues on it to use it from other
+// threads.
+FLUTTER_EXPORT struct wl_display* flutter_linux_application_get_wl_display(
+    FlutterLinuxApplication* application);
+
 // Returns the number of Wayland globals bound from the compositor.
 FLUTTER_EXPORT size_t flutter_linux_application_get_wayland_protocol_count(
     FlutterLinuxApplication* application);
@@ -143,12 +150,10 @@ FLUTTER_EXPORT void flutter_linux_view_set_close_callback(
     FlutterLinuxViewCloseCallback callback,
     void* user_data);
 
-// Plugins.
+// Plugin support.
 //
-// Each plugin has its own registrar in each engine, which is destroyed with
-// the engine. Registrars are used on the platform thread, except where noted.
-// Plugins are expected to stop any threads they use before their registrar's
-// destruction handler returns.
+// Functions are called on the platform thread, except where noted. Plugins
+// are expected to stop any threads they use before their engine is freed.
 
 // File descriptor events.
 typedef enum {
@@ -163,43 +168,61 @@ typedef void (*FlutterLinuxCallback)(void* user_data);
 typedef void (*FlutterLinuxFdCallback)(int fd,
                                        uint32_t events,
                                        void* user_data);
-typedef void (*FlutterLinuxViewCallback)(int64_t view_id, void* user_data);
 
-// Returns the registrar for the plugin called |plugin_name| in |engine|,
-// creating it if necessary. The registrar remains valid until the engine is
-// freed.
-FLUTTER_EXPORT FlutterDesktopPluginRegistrarRef
-flutter_linux_engine_get_plugin_registrar(FlutterLinuxEngine* engine,
-                                          const char* plugin_name);
+// Called with a reply to a message, or NULL and zero if there was no reply.
+typedef void (*FlutterLinuxReplyCallback)(const uint8_t* data,
+                                          size_t size,
+                                          void* user_data);
 
-// Returns the connection to the Wayland compositor shared by all engines.
-// Plugins may create their own event queues on it to use it from other
-// threads.
-FLUTTER_EXPORT struct wl_display* flutter_linux_plugin_registrar_get_wl_display(
-    FlutterDesktopPluginRegistrarRef registrar);
-
-// Returns the view with |view_id| in the registrar's engine, or NULL if it
-// doesn't exist. The view remains valid until the view removed callback is
-// called for it.
-FLUTTER_EXPORT FlutterLinuxView* flutter_linux_plugin_registrar_get_view(
-    FlutterDesktopPluginRegistrarRef registrar,
-    int64_t view_id);
-
-// Sets callbacks for when views are added to and removed from the
-// registrar's engine. |added| is called for existing views before this
-// returns. Pass NULL callbacks to stop receiving them.
-FLUTTER_EXPORT void flutter_linux_plugin_registrar_set_view_callbacks(
-    FlutterDesktopPluginRegistrarRef registrar,
-    FlutterLinuxViewCallback added,
-    FlutterLinuxViewCallback removed,
+// Called with a message from the framework. |response| must be passed to
+// flutter_linux_message_response_send exactly once.
+typedef void (*FlutterLinuxMessageHandler)(
+    const uint8_t* data,
+    size_t size,
+    FlutterLinuxMessageResponse* response,
     void* user_data);
+
+// Returns the messenger used to communicate with the framework running in
+// |engine|. It remains valid until the engine is freed.
+FLUTTER_EXPORT FlutterLinuxMessenger* flutter_linux_engine_get_messenger(
+    FlutterLinuxEngine* engine);
+
+// Sends |data| on |channel|. |reply|, which may be NULL, is called exactly
+// once on the platform thread, including if the engine is freed before a
+// reply is received. May be called from any thread while the engine exists.
+FLUTTER_EXPORT void flutter_linux_messenger_send(
+    FlutterLinuxMessenger* messenger,
+    const char* channel,
+    const uint8_t* data,
+    size_t size,
+    FlutterLinuxReplyCallback reply,
+    void* user_data);
+
+// Sets |handler| to be called for messages on |channel|, replacing any
+// existing handler. Pass a NULL handler to remove it. |destroy|, which may be
+// NULL, is called when the handler is replaced or removed, or the engine is
+// freed.
+FLUTTER_EXPORT void flutter_linux_messenger_set_handler(
+    FlutterLinuxMessenger* messenger,
+    const char* channel,
+    FlutterLinuxMessageHandler handler,
+    void* user_data,
+    FlutterLinuxCallback destroy);
+
+// Responds to a message and frees |response|. Must be called exactly once for
+// each message. May be called from any thread, including after the engine is
+// freed (in which case the response is dropped).
+FLUTTER_EXPORT void flutter_linux_message_response_send(
+    FlutterLinuxMessageResponse* response,
+    const uint8_t* data,
+    size_t size);
 
 // Calls |callback| on the platform thread after |delay_ns| nanoseconds.
 // |destroy|, which may be NULL, is called on the platform thread after the
-// callback, or instead of it if the registrar is destroyed first. May be
-// called from any thread while the registrar exists.
-FLUTTER_EXPORT void flutter_linux_plugin_registrar_post_task(
-    FlutterDesktopPluginRegistrarRef registrar,
+// callback, or instead of it if the engine is freed first. May be called
+// from any thread while the engine exists.
+FLUTTER_EXPORT void flutter_linux_engine_post_task(
+    FlutterLinuxEngine* engine,
     uint64_t delay_ns,
     FlutterLinuxCallback callback,
     FlutterLinuxCallback destroy,
@@ -207,25 +230,25 @@ FLUTTER_EXPORT void flutter_linux_plugin_registrar_post_task(
 
 // Calls |callback| on the platform thread when any of |events|
 // (FlutterLinuxFdEvent flags) occur on |fd|. |destroy|, which may be NULL, is
-// called when the watch is removed or the registrar is destroyed. Returns an
-// ID for the watch, or zero on failure.
-FLUTTER_EXPORT uint64_t flutter_linux_plugin_registrar_add_fd_watch(
-    FlutterDesktopPluginRegistrarRef registrar,
-    int fd,
-    uint32_t events,
-    FlutterLinuxFdCallback callback,
-    FlutterLinuxCallback destroy,
-    void* user_data);
+// called when the watch is removed or the engine is freed. Returns an ID for
+// the watch, or zero on failure.
+FLUTTER_EXPORT uint64_t
+flutter_linux_engine_add_fd_watch(FlutterLinuxEngine* engine,
+                                  int fd,
+                                  uint32_t events,
+                                  FlutterLinuxFdCallback callback,
+                                  FlutterLinuxCallback destroy,
+                                  void* user_data);
 
 // Changes the events the watch with |watch_id| waits for.
-FLUTTER_EXPORT bool flutter_linux_plugin_registrar_set_fd_watch_events(
-    FlutterDesktopPluginRegistrarRef registrar,
+FLUTTER_EXPORT bool flutter_linux_engine_set_fd_watch_events(
+    FlutterLinuxEngine* engine,
     uint64_t watch_id,
     uint32_t events);
 
 // Removes the watch with |watch_id|. This may be called from its callback.
-FLUTTER_EXPORT void flutter_linux_plugin_registrar_remove_fd_watch(
-    FlutterDesktopPluginRegistrarRef registrar,
+FLUTTER_EXPORT void flutter_linux_engine_remove_fd_watch(
+    FlutterLinuxEngine* engine,
     uint64_t watch_id);
 
 // The surface the view's Flutter content is shown in. Its origin is the

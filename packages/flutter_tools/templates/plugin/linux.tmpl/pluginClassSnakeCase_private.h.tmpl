@@ -1,7 +1,8 @@
 #ifndef FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_PRIVATE_H_
 #define FLUTTER_PLUGIN_{{pluginClassCapitalSnakeCase}}_PRIVATE_H_
 
-#include <flutter/plugin_registrar_linux.h>
+#include <flutter/binary_messenger.h>
+#include <flutter_linux/flutter_linux.h>
 
 #include <string>
 
@@ -9,12 +10,13 @@
 
 namespace {{projectName}} {
 
-// The plugin. An instance is created for each engine, and destroyed with it.
-class {{pluginClass}} : public flutter::Plugin, public {{pluginClass}}Api {
+// The plugin. An instance is created for each engine, and destroyed before
+// the engine is.
+class {{pluginClass}} : public flutter::FlutterDesktopPlugin,
+                        public {{pluginClass}}Api {
  public:
-  static void RegisterWithRegistrar(flutter::PluginRegistrarLinux* registrar);
-
-  {{pluginClass}}();
+  // Creates the plugin, handling messages from |messenger| if it is not null.
+  explicit {{pluginClass}}(flutter::BinaryMessenger* messenger);
 
   ~{{pluginClass}}() override;
 
@@ -23,6 +25,9 @@ class {{pluginClass}} : public flutter::Plugin, public {{pluginClass}}Api {
   {{pluginClass}}& operator=(const {{pluginClass}}&) = delete;
 
   ErrorOr<std::string> GetPlatformVersion() override;
+
+ private:
+  flutter::BinaryMessenger* messenger_;
 };
 
 }  // namespace {{projectName}}

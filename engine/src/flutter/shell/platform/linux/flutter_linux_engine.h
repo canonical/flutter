@@ -17,12 +17,12 @@
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/compositor_opengl.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
-#include "flutter/shell/platform/linux/flutter_desktop_messenger.h"
-#include "flutter/shell/platform/linux/flutter_desktop_plugin_registrar.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/keyboard_manager.h"
 #include "flutter/shell/platform/linux/mouse_cursor_plugin.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
+#include "flutter/shell/platform/linux/plugin_messenger.h"
+#include "flutter/shell/platform/linux/scoped_event_loop.h"
 #include "flutter/shell/platform/linux/vsync_predictor.h"
 
 namespace flutter {
@@ -102,10 +102,14 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // shape or kHiddenCursorShape.
   uint32_t cursor() const { return mouse_cursor_plugin_->cursor(); }
 
-  // Returns the registrar for the plugin called |plugin_name|, creating it if
-  // necessary. Registrars are destroyed with the engine.
-  FlutterDesktopPluginRegistrar* GetPluginRegistrar(
-      const std::string& plugin_name);
+  // The messenger plugins use to communicate with the framework.
+  PluginMessenger* plugin_messenger() const { return plugin_messenger_; }
+
+  // The event loop plugins use, whose tasks and watches are stopped when the
+  // engine is destroyed.
+  ScopedEventLoop* plugin_event_loop() const {
+    return plugin_event_loop_.get();
+  }
 
   // |PlatformMessenger|
   void SendMessage(const std::string& channel,
@@ -176,13 +180,11 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // The views shown by this engine. Owned by their view controllers.
   std::map<FlutterViewId, FlutterLinuxView*> views_;
 
-  // The messenger plugins use. Reference counted as plugins may keep it
-  // after the engine is destroyed.
-  FlutterDesktopMessenger* plugin_messenger_ = nullptr;
+  // The messenger plugins use. Reference counted as messages may still be
+  // in flight when the engine is destroyed.
+  PluginMessenger* plugin_messenger_ = nullptr;
 
-  // Plugin registrars, by plugin name.
-  std::map<std::string, std::unique_ptr<FlutterDesktopPluginRegistrar>>
-      plugin_registrars_;
+  std::unique_ptr<ScopedEventLoop> plugin_event_loop_;
 
   // Tasks posted to the shared event loop hold a weak reference to this, so
   // they don't run after the engine is destroyed.

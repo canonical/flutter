@@ -49,6 +49,44 @@ core_cpp_client_wrapper_sources = get_path_info([
                                                 ],
                                                 "abspath")
 
+# Sources included by core_cpp_client_wrapper_sources, which are published
+# with them but not compiled separately.
+core_cpp_client_wrapper_included_sources =
+    get_path_info([ "channel_implementations.cc" ], "abspath")
+
+# The headers for using channels and codecs with an embedder-provided
+# BinaryMessenger, without the rest of the wrapper.
+channel_cpp_client_wrapper_includes =
+    get_path_info([
+                    "include/flutter/basic_message_channel.h",
+                    "include/flutter/binary_messenger.h",
+                    "include/flutter/byte_streams.h",
+                    "include/flutter/encodable_value.h",
+                    "include/flutter/engine_method_result.h",
+                    "include/flutter/event_channel.h",
+                    "include/flutter/event_sink.h",
+                    "include/flutter/event_stream_handler_functions.h",
+                    "include/flutter/event_stream_handler.h",
+                    "include/flutter/message_codec.h",
+                    "include/flutter/method_call.h",
+                    "include/flutter/method_channel.h",
+                    "include/flutter/method_codec.h",
+                    "include/flutter/method_result_functions.h",
+                    "include/flutter/method_result.h",
+                    "include/flutter/standard_codec_serializer.h",
+                    "include/flutter/standard_message_codec.h",
+                    "include/flutter/standard_method_codec.h",
+                  ],
+                  "abspath")
+
+channel_cpp_client_wrapper_sources =
+    get_path_info([
+                    "byte_buffer_streams.h",
+                    "channel_implementations.cc",
+                    "standard_codec.cc",
+                  ],
+                  "abspath")
+
 # Temporary shim, published for backwards compatibility.
 # See comment in the file for more detail.
 temporary_shim_files = get_path_info([ "engine_method_result.cc" ], "abspath")

@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Failed to create Flutter engine\n");
     return 1;
   }
-  RegisterPlugins(engine.get());
+  RegisterPlugins(*engine);
 
   auto view = flutter::FlutterDesktopView::create(engine, 1280, 720);
   if (!view) {

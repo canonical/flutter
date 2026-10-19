@@ -12,6 +12,9 @@ source_set("client_wrapper") {
   public = core_cpp_client_wrapper_includes +
            core_cpp_client_wrapper_internal_headers
 
+  # Included by core_implementations.cc.
+  inputs = core_cpp_client_wrapper_included_sources
+
   deps = [ "//flutter/shell/platform/common:common_cpp_library_headers" ]
 
   public_deps = [ ":standard_codec" ]
@@ -49,6 +52,22 @@ source_set("standard_codec") {
   ]
 
   public_deps = [ ":codec_headers" ]
+}
+
+# The channels, for embedders that provide their own BinaryMessenger rather
+# than the desktop embedding API. Don't depend on this and :client_wrapper,
+# which includes the same implementations.
+source_set("channels") {
+  sources = [ "channel_implementations.cc" ]
+  public = channel_cpp_client_wrapper_includes
+
+  public_deps = [ ":standard_codec" ]
+
+  public_configs = [ ":channels_headers" ]
+}
+
+config("channels_headers") {
+  include_dirs = [ "include" ]
 }
 
 source_set("client_wrapper_library_stubs") {

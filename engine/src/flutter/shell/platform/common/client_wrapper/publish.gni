@@ -72,6 +72,7 @@ template("publish_client_wrapper_core") {
                            ])
     public = core_cpp_client_wrapper_includes
     sources = core_cpp_client_wrapper_sources +
+              core_cpp_client_wrapper_included_sources +
               core_cpp_client_wrapper_internal_headers + [ _wrapper_readme ] +
               temporary_shim_files
   }

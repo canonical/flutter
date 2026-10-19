@@ -1504,7 +1504,7 @@ flutter:
 
           expect(registrantHeader, exists);
           expect(registrantImpl, exists);
-          expect(registrantImpl.readAsStringSync(), contains('SomePluginRegisterWithRegistrar'));
+          expect(registrantImpl.readAsStringSync(), contains('SomePluginRegisterWithEngine'));
         },
         overrides: <Type, Generator>{
           FileSystem: () => fs,
@@ -1560,11 +1560,11 @@ dependencies:
           expect(registrantImpl, exists);
           expect(
             registrantImpl.readAsStringSync(),
-            contains('UserSelectedUrlLauncherLinuxRegisterWithRegistrar'),
+            contains('UserSelectedUrlLauncherLinuxRegisterWithEngine'),
           );
           expect(
             registrantImpl.readAsStringSync(),
-            isNot(contains('InlineUrlLauncherLinuxRegisterWithRegistrar')),
+            isNot(contains('InlineUrlLauncherLinuxRegisterWithEngine')),
           );
         },
         overrides: <Type, Generator>{
@@ -1631,11 +1631,11 @@ dependencies:
           expect(registrantImpl, exists);
           expect(
             registrantImpl.readAsStringSync(),
-            contains('UserSelectedUrlLauncherLinuxRegisterWithRegistrar'),
+            contains('UserSelectedUrlLauncherLinuxRegisterWithEngine'),
           );
           expect(
             registrantImpl.readAsStringSync(),
-            isNot(contains('InlineUrlLauncherLinuxRegisterWithRegistrar')),
+            isNot(contains('InlineUrlLauncherLinuxRegisterWithEngine')),
           );
         },
         overrides: <Type, Generator>{

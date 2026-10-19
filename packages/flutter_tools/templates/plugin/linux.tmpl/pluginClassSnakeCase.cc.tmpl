@@ -1,6 +1,5 @@
 #include "include/{{projectName}}/{{pluginClassSnakeCase}}.h"
 
-#include <flutter/plugin_registrar_linux.h>
 #include <sys/utsname.h>
 
 #include <memory>
@@ -11,17 +10,18 @@
 
 namespace {{projectName}} {
 
-// static
-void {{pluginClass}}::RegisterWithRegistrar(
-    flutter::PluginRegistrarLinux* registrar) {
-  auto plugin = std::make_unique<{{pluginClass}}>();
-  {{pluginClass}}Api::SetUp(registrar->messenger(), plugin.get());
-  registrar->AddPlugin(std::move(plugin));
+{{pluginClass}}::{{pluginClass}}(flutter::BinaryMessenger* messenger)
+    : messenger_(messenger) {
+  if (messenger_ != nullptr) {
+    {{pluginClass}}Api::SetUp(messenger_, this);
+  }
 }
 
-{{pluginClass}}::{{pluginClass}}() {}
-
-{{pluginClass}}::~{{pluginClass}}() {}
+{{pluginClass}}::~{{pluginClass}}() {
+  if (messenger_ != nullptr) {
+    {{pluginClass}}Api::SetUp(messenger_, nullptr);
+  }
+}
 
 ErrorOr<std::string> {{pluginClass}}::GetPlatformVersion() {
   struct utsname uname_data = {};
@@ -31,9 +31,7 @@ ErrorOr<std::string> {{pluginClass}}::GetPlatformVersion() {
 
 }  // namespace {{projectName}}
 
-void {{pluginClass}}RegisterWithRegistrar(
-    FlutterDesktopPluginRegistrarRef registrar) {
-  {{projectName}}::{{pluginClass}}::RegisterWithRegistrar(
-      flutter::PluginRegistrarManager::GetInstance()
-          ->GetRegistrar<flutter::PluginRegistrarLinux>(registrar));
+void {{pluginClass}}RegisterWithEngine(flutter::FlutterDesktopEngine& engine) {
+  engine.add_plugin(
+      std::make_unique<{{projectName}}::{{pluginClass}}>(engine.messenger()));
 }
