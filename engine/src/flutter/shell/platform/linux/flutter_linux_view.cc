@@ -38,6 +38,11 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
   if (!view->window_) {
     return nullptr;
   }
+  AtspiApplication* atspi = application->atspi();
+  view->accessible_ = std::make_unique<AccessibleView>(
+      view.get(), atspi, atspi->root(), atspi->NewWindowPath());
+  atspi->AddWindow(view->accessible_.get());
+
   WaylandSeat* seat = application->display()->seat();
   view->pointer_converter_ =
       std::make_unique<PointerEventConverter>(view.get(), view_id);
@@ -62,6 +67,10 @@ FlutterLinuxView::FlutterLinuxView(FlutterLinuxEngine* engine,
       constraints_(constraints) {}
 
 FlutterLinuxView::~FlutterLinuxView() {
+  if (accessible_) {
+    engine_->application()->atspi()->RemoveWindow(accessible_.get());
+    accessible_.reset();
+  }
   WaylandSeat* seat = engine_->application()->display()->seat();
   if (seat != nullptr && window_) {
     seat->SetInputHandler(window_->surface(), nullptr);
@@ -163,8 +172,17 @@ void FlutterLinuxView::OnWindowConfigure() {
 }
 
 void FlutterLinuxView::OnWindowStateChanged() {
+  if (accessible_) {
+    accessible_->OnWindowStateChanged();
+  }
   if (state_callback_) {
     state_callback_();
+  }
+}
+
+void FlutterLinuxView::OnWindowTitleChanged() {
+  if (accessible_) {
+    accessible_->OnWindowStateChanged();
   }
 }
 
@@ -209,6 +227,50 @@ void FlutterLinuxView::OnPointerEntered() {
   if (seat != nullptr) {
     seat->SetCursor(engine_->cursor());
   }
+}
+
+std::string FlutterLinuxView::GetAccessibleTitle() {
+  return window_ ? window_->title() : "";
+}
+
+AtspiRole FlutterLinuxView::GetAccessibleRole() {
+  if (!window_) {
+    return AtspiRole::kFrame;
+  }
+  if (window_->role() == WaylandWindow::Role::kPopup) {
+    return AtspiRole::kWindow;
+  }
+  return window_->parent() != nullptr ? AtspiRole::kDialog : AtspiRole::kFrame;
+}
+
+AtspiStateSet FlutterLinuxView::GetWindowStates() {
+  AtspiStateSet states;
+  if (!window_) {
+    return states;
+  }
+  states.Set(AtspiState::kActive, window_->activated());
+  states.Set(AtspiState::kModal, window_->modal());
+  states.Set(AtspiState::kResizable,
+             window_->role() == WaylandWindow::Role::kToplevel &&
+                 window_->resizable());
+  return states;
+}
+
+AtspiRect FlutterLinuxView::GetWindowExtents() {
+  if (!window_) {
+    return {};
+  }
+  return {.width = window_->width(), .height = window_->height()};
+}
+
+double FlutterLinuxView::GetPixelRatio() {
+  return window_ ? window_->scale() : 1.0;
+}
+
+void FlutterLinuxView::DispatchSemanticsAction(uint64_t node_id,
+                                               FlutterSemanticsAction action,
+                                               std::vector<uint8_t> data) {
+  engine_->SendSemanticsAction(view_id_, node_id, action, std::move(data));
 }
 
 }  // namespace flutter

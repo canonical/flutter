@@ -125,8 +125,14 @@ config("no_x11") {
 
 source_set("flutter_linux_sources") {
   public = [
+    "accessible_view.h",
+    "atspi_accessible.h",
+    "atspi_application.h",
+    "atspi_text.h",
     "compositor_opengl.h",
     "corner_mask.h",
+    "dbus_connection.h",
+    "dbus_message.h",
     "decoration_renderer.h",
     "dmabuf_buffer.h",
     "drm_timeline.h",
@@ -155,8 +161,14 @@ source_set("flutter_linux_sources") {
   ]
 
   sources = [
+    "accessible_view.cc",
+    "atspi_accessible.cc",
+    "atspi_application.cc",
+    "atspi_text.cc",
     "compositor_opengl.cc",
     "corner_mask.cc",
+    "dbus_connection.cc",
+    "dbus_message.cc",
     "decoration_renderer.cc",
     "dmabuf_buffer.cc",
     "drm_timeline.cc",
@@ -217,6 +229,7 @@ source_set("flutter_linux_sources") {
     "//flutter/shell/platform/common/client_wrapper:standard_codec",
     "//flutter/skia",
     "//flutter/skia/modules/skparagraph",
+    "//flutter/third_party/icu",
     "//flutter/txt",
   ]
 }
@@ -261,7 +274,13 @@ executable("flutter_linux_unittests") {
   testonly = true
 
   sources = [
+    "accessible_view_unittests.cc",
+    "atspi_application_unittests.cc",
+    "atspi_text_unittests.cc",
+    "dbus_connection_unittests.cc",
+    "dbus_message_unittests.cc",
     "event_loop_unittests.cc",
+    "fake_dbus_bus.h",
     "fake_platform_messenger.h",
     "flutter_linux_unittests.cc",
     "key_event_converter_unittests.cc",

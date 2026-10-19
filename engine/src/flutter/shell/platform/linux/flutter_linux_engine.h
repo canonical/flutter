@@ -37,7 +37,8 @@ constexpr FlutterViewId kImplicitViewId = 0;
 //
 // The engine must be created, run and destroyed on the application's platform
 // thread. Multiple engines may share an application.
-class FlutterLinuxEngine : public PlatformMessenger {
+class FlutterLinuxEngine : public PlatformMessenger,
+                           public AtspiApplication::Observer {
  public:
   struct Properties {
     std::filesystem::path assets_path;
@@ -142,6 +143,15 @@ class FlutterLinuxEngine : public PlatformMessenger {
   // Called when the compositor is ready for another frame from any view.
   void OnFrameDone();
 
+  // Performs a semantics action on a node in a view.
+  void SendSemanticsAction(FlutterViewId view_id,
+                           uint64_t node_id,
+                           FlutterSemanticsAction action,
+                           const std::vector<uint8_t>& data);
+
+  // |AtspiApplication::Observer|
+  void OnAccessibilityEnabledChanged(bool enabled) override;
+
  private:
   FlutterLinuxEngine(FlutterLinuxApplication* application,
                      Properties properties);
@@ -170,6 +180,12 @@ class FlutterLinuxEngine : public PlatformMessenger {
 
   // Responds to a message from the framework.
   void HandlePlatformMessage(const FlutterPlatformMessage* message);
+
+  // Applies changes to a view's semantics tree.
+  void OnSemanticsUpdate(const FlutterSemanticsUpdate2* update);
+
+  // Handles a message on the flutter/accessibility channel.
+  void HandleAccessibilityMessage(const uint8_t* data, size_t size);
 
   FlutterRendererConfig GetRendererConfig();
 

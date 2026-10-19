@@ -51,6 +51,9 @@ class WaylandWindow : public WindowDecoration::Delegate {
     // made fullscreen, or a popup is moved.
     virtual void OnWindowStateChanged() {}
 
+    // Called when the window title changes.
+    virtual void OnWindowTitleChanged() {}
+
     // Called when a frame has been shown on the screen.
     // |presentation_time_ns| is when it was shown, on CLOCK_MONOTONIC.
     // |refresh_ns| is the time until the next display refresh, or zero if
@@ -164,6 +167,9 @@ class WaylandWindow : public WindowDecoration::Delegate {
   bool maximized() const { return maximized_; }
   bool fullscreen() const { return fullscreen_; }
   bool activated() const { return activated_; }
+  bool modal() const { return modal_; }
+  bool resizable() const { return resizable_; }
+  const std::string& title() const { return title_; }
 
   // The position of a popup's content relative to its parent's content, in
   // logical pixels.
@@ -440,6 +446,7 @@ class WaylandWindow : public WindowDecoration::Delegate {
   bool can_minimize_ = true;
   bool can_maximize_ = true;
   bool resizable_ = true;
+  bool modal_ = false;
   SizeLimits limits_;
   std::string title_;
 

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/atspi_application.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
@@ -35,6 +36,9 @@ class FlutterLinuxApplication {
   WaylandDisplay* display() const { return display_.get(); }
   GpuDevice* gpu() const { return gpu_.get(); }
 
+  // Exposes the application to assistive technologies.
+  AtspiApplication* atspi() const { return atspi_.get(); }
+
   // Draws window decorations, created on first use. Returns nullptr if
   // decorations can't be drawn. Must be called on the platform thread.
   DecorationRenderer* decoration_renderer();
@@ -50,6 +54,7 @@ class FlutterLinuxApplication {
   const std::string& application_id() const { return application_id_; }
   void SetApplicationId(const std::string& application_id) {
     application_id_ = application_id;
+    atspi_->set_name(application_id);
   }
 
   // The number of views shown by all engines.
@@ -67,6 +72,7 @@ class FlutterLinuxApplication {
   std::unique_ptr<EventLoop> event_loop_;
   std::unique_ptr<WaylandDisplay> display_;
   std::unique_ptr<GpuDevice> gpu_;
+  std::unique_ptr<AtspiApplication> atspi_;
   std::unique_ptr<DecorationRenderer> decoration_renderer_;
   bool decoration_renderer_created_ = false;
   size_t view_count_ = 0;

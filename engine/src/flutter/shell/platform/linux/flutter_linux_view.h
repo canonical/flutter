@@ -12,6 +12,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
+#include "flutter/shell/platform/linux/accessible_view.h"
 #include "flutter/shell/platform/linux/pointer_event_converter.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_window.h"
@@ -22,7 +23,8 @@ class FlutterLinuxEngine;
 
 // A Flutter view shown in a window.
 class FlutterLinuxView : public WaylandWindow::Delegate,
-                         public PointerEventConverter::Delegate {
+                         public PointerEventConverter::Delegate,
+                         public AccessibleView::Host {
  public:
   // How the size of the view is chosen.
   enum class Sizing {
@@ -56,6 +58,9 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   FlutterViewId view_id() const { return view_id_; }
   FlutterLinuxEngine* engine() const { return engine_; }
   WaylandWindow* window() const { return window_.get(); }
+
+  // The view's semantics tree, exposed to assistive technologies.
+  AccessibleView* accessible() const { return accessible_.get(); }
 
   // Sets a function to call when the user requests the window be closed,
   // replacing the default behavior of quitting the application. The view may
@@ -94,6 +99,9 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   void OnWindowStateChanged() override;
 
   // |WaylandWindow::Delegate|
+  void OnWindowTitleChanged() override;
+
+  // |WaylandWindow::Delegate|
   void OnWindowPresented(uint64_t presentation_time_ns,
                          uint64_t refresh_ns) override;
 
@@ -105,6 +113,16 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   void SendPointerEvents(const FlutterPointerEvent* events,
                          size_t count) override;
   void OnPointerEntered() override;
+
+  // |AccessibleView::Host|
+  std::string GetAccessibleTitle() override;
+  AtspiRole GetAccessibleRole() override;
+  AtspiStateSet GetWindowStates() override;
+  AtspiRect GetWindowExtents() override;
+  double GetPixelRatio() override;
+  void DispatchSemanticsAction(uint64_t node_id,
+                               FlutterSemanticsAction action,
+                               std::vector<uint8_t> data) override;
 
   // The number of presented frames the compositor is not yet ready to
   // follow with another frame.
@@ -137,6 +155,8 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
 
   // Converts input in the window to Flutter events.
   std::unique_ptr<PointerEventConverter> pointer_converter_;
+
+  std::unique_ptr<AccessibleView> accessible_;
 
   // Tasks posted by the view hold a weak reference to this, so they don't
   // run after the view is destroyed.

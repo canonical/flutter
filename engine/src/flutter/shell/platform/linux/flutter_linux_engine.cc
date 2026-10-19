@@ -12,6 +12,7 @@
 
 #include "flutter/fml/icu_util.h"
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_message_codec.h"
 #include "flutter/shell/platform/common/engine_switches.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/window_manager.h"
@@ -87,6 +88,16 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
       std::make_unique<ScopedEventLoop>(application_->event_loop());
   window_manager_ = std::make_unique<WindowManager>(this);
 
+  application_->atspi()->AddObserver(this);
+  SetMessageHandler(
+      "flutter/accessibility",
+      [this](const uint8_t* data, size_t size, ResponseCallback respond) {
+        HandleAccessibilityMessage(data, size);
+        // The channel has no responses, so send null.
+        respond(*StandardMessageCodec::GetInstance().EncodeMessage(
+            EncodableValue()));
+      });
+
   std::scoped_lock lock(EnginesMutex());
   Engines().insert(this);
 }
@@ -96,6 +107,7 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
     std::scoped_lock lock(EnginesMutex());
     Engines().erase(this);
   }
+  application_->atspi()->RemoveObserver(this);
 
   window_manager_.reset();
   FML_DCHECK(views_.empty());
@@ -241,6 +253,10 @@ bool FlutterLinuxEngine::Run() {
   args.vsync_callback = [](void* user_data, intptr_t baton) {
     static_cast<FlutterLinuxEngine*>(user_data)->OnVsyncRequest(baton);
   };
+  args.update_semantics_callback2 = [](const FlutterSemanticsUpdate2* update,
+                                       void* user_data) {
+    static_cast<FlutterLinuxEngine*>(user_data)->OnSemanticsUpdate(update);
+  };
   args.custom_task_runners = &custom_task_runners;
   args.compositor = &compositor;
   args.aot_data = aot_data_;
@@ -260,6 +276,10 @@ bool FlutterLinuxEngine::Run() {
     } else {
       AddViewToEngine(view);
     }
+  }
+
+  if (application_->atspi()->enabled()) {
+    embedder_api_.UpdateSemanticsEnabled(engine_, true);
   }
 
   return true;
@@ -600,6 +620,88 @@ void FlutterLinuxEngine::HandlePlatformMessage(
           [responder](const std::vector<uint8_t>& response) {
             responder->Respond(response);
           });
+}
+
+void FlutterLinuxEngine::OnSemanticsUpdate(
+    const FlutterSemanticsUpdate2* update) {
+  auto it = views_.find(update->view_id);
+  if (it == views_.end()) {
+    return;
+  }
+  it->second->accessible()->Update(*update);
+}
+
+void FlutterLinuxEngine::SendSemanticsAction(FlutterViewId view_id,
+                                             uint64_t node_id,
+                                             FlutterSemanticsAction action,
+                                             const std::vector<uint8_t>& data) {
+  if (engine_ == nullptr) {
+    return;
+  }
+  FlutterSendSemanticsActionInfo info = {};
+  info.struct_size = sizeof(FlutterSendSemanticsActionInfo);
+  info.view_id = view_id;
+  info.node_id = node_id;
+  info.action = action;
+  info.data = data.empty() ? nullptr : data.data();
+  info.data_length = data.size();
+  embedder_api_.SendSemanticsAction(engine_, &info);
+}
+
+void FlutterLinuxEngine::OnAccessibilityEnabledChanged(bool enabled) {
+  if (!enabled) {
+    for (const auto& [view_id, view] : views_) {
+      view->accessible()->Clear();
+    }
+  }
+  if (engine_ != nullptr) {
+    embedder_api_.UpdateSemanticsEnabled(engine_, enabled);
+  }
+}
+
+// Handles messages like:
+// {"type": "announce", "data": {"viewId": 0, "message": "Hello",
+//                               "assertiveness": 0}}
+void FlutterLinuxEngine::HandleAccessibilityMessage(const uint8_t* data,
+                                                    size_t size) {
+  std::unique_ptr<EncodableValue> message =
+      StandardMessageCodec::GetInstance().DecodeMessage(data, size);
+  const auto* map =
+      message ? std::get_if<EncodableMap>(message.get()) : nullptr;
+  if (map == nullptr) {
+    return;
+  }
+  auto type = map->find(EncodableValue("type"));
+  auto contents = map->find(EncodableValue("data"));
+  if (type == map->end() || contents == map->end() ||
+      type->second != EncodableValue("announce")) {
+    return;
+  }
+  const auto* fields = std::get_if<EncodableMap>(&contents->second);
+  if (fields == nullptr) {
+    return;
+  }
+  auto text = fields->find(EncodableValue("message"));
+  if (text == fields->end() ||
+      !std::holds_alternative<std::string>(text->second)) {
+    return;
+  }
+  FlutterViewId view_id = kImplicitViewId;
+  auto view_id_value = fields->find(EncodableValue("viewId"));
+  if (view_id_value != fields->end()) {
+    view_id = view_id_value->second.TryGetLongValue().value_or(view_id);
+  }
+  bool assertive = false;
+  auto assertiveness = fields->find(EncodableValue("assertiveness"));
+  if (assertiveness != fields->end()) {
+    assertive = assertiveness->second.TryGetLongValue().value_or(0) == 1;
+  }
+  auto view = views_.find(view_id);
+  if (view == views_.end()) {
+    return;
+  }
+  view->second->accessible()->Announce(std::get<std::string>(text->second),
+                                       assertive);
 }
 
 FlutterRendererConfig FlutterLinuxEngine::GetRendererConfig() {

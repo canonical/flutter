@@ -153,6 +153,7 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
   decoration_renderer_ = decoration_renderer;
   decorated_ = params.decorated && role_ == Role::kToplevel;
   resizable_ = params.resizable;
+  modal_ = params.modal;
   title_ = params.title;
   if (role_ == Role::kToplevel) {
     limits_ = params.size_limits;
@@ -611,6 +612,7 @@ void WaylandWindow::SetTitle(const std::string& title) {
   xdg_toplevel_set_title(toplevel_, title.c_str());
   title_ = title;
   UpdateDecoration();
+  delegate_->OnWindowTitleChanged();
 }
 
 void WaylandWindow::UpdateDecoration() {

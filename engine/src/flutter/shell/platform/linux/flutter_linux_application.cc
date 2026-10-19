@@ -20,6 +20,7 @@ std::unique_ptr<FlutterLinuxApplication> FlutterLinuxApplication::Create() {
 
 FlutterLinuxApplication::~FlutterLinuxApplication() {
   decoration_renderer_.reset();
+  atspi_.reset();
   gpu_.reset();
   if (display_) {
     event_loop_->RemoveSource(display_.get());
@@ -39,7 +40,13 @@ bool FlutterLinuxApplication::Initialize() {
   event_loop_->AddSource(display_.get());
 
   gpu_ = GpuDevice::Create(display_->main_device());
-  return gpu_ != nullptr;
+  if (!gpu_) {
+    return false;
+  }
+
+  atspi_ = std::make_unique<AtspiApplication>(event_loop_.get());
+  atspi_->Start();
+  return true;
 }
 
 DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {
