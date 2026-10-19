@@ -5,6 +5,7 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
 
+#include <array>
 #include <chrono>
 #include <memory>
 #include <optional>
@@ -27,20 +28,30 @@ struct Rect {
   int height = 0;
 };
 
-// How the decoration surface should look for a given content size. Applied
+// How the decoration surfaces should look for a given content size. Applied
 // atomically with a content buffer of the matching size.
 struct DecorationFrame {
-  // The buffer to show, or nullptr to hide the decorations.
-  RenderBuffer* buffer = nullptr;
+  // One of the surfaces the decorations are split into.
+  struct Piece {
+    // The buffer to show, or nullptr to hide the piece.
+    RenderBuffer* buffer = nullptr;
 
-  // The position and size of the decoration surface relative to the content
-  // surface.
-  Rect surface;
+    // The position and size of the piece relative to the content surface.
+    Rect surface;
 
-  // The parts of the decoration surface that accept input, and that are
-  // opaque.
-  std::vector<Rect> input;
-  std::vector<Rect> opaque;
+    // The parts of the piece that accept input, and that are opaque,
+    // relative to the piece.
+    std::vector<Rect> input;
+    std::vector<Rect> opaque;
+  };
+
+  // The title bar along the top, the shadow along the bottom (including
+  // behind the rounded bottom corners), and the shadows down each side.
+  static constexpr size_t kPieceCount = 4;
+  std::array<Piece, kPieceCount> pieces;
+
+  // Returns true if |buffer| is shown in any of the pieces.
+  bool Uses(const RenderBuffer* buffer) const;
 
   // The window geometry, relative to the content surface.
   Rect geometry;
@@ -55,8 +66,12 @@ struct DecorationFrame {
 };
 
 // Client-side window decorations: a title bar with window controls and a
-// shadow, drawn in a subsurface below the window content so Flutter's
+// shadow, drawn in subsurfaces below the window content so Flutter's
 // buffers are shown without copying.
+//
+// The decorations are split into pieces around the content rather than
+// using one surface the size of the window, so no memory is used for the
+// area the content covers.
 //
 // Used on the platform thread.
 class WindowDecoration : public InputHandler {
@@ -147,10 +162,63 @@ class WindowDecoration : public InputHandler {
     bool title_bar = false;
   };
 
+  // One of the subsurfaces the decorations are drawn in. Input is
+  // forwarded to the decoration in decoration coordinates.
+  class Piece : public InputHandler {
+   public:
+    Piece(WindowDecoration* decoration, wl_surface* parent);
+    ~Piece() override;
+
+    // Shows |piece|, or hides this piece if it has no buffer.
+    void Apply(const DecorationFrame::Piece& piece);
+
+    // Returns a buffer of the given size that can be drawn into, or
+    // nullptr.
+    RenderBuffer* GetBuffer(int width, int height);
+
+    // Frees the buffers that aren't in use. The renderer must be current.
+    void FreeUnusedBuffers();
+
+    // Frees the buffers. The renderer must be current.
+    void ClearBuffers() { buffers_.clear(); }
+
+    // Where the piece is in decoration coordinates.
+    void set_rect(const Rect& rect) { rect_ = rect; }
+    const Rect& rect() const { return rect_; }
+
+    // |InputHandler|
+    void OnPointerEnter(uint64_t time, double x, double y) override;
+    void OnPointerLeave(uint64_t time) override;
+    void OnPointerMotion(uint64_t time, double x, double y) override;
+    void OnPointerButton(uint32_t serial,
+                         uint64_t time,
+                         uint32_t button,
+                         bool pressed) override;
+    void OnTouchDown(uint32_t serial,
+                     uint64_t time,
+                     int32_t id,
+                     double x,
+                     double y) override;
+    void OnTouchUp(uint64_t time, int32_t id) override;
+    void OnTouchMotion(uint64_t time, int32_t id, double x, double y) override;
+    void OnTouchCancel() override;
+
+   private:
+    WindowDecoration* decoration_;
+    wl_surface* surface_ = nullptr;
+    wl_subsurface* subsurface_ = nullptr;
+    wp_viewport* viewport_ = nullptr;
+    Rect rect_;
+    std::vector<std::unique_ptr<RenderBuffer>> buffers_;
+
+    FML_DISALLOW_COPY_AND_ASSIGN(Piece);
+  };
+
   // Whether the window floats, with a shadow and resizable edges.
   bool floating() const;
 
-  // The window outline relative to the decoration surface.
+  // The window outline in decoration coordinates, which have their origin
+  // at the top left of the shadow around a floating window.
   Rect WindowRect() const;
 
   // The buttons shown, from left to right.
@@ -174,9 +242,6 @@ class WindowDecoration : public InputHandler {
   // Draws and submits a new frame.
   void Redraw();
 
-  // Returns a buffer that can be drawn into, or nullptr.
-  RenderBuffer* GetBuffer(int width, int height);
-
   DecorationScene BuildScene();
 
   // Returns the title rendered to fit within |max_width| pixels, reusing the
@@ -188,14 +253,10 @@ class WindowDecoration : public InputHandler {
   Delegate* delegate_;
   xdg_toplevel* toplevel_;
 
-  wl_surface* surface_ = nullptr;
-  wl_subsurface* subsurface_ = nullptr;
-  wp_viewport* viewport_ = nullptr;
+  std::array<std::unique_ptr<Piece>, DecorationFrame::kPieceCount> pieces_;
 
   State state_;
   bool has_state_ = false;
-
-  std::vector<std::unique_ptr<RenderBuffer>> buffers_;
 
   double pointer_x_ = 0;
   double pointer_y_ = 0;

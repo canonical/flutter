@@ -62,7 +62,171 @@ wl_region* CreateRegion(wl_compositor* compositor,
   return region;
 }
 
+// The parts of |rects| inside |area|, relative to |area|.
+std::vector<Rect> Clip(const std::vector<Rect>& rects, const Rect& area) {
+  std::vector<Rect> result;
+  for (const Rect& r : rects) {
+    int x0 = std::max(r.x, area.x);
+    int y0 = std::max(r.y, area.y);
+    int x1 = std::min(r.x + r.width, area.x + area.width);
+    int y1 = std::min(r.y + r.height, area.y + area.height);
+    if (x1 > x0 && y1 > y0) {
+      result.push_back({x0 - area.x, y0 - area.y, x1 - x0, y1 - y0});
+    }
+  }
+  return result;
+}
+
 }  // namespace
+
+bool DecorationFrame::Uses(const RenderBuffer* buffer) const {
+  return std::any_of(pieces.begin(), pieces.end(), [buffer](const Piece& p) {
+    return p.buffer != nullptr && p.buffer == buffer;
+  });
+}
+
+WindowDecoration::Piece::Piece(WindowDecoration* decoration, wl_surface* parent)
+    : decoration_(decoration) {
+  WaylandDisplay* display = decoration_->display_;
+  surface_ = wl_compositor_create_surface(display->compositor());
+  subsurface_ = wl_subcompositor_get_subsurface(display->subcompositor(),
+                                                surface_, parent);
+  // Changes are applied with the content, so resizes are atomic.
+  wl_subsurface_set_sync(subsurface_);
+  wl_subsurface_place_below(subsurface_, parent);
+  wl_surface_set_buffer_transform(surface_, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+  if (display->viewporter() != nullptr) {
+    viewport_ = wp_viewporter_get_viewport(display->viewporter(), surface_);
+  }
+  if (display->seat() != nullptr) {
+    display->seat()->SetInputHandler(surface_, this);
+  }
+}
+
+WindowDecoration::Piece::~Piece() {
+  WaylandDisplay* display = decoration_->display_;
+  if (display->seat() != nullptr) {
+    display->seat()->SetInputHandler(surface_, nullptr);
+  }
+  if (viewport_ != nullptr) {
+    wp_viewport_destroy(viewport_);
+  }
+  wl_subsurface_destroy(subsurface_);
+  wl_surface_destroy(surface_);
+}
+
+void WindowDecoration::Piece::Apply(const DecorationFrame::Piece& piece) {
+  if (piece.buffer == nullptr) {
+    wl_surface_attach(surface_, nullptr, 0, 0);
+    wl_surface_commit(surface_);
+    return;
+  }
+  wl_compositor* compositor = decoration_->display_->compositor();
+  piece.buffer->set_busy(true);
+  wl_subsurface_set_position(subsurface_, piece.surface.x, piece.surface.y);
+  wl_surface_attach(surface_, piece.buffer->buffer(), 0, 0);
+  wl_surface_damage_buffer(surface_, 0, 0, piece.buffer->width(),
+                           piece.buffer->height());
+  if (viewport_ != nullptr) {
+    wp_viewport_set_destination(viewport_, piece.surface.width,
+                                piece.surface.height);
+  }
+  wl_region* input = CreateRegion(compositor, piece.input);
+  wl_surface_set_input_region(surface_, input);
+  wl_region_destroy(input);
+  wl_region* opaque = CreateRegion(compositor, piece.opaque);
+  wl_surface_set_opaque_region(surface_, opaque);
+  wl_region_destroy(opaque);
+  wl_surface_commit(surface_);
+}
+
+void WindowDecoration::Piece::FreeUnusedBuffers() {
+  Delegate* delegate = decoration_->delegate_;
+  buffers_.erase(
+      std::remove_if(buffers_.begin(), buffers_.end(),
+                     [&](const std::unique_ptr<RenderBuffer>& buffer) {
+                       return !buffer->busy() &&
+                              !delegate->IsDecorationBufferPending(
+                                  buffer.get());
+                     }),
+      buffers_.end());
+}
+
+RenderBuffer* WindowDecoration::Piece::GetBuffer(int width, int height) {
+  Delegate* delegate = decoration_->delegate_;
+
+  // Drop buffers that are the wrong size and not in use.
+  buffers_.erase(
+      std::remove_if(
+          buffers_.begin(), buffers_.end(),
+          [&](const std::unique_ptr<RenderBuffer>& buffer) {
+            return (buffer->width() != width || buffer->height() != height) &&
+                   !buffer->busy() &&
+                   !delegate->IsDecorationBufferPending(buffer.get());
+          }),
+      buffers_.end());
+
+  for (const std::unique_ptr<RenderBuffer>& buffer : buffers_) {
+    if (buffer->width() == width && buffer->height() == height &&
+        !buffer->busy() && !delegate->IsDecorationBufferPending(buffer.get())) {
+      return buffer.get();
+    }
+  }
+
+  std::unique_ptr<RenderBuffer> buffer =
+      decoration_->renderer_->CreateBuffer(width, height);
+  if (!buffer) {
+    return nullptr;
+  }
+  buffers_.push_back(std::move(buffer));
+  return buffers_.back().get();
+}
+
+void WindowDecoration::Piece::OnPointerEnter(uint64_t time,
+                                             double x,
+                                             double y) {
+  decoration_->OnPointerEnter(time, x + rect_.x, y + rect_.y);
+}
+
+void WindowDecoration::Piece::OnPointerLeave(uint64_t time) {
+  decoration_->OnPointerLeave(time);
+}
+
+void WindowDecoration::Piece::OnPointerMotion(uint64_t time,
+                                              double x,
+                                              double y) {
+  decoration_->OnPointerMotion(time, x + rect_.x, y + rect_.y);
+}
+
+void WindowDecoration::Piece::OnPointerButton(uint32_t serial,
+                                              uint64_t time,
+                                              uint32_t button,
+                                              bool pressed) {
+  decoration_->OnPointerButton(serial, time, button, pressed);
+}
+
+void WindowDecoration::Piece::OnTouchDown(uint32_t serial,
+                                          uint64_t time,
+                                          int32_t id,
+                                          double x,
+                                          double y) {
+  decoration_->OnTouchDown(serial, time, id, x + rect_.x, y + rect_.y);
+}
+
+void WindowDecoration::Piece::OnTouchUp(uint64_t time, int32_t id) {
+  decoration_->OnTouchUp(time, id);
+}
+
+void WindowDecoration::Piece::OnTouchMotion(uint64_t time,
+                                            int32_t id,
+                                            double x,
+                                            double y) {
+  decoration_->OnTouchMotion(time, id, x + rect_.x, y + rect_.y);
+}
+
+void WindowDecoration::Piece::OnTouchCancel() {
+  decoration_->OnTouchCancel();
+}
 
 WindowDecoration::WindowDecoration(WaylandDisplay* display,
                                    DecorationRenderer* renderer,
@@ -73,33 +237,17 @@ WindowDecoration::WindowDecoration(WaylandDisplay* display,
       renderer_(renderer),
       delegate_(delegate),
       toplevel_(toplevel) {
-  surface_ = wl_compositor_create_surface(display_->compositor());
-  subsurface_ = wl_subcompositor_get_subsurface(display_->subcompositor(),
-                                                surface_, parent);
-  // Changes are applied with the content, so resizes are atomic.
-  wl_subsurface_set_sync(subsurface_);
-  wl_subsurface_place_below(subsurface_, parent);
-  wl_surface_set_buffer_transform(surface_, WL_OUTPUT_TRANSFORM_FLIPPED_180);
-  if (display_->viewporter() != nullptr) {
-    viewport_ = wp_viewporter_get_viewport(display_->viewporter(), surface_);
-  }
-  if (display_->seat() != nullptr) {
-    display_->seat()->SetInputHandler(surface_, this);
+  for (std::unique_ptr<Piece>& piece : pieces_) {
+    piece = std::make_unique<Piece>(this, parent);
   }
 }
 
 WindowDecoration::~WindowDecoration() {
-  if (display_->seat() != nullptr) {
-    display_->seat()->SetInputHandler(surface_, nullptr);
-  }
   if (renderer_->MakeCurrent()) {
-    buffers_.clear();
+    for (std::unique_ptr<Piece>& piece : pieces_) {
+      piece->ClearBuffers();
+    }
   }
-  if (viewport_ != nullptr) {
-    wp_viewport_destroy(viewport_);
-  }
-  wl_subsurface_destroy(subsurface_);
-  wl_surface_destroy(surface_);
 }
 
 void WindowDecoration::SetState(const State& state) {
@@ -392,34 +540,6 @@ void WindowDecoration::OnTouchCancel() {
   }
 }
 
-RenderBuffer* WindowDecoration::GetBuffer(int width, int height) {
-  // Drop buffers that are the wrong size and not in use.
-  buffers_.erase(
-      std::remove_if(
-          buffers_.begin(), buffers_.end(),
-          [&](const std::unique_ptr<RenderBuffer>& buffer) {
-            return (buffer->width() != width || buffer->height() != height) &&
-                   !buffer->busy() &&
-                   !delegate_->IsDecorationBufferPending(buffer.get());
-          }),
-      buffers_.end());
-
-  for (const std::unique_ptr<RenderBuffer>& buffer : buffers_) {
-    if (buffer->width() == width && buffer->height() == height &&
-        !buffer->busy() &&
-        !delegate_->IsDecorationBufferPending(buffer.get())) {
-      return buffer.get();
-    }
-  }
-
-  std::unique_ptr<RenderBuffer> buffer = renderer_->CreateBuffer(width, height);
-  if (!buffer) {
-    return nullptr;
-  }
-  buffers_.push_back(std::move(buffer));
-  return buffers_.back().get();
-}
-
 std::shared_ptr<const AlphaImage> WindowDecoration::GetTitleImage(
     int max_width) {
   if (state_.title != title_image_text_ || state_.scale != title_image_scale_ ||
@@ -539,67 +659,77 @@ void WindowDecoration::Redraw() {
   }
 
   int margin = floating() ? kShadowMargin : 0;
-  int surface_height = floating() ? kTitleBarHeight + state_.height + 2 * margin
-                                  : kTitleBarHeight;
-  frame.surface = {-margin, -kTitleBarHeight - margin,
-                   state_.width + 2 * margin, surface_height};
   frame.geometry = {0, -kTitleBarHeight, state_.width,
                     kTitleBarHeight + state_.height};
 
+  // The input and opaque areas in decoration coordinates.
   Rect window = WindowRect();
+  std::vector<Rect> input;
+  std::vector<Rect> opaque;
+  std::array<Rect, DecorationFrame::kPieceCount> rects;
   if (floating()) {
     frame.content_corner_radius = kCornerRadius;
-    frame.input.push_back({window.x - kResizeOutset, window.y - kResizeOutset,
-                           window.width + 2 * kResizeOutset,
-                           window.height + 2 * kResizeOutset});
-    frame.opaque.push_back({window.x + kCornerRadius, window.y,
-                            window.width - 2 * kCornerRadius, kCornerRadius});
-    frame.opaque.push_back({window.x, window.y + kCornerRadius, window.width,
-                            kTitleBarHeight - kCornerRadius});
+    input.push_back({window.x - kResizeOutset, window.y - kResizeOutset,
+                     window.width + 2 * kResizeOutset,
+                     window.height + 2 * kResizeOutset});
+    opaque.push_back({window.x + kCornerRadius, window.y,
+                      window.width - 2 * kCornerRadius, kCornerRadius});
+    opaque.push_back({window.x, window.y + kCornerRadius, window.width,
+                      kTitleBarHeight - kCornerRadius});
+
+    // The bottom piece extends up behind the rounded corners of the
+    // content.
+    int content_top = margin + kTitleBarHeight;
+    int window_bottom = margin + window.height;
+    int bottom_top = std::max(content_top, window_bottom - kCornerRadius);
+    int full_width = window.width + 2 * margin;
+    rects[0] = {0, 0, full_width, content_top};
+    rects[1] = {0, bottom_top, full_width, window_bottom + margin - bottom_top};
+    rects[2] = {0, content_top, margin, bottom_top - content_top};
+    rects[3] = {margin + window.width, content_top, margin,
+                bottom_top - content_top};
   } else {
-    frame.input.push_back({0, 0, window.width, kTitleBarHeight});
-    frame.opaque.push_back({0, 0, window.width, kTitleBarHeight});
+    input.push_back({0, 0, window.width, kTitleBarHeight});
+    opaque.push_back({0, 0, window.width, kTitleBarHeight});
+    rects[0] = {0, 0, window.width, kTitleBarHeight};
   }
 
-  int buffer_width =
-      static_cast<int>(std::round(frame.surface.width * state_.scale));
-  int buffer_height =
-      static_cast<int>(std::round(frame.surface.height * state_.scale));
-  if (buffer_width <= 0 || buffer_height <= 0) {
+  float s = state_.scale;
+  std::vector<DecorationRenderer::Target> targets;
+  for (size_t i = 0; i < DecorationFrame::kPieceCount; i++) {
+    const Rect& rect = rects[i];
+    pieces_[i]->set_rect(rect);
+    int buffer_width = static_cast<int>(std::round(rect.width * s));
+    int buffer_height = static_cast<int>(std::round(rect.height * s));
+    if (buffer_width <= 0 || buffer_height <= 0) {
+      // Hidden, such as the shadows when maximized.
+      if (renderer_->MakeCurrent()) {
+        pieces_[i]->FreeUnusedBuffers();
+      }
+      continue;
+    }
+    RenderBuffer* buffer = pieces_[i]->GetBuffer(buffer_width, buffer_height);
+    if (buffer == nullptr) {
+      return;
+    }
+    DecorationFrame::Piece& piece = frame.pieces[i];
+    piece.buffer = buffer;
+    piece.surface = {rect.x - margin, rect.y - kTitleBarHeight - margin,
+                     rect.width, rect.height};
+    piece.input = Clip(input, rect);
+    piece.opaque = Clip(opaque, rect);
+    targets.push_back({buffer, rect.x * s, rect.y * s});
+  }
+  if (!renderer_->Draw(BuildScene(), targets)) {
     return;
   }
-  RenderBuffer* buffer = GetBuffer(buffer_width, buffer_height);
-  if (buffer == nullptr || !renderer_->Draw(buffer, BuildScene())) {
-    return;
-  }
-  frame.buffer = buffer;
   delegate_->OnDecorationFrame(frame);
 }
 
 void WindowDecoration::Apply(const DecorationFrame& frame) {
-  wl_compositor* compositor = display_->compositor();
-  wl_surface* surface = surface_;
-  if (frame.buffer == nullptr) {
-    wl_surface_attach(surface, nullptr, 0, 0);
-    wl_surface_commit(surface);
-    return;
+  for (size_t i = 0; i < DecorationFrame::kPieceCount; i++) {
+    pieces_[i]->Apply(frame.pieces[i]);
   }
-  frame.buffer->set_busy(true);
-  wl_subsurface_set_position(subsurface_, frame.surface.x, frame.surface.y);
-  wl_surface_attach(surface, frame.buffer->buffer(), 0, 0);
-  wl_surface_damage_buffer(surface, 0, 0, frame.buffer->width(),
-                           frame.buffer->height());
-  if (viewport_ != nullptr) {
-    wp_viewport_set_destination(viewport_, frame.surface.width,
-                                frame.surface.height);
-  }
-  wl_region* input = CreateRegion(compositor, frame.input);
-  wl_surface_set_input_region(surface, input);
-  wl_region_destroy(input);
-  wl_region* opaque = CreateRegion(compositor, frame.opaque);
-  wl_surface_set_opaque_region(surface, opaque);
-  wl_region_destroy(opaque);
-  wl_surface_commit(surface);
 }
 
 }  // namespace flutter

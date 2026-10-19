@@ -97,8 +97,16 @@ class DecorationRenderer {
   // Allocates a buffer of the given size in pixels.
   std::unique_ptr<RenderBuffer> CreateBuffer(int width, int height);
 
-  // Draws |scene| into |buffer| and waits for it to complete.
-  bool Draw(RenderBuffer* buffer, const DecorationScene& scene);
+  // A buffer showing part of a scene, with its top left corner at |x|, |y|
+  // in the scene in pixels.
+  struct Target {
+    RenderBuffer* buffer;
+    float x;
+    float y;
+  };
+
+  // Draws |scene| into each of |targets| and waits for them to complete.
+  bool Draw(const DecorationScene& scene, const std::vector<Target>& targets);
 
   // Renders title text for scenes.
   TitleRenderer* title_renderer() { return &title_renderer_; }
@@ -125,6 +133,7 @@ class DecorationRenderer {
   GLuint vertex_buffer_ = 0;
   GLint position_location_ = -1;
   GLint size_location_ = -1;
+  GLint origin_location_ = -1;
   GLint window_location_ = -1;
   GLint corner_radius_location_ = -1;
   GLint shadow_location_ = -1;

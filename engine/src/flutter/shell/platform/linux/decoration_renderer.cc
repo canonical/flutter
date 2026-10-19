@@ -27,6 +27,7 @@ constexpr char kFragmentShader[] = R"(
 precision highp float;
 
 uniform vec2 u_size;
+uniform vec2 u_origin;
 uniform vec4 u_window;
 uniform float u_corner_radius;
 uniform float u_shadow;
@@ -74,7 +75,7 @@ vec4 over(vec4 src, vec4 dst) {
 
 void main() {
   // GL rows are bottom first, the surface flips them.
-  vec2 p = vec2(gl_FragCoord.x, u_size.y - gl_FragCoord.y);
+  vec2 p = u_origin + vec2(gl_FragCoord.x, u_size.y - gl_FragCoord.y);
   float s = u_scale;
 
   float d = window_shape(p, vec2(0.0));
@@ -220,6 +221,7 @@ bool DecorationRenderer::Initialize() {
 
   position_location_ = glGetAttribLocation(program_, "a_position");
   size_location_ = glGetUniformLocation(program_, "u_size");
+  origin_location_ = glGetUniformLocation(program_, "u_origin");
   window_location_ = glGetUniformLocation(program_, "u_window");
   corner_radius_location_ = glGetUniformLocation(program_, "u_corner_radius");
   shadow_location_ = glGetUniformLocation(program_, "u_shadow");
@@ -291,20 +293,17 @@ std::unique_ptr<RenderBuffer> DecorationRenderer::CreateBuffer(int width,
   return ShmBuffer::Create(egl_.get(), display_->shm(), width, height, false);
 }
 
-bool DecorationRenderer::Draw(RenderBuffer* buffer,
-                              const DecorationScene& scene) {
+bool DecorationRenderer::Draw(const DecorationScene& scene,
+                              const std::vector<Target>& targets) {
   if (!MakeCurrent()) {
     return false;
   }
 
-  glBindFramebuffer(GL_FRAMEBUFFER, buffer->framebuffer());
-  glViewport(0, 0, buffer->width(), buffer->height());
   glDisable(GL_BLEND);
   glDisable(GL_SCISSOR_TEST);
   glDisable(GL_DEPTH_TEST);
   glUseProgram(program_);
 
-  glUniform2f(size_location_, buffer->width(), buffer->height());
   glUniform4f(window_location_, scene.window_x, scene.window_y,
               scene.window_width, scene.window_height);
   glUniform1f(corner_radius_location_, scene.corner_radius);
@@ -355,15 +354,24 @@ bool DecorationRenderer::Draw(RenderBuffer* buffer,
   glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
   glEnableVertexAttribArray(position_location_);
   glVertexAttribPointer(position_location_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-  glDrawArrays(GL_TRIANGLES, 0, 3);
+  for (const Target& target : targets) {
+    RenderBuffer* buffer = target.buffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, buffer->framebuffer());
+    glViewport(0, 0, buffer->width(), buffer->height());
+    glUniform2f(size_location_, buffer->width(), buffer->height());
+    glUniform2f(origin_location_, target.x, target.y);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+  }
   glDisableVertexAttribArray(position_location_);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindTexture(GL_TEXTURE_2D, 0);
   glUseProgram(0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-  if (!buffer->PrepareToPresent()) {
-    return false;
+  for (const Target& target : targets) {
+    if (!target.buffer->PrepareToPresent()) {
+      return false;
+    }
   }
 
   // Decorations are drawn rarely, so wait for them rather than synchronizing

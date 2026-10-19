@@ -634,8 +634,7 @@ void WaylandWindow::OnDecorationClose() {
 
 bool WaylandWindow::IsDecorationBufferPending(RenderBuffer* buffer) {
   std::lock_guard<std::mutex> lock(surface_mutex_);
-  return pending_decoration_.has_value() &&
-         pending_decoration_->buffer == buffer;
+  return pending_decoration_.has_value() && pending_decoration_->Uses(buffer);
 }
 
 void WaylandWindow::SetApplicationId(const std::string& application_id) {
