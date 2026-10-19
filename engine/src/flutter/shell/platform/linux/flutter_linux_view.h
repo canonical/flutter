@@ -118,6 +118,7 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   std::string GetAccessibleTitle() override;
   AtspiRole GetAccessibleRole() override;
   AtspiStateSet GetWindowStates() override;
+  std::vector<AtspiRelation> GetWindowRelations() override;
   AtspiRect GetWindowExtents() override;
   double GetPixelRatio() override;
   void DispatchSemanticsAction(uint64_t node_id,

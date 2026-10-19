@@ -97,6 +97,9 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // Detaches |view| from the engine before it is destroyed.
   void RemoveView(FlutterLinuxView* view);
 
+  // The view shown in |window|, or nullptr.
+  FlutterLinuxView* FindViewForWindow(const WaylandWindow* window) const;
+
   // Informs the engine of the size of a view.
   void SendWindowMetrics(const FlutterWindowMetricsEvent& event);
 

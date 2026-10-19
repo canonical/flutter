@@ -4,6 +4,7 @@
 
 #include "flutter/shell/platform/linux/accessible_view.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -408,6 +409,135 @@ TEST_F(AccessibleViewTest, Value) {
   ASSERT_EQ(host.actions.size(), 2u);
   EXPECT_EQ(host.actions[0].action, kFlutterSemanticsActionIncrease);
   EXPECT_EQ(host.actions[1].action, kFlutterSemanticsActionDecrease);
+}
+
+TEST_F(AccessibleViewTest, SetValueSteps) {
+  TestNode root(0, {1});
+  TestNode slider(1);
+  slider.flags.is_slider = true;
+  slider.SetValue("40%");
+  slider.node.actions = static_cast<FlutterSemanticsAction>(
+      kFlutterSemanticsActionIncrease | kFlutterSemanticsActionDecrease);
+  Apply(view, {&root, &slider});
+
+  AtspiAccessible* object = view.FindNode(1);
+  EXPECT_TRUE(object->SetValue(65));
+  ASSERT_EQ(host.actions.size(), 1u);
+
+  // Steps until the target is reached or passed.
+  slider.SetValue("50%");
+  Apply(view, {&slider});
+  ASSERT_EQ(host.actions.size(), 2u);
+  EXPECT_EQ(host.actions[1].action, kFlutterSemanticsActionIncrease);
+  slider.SetValue("60%");
+  Apply(view, {&slider});
+  ASSERT_EQ(host.actions.size(), 3u);
+  slider.SetValue("70%");
+  Apply(view, {&slider});
+  slider.SetValue("80%");
+  Apply(view, {&slider});
+  EXPECT_EQ(host.actions.size(), 3u);
+
+  // Stops when the value doesn't change, e.g. at a limit.
+  EXPECT_TRUE(object->SetValue(0));
+  ASSERT_EQ(host.actions.size(), 4u);
+  EXPECT_EQ(host.actions[3].action, kFlutterSemanticsActionDecrease);
+  Apply(view, {&slider});
+  EXPECT_EQ(host.actions.size(), 4u);
+  slider.SetValue("70%");
+  Apply(view, {&slider});
+  EXPECT_EQ(host.actions.size(), 4u);
+}
+
+TEST_F(AccessibleViewTest, Routes) {
+  TestNode root(0, {1});
+  TestNode page(1, {2, 3});
+  page.flags.scopes_route = true;
+  TestNode title(2);
+  title.flags.names_route = true;
+  title.SetLabel("Settings");
+  TestNode dialog(3, {4});
+  dialog.flags.scopes_route = true;
+  dialog.flags.names_route = true;
+  dialog.SetLabel("Confirm");
+  TestNode dialog_title(4);
+  dialog_title.flags.names_route = true;
+  dialog_title.SetLabel("Inner");
+  Apply(view, {&root, &page, &title, &dialog, &dialog_title});
+
+  EXPECT_EQ(view.FindNode(1)->GetRole(), AtspiRole::kPanel);
+  EXPECT_EQ(view.FindNode(1)->GetName(), "Settings");
+  EXPECT_EQ(view.FindNode(3)->GetRole(), AtspiRole::kDialog);
+  EXPECT_EQ(view.FindNode(3)->GetName(), "Confirm");
+}
+
+TEST_F(AccessibleViewTest, RadioGroupRelations) {
+  TestNode root(0, {1, 2, 3});
+  TestNode radio1(1);
+  radio1.flags.is_checked = kFlutterCheckStateTrue;
+  radio1.flags.is_in_mutually_exclusive_group = true;
+  TestNode radio2(2);
+  radio2.flags.is_checked = kFlutterCheckStateFalse;
+  radio2.flags.is_in_mutually_exclusive_group = true;
+  TestNode other(3);
+  other.flags.is_checked = kFlutterCheckStateFalse;
+  Apply(view, {&root, &radio1, &radio2, &other});
+
+  std::vector<AtspiRelation> relations = view.FindNode(2)->GetRelations();
+  ASSERT_EQ(relations.size(), 1u);
+  EXPECT_EQ(relations[0].type, AtspiRelationType::kMemberOf);
+  ASSERT_EQ(relations[0].targets.size(), 2u);
+  EXPECT_EQ(relations[0].targets[0], view.FindNode(1));
+  EXPECT_EQ(relations[0].targets[1], view.FindNode(2));
+  EXPECT_TRUE(view.FindNode(3)->GetRelations().empty());
+}
+
+TEST_F(AccessibleViewTest, Selection) {
+  TestNode root(0, {1});
+  TestNode tabs(1, {2, 3});
+  TestNode tab1(2);
+  tab1.flags.is_selected = kFlutterTristateTrue;
+  tab1.node.actions = kFlutterSemanticsActionTap;
+  TestNode tab2(3);
+  tab2.flags.is_selected = kFlutterTristateFalse;
+  tab2.node.actions = kFlutterSemanticsActionTap;
+  Apply(view, {&root, &tabs, &tab1, &tab2});
+
+  AtspiAccessible* container = view.FindNode(1);
+  EXPECT_FALSE(view.FindNode(0)->IsSelectionContainer());
+  EXPECT_TRUE(container->IsSelectionContainer());
+  EXPECT_EQ(container->GetSelectedChildren(), std::vector<size_t>{0});
+  EXPECT_TRUE(container->SelectChild(0));
+  EXPECT_TRUE(host.actions.empty());
+  EXPECT_TRUE(container->SelectChild(1));
+  ASSERT_EQ(host.actions.size(), 1u);
+  EXPECT_EQ(host.actions[0].node_id, 3u);
+  EXPECT_EQ(host.actions[0].action, kFlutterSemanticsActionTap);
+  EXPECT_FALSE(container->SelectChild(2));
+
+  sink.events.clear();
+  tab1.flags.is_selected = kFlutterTristateFalse;
+  tab2.flags.is_selected = kFlutterTristateTrue;
+  Apply(view, {&tab1, &tab2});
+  EXPECT_EQ(container->GetSelectedChildren(), std::vector<size_t>{1});
+  std::vector<std::string> events = sink.Describe();
+  EXPECT_EQ(std::count(events.begin(), events.end(), "/w/1 SelectionChanged 0"),
+            1);
+}
+
+TEST_F(AccessibleViewTest, ImageAndPlaceholder) {
+  TestNode root(0, {1, 2});
+  TestNode image(1);
+  image.flags.is_image = true;
+  image.SetLabel("Logo");
+  TestNode field(2);
+  field.flags.is_text_field = true;
+  field.node.hint = "Name";
+  Apply(view, {&root, &image, &field});
+
+  EXPECT_TRUE(view.FindNode(1)->IsImage());
+  EXPECT_FALSE(view.FindNode(2)->IsImage());
+  EXPECT_EQ(view.FindNode(2)->GetAttributes()["placeholder-text"], "Name");
 }
 
 TEST_F(AccessibleViewTest, WindowState) {

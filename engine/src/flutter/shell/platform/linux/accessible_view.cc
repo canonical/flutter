@@ -108,6 +108,9 @@ constexpr AtspiState kReportedStates[] = {
     AtspiState::kCheckable,     AtspiState::kReadOnly,
 };
 
+// The most increase or decrease actions sent to set a value.
+constexpr int32_t kMaxValueSteps = 1000;
+
 }  // namespace
 
 AccessibleNode::AccessibleNode(AccessibleView* view, int32_t id)
@@ -186,6 +189,9 @@ AtspiRole AccessibleNode::GetRole() {
   if (flags_.is_button || flags_.is_keyboard_key) {
     return AtspiRole::kButton;
   }
+  if (flags_.scopes_route && flags_.names_route) {
+    return AtspiRole::kDialog;
+  }
   if (flags_.has_implicit_scrolling) {
     return AtspiRole::kScrollPane;
   }
@@ -196,8 +202,38 @@ AtspiRole AccessibleNode::GetRole() {
 }
 
 std::string AccessibleNode::GetName() {
+  if (!label_.empty()) {
+    return label_;
+  }
+  if (is_unnamed_route()) {
+    return GetRouteName();
+  }
   // Icon buttons are often only described by their tooltip.
-  return label_.empty() ? tooltip_ : label_;
+  return tooltip_;
+}
+
+std::string AccessibleNode::GetRouteName() {
+  for (int32_t child_id : children_) {
+    AccessibleNode* child = view_->FindNode(child_id);
+    if (child == nullptr) {
+      continue;
+    }
+    if (child->flags_.names_route && !child->flags_.scopes_route) {
+      std::string name = child->GetName();
+      if (!name.empty()) {
+        return name;
+      }
+    }
+    // Nested routes are named separately.
+    if (child->flags_.scopes_route) {
+      continue;
+    }
+    std::string name = child->GetRouteName();
+    if (!name.empty()) {
+      return name;
+    }
+  }
+  return "";
 }
 
 std::string AccessibleNode::GetDescription() {
@@ -266,7 +302,25 @@ std::map<std::string, std::string> AccessibleNode::GetAttributes() {
   if (!identifier_.empty()) {
     attributes["id"] = identifier_;
   }
+  if (flags_.is_text_field && !hint_.empty()) {
+    attributes["placeholder-text"] = hint_;
+  }
   return attributes;
+}
+
+std::vector<AtspiRelation> AccessibleNode::GetRelations() {
+  std::vector<AtspiRelation> relations;
+  if (GetRole() == AtspiRole::kRadioButton && parent_ != nullptr) {
+    AtspiRelation group = {AtspiRelationType::kMemberOf, {}};
+    for (int32_t id : parent_->children_) {
+      AccessibleNode* sibling = view_->FindNode(id);
+      if (sibling != nullptr && sibling->GetRole() == AtspiRole::kRadioButton) {
+        group.targets.push_back(sibling);
+      }
+    }
+    relations.push_back(std::move(group));
+  }
+  return relations;
 }
 
 std::optional<AtspiRect> AccessibleNode::GetExtents() {
@@ -409,16 +463,47 @@ bool AccessibleNode::SetValue(double value) {
   if (!current.has_value()) {
     return false;
   }
-  // Flutter can only step the value.
-  if (value > current->current && HasAction(kFlutterSemanticsActionIncrease)) {
-    SendAction(kFlutterSemanticsActionIncrease);
+  target_value_.reset();
+  if (value == current->current) {
     return true;
   }
-  if (value < current->current && HasAction(kFlutterSemanticsActionDecrease)) {
-    SendAction(kFlutterSemanticsActionDecrease);
-    return true;
+  // Flutter can only step the value, so step until the target is reached.
+  FlutterSemanticsAction action = value > current->current
+                                      ? kFlutterSemanticsActionIncrease
+                                      : kFlutterSemanticsActionDecrease;
+  if (!HasAction(action)) {
+    return false;
   }
-  return value == current->current;
+  target_value_ = value;
+  remaining_steps_ = kMaxValueSteps;
+  SendAction(action);
+  return true;
+}
+
+void AccessibleNode::ContinueSetValue(const std::optional<AtspiValue>& old) {
+  if (!target_value_.has_value()) {
+    return;
+  }
+  double target = *target_value_;
+  std::optional<AtspiValue> current = GetValue();
+  // Stop if the value didn't move, e.g. at a limit.
+  if (!current.has_value() || !old.has_value() ||
+      current->current == old->current || --remaining_steps_ <= 0) {
+    target_value_.reset();
+    return;
+  }
+  bool increasing = current->current > old->current;
+  if (increasing ? current->current >= target : current->current <= target) {
+    target_value_.reset();
+    return;
+  }
+  FlutterSemanticsAction action = increasing ? kFlutterSemanticsActionIncrease
+                                             : kFlutterSemanticsActionDecrease;
+  if (!HasAction(action)) {
+    target_value_.reset();
+    return;
+  }
+  SendAction(action);
 }
 
 std::u16string AccessibleNode::GetText() {
@@ -486,6 +571,43 @@ bool AccessibleNode::DoClipboardAction(ClipboardAction action) {
     return false;
   }
   SendAction(semantics_action);
+  return true;
+}
+
+bool AccessibleNode::IsSelectionContainer() {
+  for (int32_t id : children_) {
+    AccessibleNode* child = view_->FindNode(id);
+    if (child != nullptr && child->flags_.is_selected != kFlutterTristateNone) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<size_t> AccessibleNode::GetSelectedChildren() {
+  std::vector<size_t> selected;
+  for (size_t i = 0; i < children_.size(); i++) {
+    AccessibleNode* child = view_->FindNode(children_[i]);
+    if (child != nullptr && child->flags_.is_selected == kFlutterTristateTrue) {
+      selected.push_back(i);
+    }
+  }
+  return selected;
+}
+
+bool AccessibleNode::SelectChild(size_t index) {
+  AccessibleNode* child = static_cast<AccessibleNode*>(GetChild(index));
+  if (child == nullptr || child->flags_.is_selected == kFlutterTristateNone) {
+    return false;
+  }
+  if (child->flags_.is_selected == kFlutterTristateTrue) {
+    return true;
+  }
+  // Selectable items, e.g. tabs and chips, are selected by tapping them.
+  if (!child->HasAction(kFlutterSemanticsActionTap)) {
+    return false;
+  }
+  child->SendAction(kFlutterSemanticsActionTap);
   return true;
 }
 
@@ -640,13 +762,23 @@ void AccessibleView::Update(const FlutterSemanticsUpdate2& update) {
           .data = FindNode(0)});
   }
 
+  std::set<AccessibleNode*> selection_changed;
   for (auto& [node, snapshot] : updated) {
     if (!snapshot.has_value()) {
       continue;
     }
     if (active) {
       EmitChanges(node, *snapshot);
+      bool selected = node->GetStates().Contains(AtspiState::kSelected);
+      if (selected != snapshot->states.Contains(AtspiState::kSelected) &&
+          node->parent_ != nullptr) {
+        selection_changed.insert(node->parent_);
+      }
     }
+    node->ContinueSetValue(snapshot->value);
+  }
+  for (AccessibleNode* container : selection_changed) {
+    Emit({.source = container, .member = "SelectionChanged"});
   }
 
   // Report focus last, after the focused object has been described.

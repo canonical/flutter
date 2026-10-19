@@ -38,6 +38,8 @@ constexpr char kActionInterface[] = "org.a11y.atspi.Action";
 constexpr char kValueInterface[] = "org.a11y.atspi.Value";
 constexpr char kTextInterface[] = "org.a11y.atspi.Text";
 constexpr char kEditableTextInterface[] = "org.a11y.atspi.EditableText";
+constexpr char kSelectionInterface[] = "org.a11y.atspi.Selection";
+constexpr char kImageInterface[] = "org.a11y.atspi.Image";
 constexpr char kCacheInterface[] = "org.a11y.atspi.Cache";
 constexpr char kEventInterfacePrefix[] = "org.a11y.atspi.Event.";
 
@@ -545,6 +547,11 @@ bool AtspiApplication::HandleMethodCall(const DBusMessage& call) {
   } else if (interface == kEditableTextInterface &&
              implements(kEditableTextInterface)) {
     handled = HandleEditableText(object, call, &reply);
+  } else if (interface == kSelectionInterface &&
+             implements(kSelectionInterface)) {
+    handled = HandleSelection(object, call, &reply);
+  } else if (interface == kImageInterface && implements(kImageInterface)) {
+    handled = HandleImage(object, call, &reply);
   }
   if (!handled) {
     return false;
@@ -577,6 +584,12 @@ std::vector<std::string> AtspiApplication::GetInterfaces(
   if (object->IsEditableText()) {
     interfaces.push_back(kEditableTextInterface);
   }
+  if (object->IsSelectionContainer()) {
+    interfaces.push_back(kSelectionInterface);
+  }
+  if (object->IsImage()) {
+    interfaces.push_back(kImageInterface);
+  }
   return interfaces;
 }
 
@@ -604,6 +617,16 @@ bool AtspiApplication::HandleAccessible(AtspiAccessible* object,
     writer.WriteInt32(object->GetIndexInParent());
   } else if (member == "GetRelationSet") {
     writer.OpenArray("(ua(so))");
+    for (const AtspiRelation& relation : object->GetRelations()) {
+      writer.OpenStruct();
+      writer.WriteUInt32(static_cast<uint32_t>(relation.type));
+      writer.OpenArray("(so)");
+      for (AtspiAccessible* target : relation.targets) {
+        WriteReference(writer, target);
+      }
+      writer.CloseArray();
+      writer.CloseStruct();
+    }
     writer.CloseArray();
   } else if (member == "GetRole") {
     writer.WriteUInt32(static_cast<uint32_t>(object->GetRole()));
@@ -970,6 +993,75 @@ bool AtspiApplication::HandleEditableText(AtspiAccessible* object,
   return true;
 }
 
+bool AtspiApplication::HandleSelection(AtspiAccessible* object,
+                                       const DBusMessage& call,
+                                       DBusMessage* reply) {
+  const std::string& member = call.member();
+  DBusWriter& writer = reply->writer();
+  std::vector<size_t> selected = object->GetSelectedChildren();
+  if (member == "SelectAll" || member == "ClearSelection") {
+    // Flutter has no way to change the selection of several items at once.
+    writer.WriteBoolean(false);
+    return true;
+  }
+
+  int32_t index;
+  if (!call.reader().ReadInt32(&index)) {
+    if (member == "GetSelectedChild" || member == "SelectChild" ||
+        member == "DeselectSelectedChild" || member == "IsChildSelected" ||
+        member == "DeselectChild") {
+      *reply = DBusMessage::Error(call, kInvalidArgs, "Expected (i)");
+      return true;
+    }
+    return false;
+  }
+  if (member == "GetSelectedChild") {
+    AtspiAccessible* child = nullptr;
+    if (index >= 0 && static_cast<size_t>(index) < selected.size()) {
+      child = object->GetChild(selected[index]);
+    }
+    WriteReference(writer, child);
+  } else if (member == "SelectChild") {
+    writer.WriteBoolean(index >= 0 && object->SelectChild(index));
+  } else if (member == "IsChildSelected") {
+    writer.WriteBoolean(
+        index >= 0 && std::find(selected.begin(), selected.end(),
+                                static_cast<size_t>(index)) != selected.end());
+  } else if (member == "DeselectSelectedChild" || member == "DeselectChild") {
+    // Selected items, e.g. tabs, can't be deselected without selecting
+    // another.
+    writer.WriteBoolean(false);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+bool AtspiApplication::HandleImage(AtspiAccessible* object,
+                                   const DBusMessage& call,
+                                   DBusMessage* reply) {
+  const std::string& member = call.member();
+  DBusWriter& writer = reply->writer();
+  AtspiRect extents = object->GetExtents().value_or(AtspiRect());
+  if (member == "GetImageExtents") {
+    writer.OpenStruct();
+    writer.WriteInt32(extents.x);
+    writer.WriteInt32(extents.y);
+    writer.WriteInt32(extents.width);
+    writer.WriteInt32(extents.height);
+    writer.CloseStruct();
+  } else if (member == "GetImagePosition") {
+    writer.WriteInt32(extents.x);
+    writer.WriteInt32(extents.y);
+  } else if (member == "GetImageSize") {
+    writer.WriteInt32(extents.width);
+    writer.WriteInt32(extents.height);
+  } else {
+    return false;
+  }
+  return true;
+}
+
 bool AtspiApplication::WriteProperty(AtspiAccessible* object,
                                      const std::string& interface,
                                      const std::string& name,
@@ -1073,6 +1165,24 @@ bool AtspiApplication::WriteProperty(AtspiAccessible* object,
     return true;
   }
 
+  if (interface == kSelectionInterface && name == "NSelectedChildren" &&
+      object->IsSelectionContainer()) {
+    write_int(static_cast<int32_t>(object->GetSelectedChildren().size()));
+    return true;
+  }
+
+  if (interface == kImageInterface && object->IsImage()) {
+    if (name == "ImageDescription") {
+      write_string(object->GetName());
+    } else if (name == "ImageLocale") {
+      const char* locale = setlocale(LC_MESSAGES, nullptr);
+      write_string(locale != nullptr ? locale : "");
+    } else {
+      return false;
+    }
+    return true;
+  }
+
   if (interface == kActionInterface && name == "NActions") {
     write_int(static_cast<int32_t>(object->GetActions().size()));
     return true;
@@ -1116,6 +1226,8 @@ bool AtspiApplication::HandleProperties(AtspiAccessible* object,
           "Text"}},
         {kTextInterface, {"CharacterCount", "CaretOffset"}},
         {kActionInterface, {"NActions"}},
+        {kSelectionInterface, {"NSelectedChildren"}},
+        {kImageInterface, {"ImageDescription", "ImageLocale"}},
     };
     writer.OpenArray("{sv}");
     auto it = kProperties.find(interface);

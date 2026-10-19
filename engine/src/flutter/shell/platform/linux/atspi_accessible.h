@@ -142,6 +142,20 @@ struct AtspiValue {
   bool operator==(const AtspiValue& other) const = default;
 };
 
+// AT-SPI relation types.
+enum class AtspiRelationType : uint32_t {
+  kMemberOf = 5,
+  kSubwindowOf = 12,
+  kPopupFor = 15,
+};
+
+class AtspiAccessible;
+
+struct AtspiRelation {
+  AtspiRelationType type;
+  std::vector<AtspiAccessible*> targets;
+};
+
 // An object exposed to assistive technologies over AT-SPI.
 //
 // Text offsets are in Unicode code points.
@@ -167,6 +181,7 @@ class AtspiAccessible {
   virtual std::string GetAccessibleId() { return ""; }
   virtual AtspiStateSet GetStates() = 0;
   virtual std::map<std::string, std::string> GetAttributes() { return {}; }
+  virtual std::vector<AtspiRelation> GetRelations() { return {}; }
 
   // The extents of a visible component, or nullopt if this isn't one.
   virtual std::optional<AtspiRect> GetExtents() { return std::nullopt; }
@@ -199,6 +214,15 @@ class AtspiAccessible {
   enum class ClipboardAction { kCopy, kCut, kPaste };
   // Performs |action| on the current selection.
   virtual bool DoClipboardAction(ClipboardAction action) { return false; }
+
+  // Whether this object contains selectable children.
+  virtual bool IsSelectionContainer() { return false; }
+  // The indexes of the selected children, in order.
+  virtual std::vector<size_t> GetSelectedChildren() { return {}; }
+  virtual bool SelectChild(size_t index) { return false; }
+
+  // Whether this object is an image, described by its name.
+  virtual bool IsImage() { return false; }
 };
 
 // An event about an object.

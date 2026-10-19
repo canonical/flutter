@@ -256,6 +256,20 @@ AtspiStateSet FlutterLinuxView::GetWindowStates() {
   return states;
 }
 
+std::vector<AtspiRelation> FlutterLinuxView::GetWindowRelations() {
+  if (!window_) {
+    return {};
+  }
+  FlutterLinuxView* parent = engine_->FindViewForWindow(window_->parent());
+  if (parent == nullptr || parent->accessible() == nullptr) {
+    return {};
+  }
+  AtspiRelationType type = window_->role() == WaylandWindow::Role::kPopup
+                               ? AtspiRelationType::kPopupFor
+                               : AtspiRelationType::kSubwindowOf;
+  return {{type, {parent->accessible()}}};
+}
+
 AtspiRect FlutterLinuxView::GetWindowExtents() {
   if (!window_) {
     return {};

@@ -98,6 +98,12 @@ class AtspiApplication : public AtspiEventSink {
   bool HandleEditableText(AtspiAccessible* object,
                           const DBusMessage& call,
                           DBusMessage* reply);
+  bool HandleSelection(AtspiAccessible* object,
+                       const DBusMessage& call,
+                       DBusMessage* reply);
+  bool HandleImage(AtspiAccessible* object,
+                   const DBusMessage& call,
+                   DBusMessage* reply);
   bool HandleProperties(AtspiAccessible* object,
                         const DBusMessage& call,
                         DBusMessage* reply);

@@ -31,9 +31,12 @@ class FakeHost : public AccessibleView::Host {
   AtspiStateSet GetWindowStates() override { return {}; }
   AtspiRect GetWindowExtents() override { return {0, 0, 640, 480}; }
   double GetPixelRatio() override { return 1.0; }
+  std::vector<AtspiRelation> GetWindowRelations() override { return relations; }
   void DispatchSemanticsAction(uint64_t node_id,
                                FlutterSemanticsAction action,
                                std::vector<uint8_t> data) override {}
+
+  std::vector<AtspiRelation> relations;
 };
 
 class RecordingObserver : public AtspiApplication::Observer {
@@ -285,6 +288,100 @@ TEST_F(AtspiApplicationTest, WindowObject) {
   ASSERT_TRUE(reader.ReadInt32(&height));
   EXPECT_EQ(width, 640);
   EXPECT_EQ(height, 480);
+}
+
+TEST_F(AtspiApplicationTest, RelationSet) {
+  Register({});
+  host_.relations = {{AtspiRelationType::kSubwindowOf, {view_.get()}}};
+
+  std::optional<DBusMessage> reply = Call(
+      MethodCall(view_->GetPath(), kAccessibleInterface, "GetRelationSet"));
+  ASSERT_TRUE(reply.has_value());
+  ASSERT_EQ(reply->signature(), "a(ua(so))");
+  DBusReader reader = reply->reader();
+  uint32_t type;
+  std::string name, path;
+  ASSERT_TRUE(reader.OpenArray());
+  ASSERT_TRUE(reader.OpenStruct());
+  ASSERT_TRUE(reader.ReadUInt32(&type));
+  EXPECT_EQ(type, 12u);
+  ASSERT_TRUE(reader.OpenArray());
+  ASSERT_TRUE(reader.OpenStruct());
+  ASSERT_TRUE(reader.ReadString(&name));
+  ASSERT_TRUE(reader.ReadObjectPath(&path));
+  EXPECT_EQ(path, view_->GetPath());
+}
+
+TEST_F(AtspiApplicationTest, SelectionAndImage) {
+  Register({});
+
+  FlutterSemanticsFlags flags[3] = {};
+  FlutterSemanticsNode2 nodes[3] = {};
+  int32_t children[2] = {1, 2};
+  for (int i = 0; i < 3; i++) {
+    flags[i].struct_size = sizeof(FlutterSemanticsFlags);
+    nodes[i].struct_size = sizeof(FlutterSemanticsNode2);
+    nodes[i].id = i;
+    nodes[i].flags2 = &flags[i];
+    nodes[i].rect = {0, 0, 10, 20};
+    nodes[i].transform.scaleX = 1;
+    nodes[i].transform.scaleY = 1;
+    nodes[i].transform.pers2 = 1;
+  }
+  nodes[0].child_count = 2;
+  nodes[0].children_in_traversal_order = children;
+  nodes[0].children_in_hit_test_order = children;
+  flags[1].is_selected = kFlutterTristateFalse;
+  flags[2].is_selected = kFlutterTristateTrue;
+  flags[2].is_image = true;
+  nodes[2].label = "Logo";
+  FlutterSemanticsNode2* node_pointers[3] = {&nodes[0], &nodes[1], &nodes[2]};
+  FlutterSemanticsUpdate2 update = {};
+  update.struct_size = sizeof(update);
+  update.node_count = 3;
+  update.nodes = node_pointers;
+  view_->Update(update);
+  // Skip the children-changed event.
+  ASSERT_TRUE(Read().has_value());
+
+  std::string container = view_->GetPath() + "/0";
+  DBusMessage get_selected =
+      MethodCall(container, "org.a11y.atspi.Selection", "GetSelectedChild");
+  get_selected.writer().WriteInt32(0);
+  std::optional<DBusMessage> reply = Call(get_selected);
+  ASSERT_TRUE(reply.has_value());
+  ASSERT_EQ(reply->signature(), "(so)");
+  DBusReader reader = reply->reader();
+  std::string name, path;
+  ASSERT_TRUE(reader.OpenStruct());
+  ASSERT_TRUE(reader.ReadString(&name));
+  ASSERT_TRUE(reader.ReadObjectPath(&path));
+  EXPECT_EQ(path, view_->GetPath() + "/2");
+
+  DBusMessage get =
+      MethodCall(container, "org.freedesktop.DBus.Properties", "Get");
+  get.writer().WriteString("org.a11y.atspi.Selection");
+  get.writer().WriteString("NSelectedChildren");
+  reply = Call(get);
+  ASSERT_TRUE(reply.has_value());
+  reader = reply->reader();
+  std::string signature;
+  int32_t count;
+  ASSERT_TRUE(reader.OpenVariant(&signature));
+  ASSERT_TRUE(reader.ReadInt32(&count));
+  EXPECT_EQ(count, 1);
+
+  DBusMessage size = MethodCall(view_->GetPath() + "/2", "org.a11y.atspi.Image",
+                                "GetImageSize");
+  reply = Call(size);
+  ASSERT_TRUE(reply.has_value());
+  ASSERT_EQ(reply->signature(), "ii");
+  int32_t width, height;
+  reader = reply->reader();
+  ASSERT_TRUE(reader.ReadInt32(&width));
+  ASSERT_TRUE(reader.ReadInt32(&height));
+  EXPECT_EQ(width, 10);
+  EXPECT_EQ(height, 20);
 }
 
 TEST_F(AtspiApplicationTest, UnknownObject) {

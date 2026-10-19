@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,6 +47,7 @@ class AccessibleNode : public AtspiAccessible {
   std::string GetAccessibleId() override { return identifier_; }
   AtspiStateSet GetStates() override;
   std::map<std::string, std::string> GetAttributes() override;
+  std::vector<AtspiRelation> GetRelations() override;
   std::optional<AtspiRect> GetExtents() override;
   bool GrabFocus() override;
   bool ScrollTo() override;
@@ -63,6 +65,10 @@ class AccessibleNode : public AtspiAccessible {
   bool SetSelection(int32_t start, int32_t end) override;
   bool SetTextContents(const std::u16string& text) override;
   bool DoClipboardAction(ClipboardAction action) override;
+  bool IsSelectionContainer() override;
+  std::vector<size_t> GetSelectedChildren() override;
+  bool SelectChild(size_t index) override;
+  bool IsImage() override { return flags_.is_image; }
 
  private:
   friend class AccessibleView;
@@ -81,6 +87,17 @@ class AccessibleNode : public AtspiAccessible {
   }
   void SendAction(FlutterSemanticsAction action,
                   std::vector<uint8_t> data = {});
+
+  // Whether this node is a route without its own name.
+  bool is_unnamed_route() const {
+    return flags_.scopes_route && !flags_.names_route && id_ != 0;
+  }
+  // The name of the route this node scopes, from the first descendant that
+  // names it.
+  std::string GetRouteName();
+
+  // Steps the value towards |target_value_| after it changed from |old|.
+  void ContinueSetValue(const std::optional<AtspiValue>& old);
 
   AccessibleView* view_;
   int32_t id_;
@@ -101,6 +118,10 @@ class AccessibleNode : public AtspiAccessible {
   std::vector<int32_t> children_;
   std::vector<int32_t> custom_actions_;
   int32_t heading_level_ = 0;
+
+  // The value being set by repeatedly increasing or decreasing it.
+  std::optional<double> target_value_;
+  int32_t remaining_steps_ = 0;
 
   FML_DISALLOW_COPY_AND_ASSIGN(AccessibleNode);
 };
@@ -123,6 +144,8 @@ class AccessibleView : public AtspiAccessible {
     virtual AtspiRect GetWindowExtents() = 0;
     // The number of semantics units (physical pixels) per logical pixel.
     virtual double GetPixelRatio() = 0;
+    // The relations of the window to other windows, e.g. its parent.
+    virtual std::vector<AtspiRelation> GetWindowRelations() { return {}; }
     virtual void DispatchSemanticsAction(uint64_t node_id,
                                          FlutterSemanticsAction action,
                                          std::vector<uint8_t> data) = 0;
@@ -161,6 +184,9 @@ class AccessibleView : public AtspiAccessible {
   AtspiRole GetRole() override { return host_->GetAccessibleRole(); }
   std::string GetName() override { return host_->GetAccessibleTitle(); }
   AtspiStateSet GetStates() override;
+  std::vector<AtspiRelation> GetRelations() override {
+    return host_->GetWindowRelations();
+  }
   std::optional<AtspiRect> GetExtents() override {
     return host_->GetWindowExtents();
   }

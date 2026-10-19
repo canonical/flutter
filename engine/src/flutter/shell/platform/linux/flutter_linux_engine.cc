@@ -359,6 +359,19 @@ void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {
   }
 }
 
+FlutterLinuxView* FlutterLinuxEngine::FindViewForWindow(
+    const WaylandWindow* window) const {
+  if (window == nullptr) {
+    return nullptr;
+  }
+  for (const auto& [id, view] : views_) {
+    if (view->window() == window) {
+      return view;
+    }
+  }
+  return nullptr;
+}
+
 void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
   // Stop presenting to the view before the engine is told it is gone. Once
   // removed from the compositor no frames are shown in the view, so there is
