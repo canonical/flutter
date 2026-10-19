@@ -54,6 +54,11 @@ const xdg_popup_listener WaylandWindow::kPopupListener = {
     .repositioned = PopupRepositioned,
 };
 
+const zxdg_toplevel_decoration_v1_listener
+    WaylandWindow::kToplevelDecorationListener = {
+        .configure = ToplevelDecorationConfigure,
+};
+
 const xdg_activation_token_v1_listener WaylandWindow::kActivationTokenListener =
     {
         .done = ActivationTokenDone,
@@ -91,6 +96,9 @@ WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
 
 WaylandWindow::~WaylandWindow() {
   decoration_.reset();
+  if (toplevel_decoration_ != nullptr) {
+    zxdg_toplevel_decoration_v1_destroy(toplevel_decoration_);
+  }
   if (activation_token_ != nullptr) {
     xdg_activation_token_v1_destroy(activation_token_);
   }
@@ -142,6 +150,8 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
                                const Params& params) {
   role_ = params.role;
   parent_ = params.parent;
+  decoration_renderer_ = decoration_renderer;
+  decorated_ = params.decorated && role_ == Role::kToplevel;
   resizable_ = params.resizable;
   title_ = params.title;
   if (role_ == Role::kToplevel) {
@@ -224,10 +234,25 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
           xdg_wm_dialog_v1_get_xdg_dialog(display_->wm_dialog(), toplevel_);
       xdg_dialog_v1_set_modal(dialog_);
     }
-    if (params.decorated && decoration_renderer != nullptr &&
-        display_->subcompositor() != nullptr) {
-      decoration_ = std::make_unique<WindowDecoration>(
-          display_, decoration_renderer, this, surface_, toplevel_);
+    if (display_->decoration_manager() != nullptr) {
+      // Draw our own decorations so windows look the same on every desktop,
+      // but use the compositor's if it insists or we can't draw them.
+      // Undecorated windows ask for client-side decorations, so the
+      // compositor doesn't add any. The mode is applied on the configure.
+      zxdg_decoration_manager_v1* manager =
+          create_wrapper(display_->decoration_manager());
+      toplevel_decoration_ = zxdg_decoration_manager_v1_get_toplevel_decoration(
+          manager, toplevel_);
+      wl_proxy_wrapper_destroy(manager);
+      zxdg_toplevel_decoration_v1_add_listener(
+          toplevel_decoration_, &kToplevelDecorationListener, this);
+      zxdg_toplevel_decoration_v1_set_mode(
+          toplevel_decoration_,
+          decorated_ && !CanDrawDecorations()
+              ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE
+              : ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    } else {
+      SetClientSideDecorations(true);
     }
     UpdateSizeLimits();
   } else {
@@ -259,8 +284,9 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
 
   // Move the objects to the default queue, and handle any events that
   // arrived after the configure.
-  for (void* proxy : std::initializer_list<void*>{
-           surface_, fractional_scale_, xdg_surface_, toplevel_, popup_}) {
+  for (void* proxy :
+       std::initializer_list<void*>{surface_, fractional_scale_, xdg_surface_,
+                                    toplevel_, toplevel_decoration_, popup_}) {
     if (proxy != nullptr) {
       wl_proxy_set_queue(static_cast<wl_proxy*>(proxy), nullptr);
     }
@@ -605,9 +631,39 @@ void WaylandWindow::UpdateDecoration() {
   decoration_->SetState(state);
 }
 
+bool WaylandWindow::CanDrawDecorations() const {
+  return decoration_renderer_ != nullptr &&
+         display_->subcompositor() != nullptr;
+}
+
+void WaylandWindow::SetClientSideDecorations(bool client_side) {
+  if (client_side == (decoration_ != nullptr)) {
+    return;
+  }
+  if (client_side) {
+    if (!decorated_ || !CanDrawDecorations()) {
+      return;
+    }
+    auto decoration = std::make_unique<WindowDecoration>(
+        display_, decoration_renderer_, this, surface_, toplevel_);
+    std::lock_guard<std::mutex> lock(surface_mutex_);
+    decoration_ = std::move(decoration);
+  } else {
+    std::lock_guard<std::mutex> lock(surface_mutex_);
+    pending_decoration_.reset();
+    content_corner_radius_ = 0;
+    decoration_.reset();
+    if (window_geometry_set_) {
+      // The geometry can't be unset, so make it the content.
+      xdg_surface_set_window_geometry(xdg_surface_, 0, 0, width_, height_);
+    }
+  }
+}
+
 void WaylandWindow::ApplyDecorationFrame(const DecorationFrame& frame) {
   decoration_->Apply(frame);
   content_corner_radius_ = frame.content_corner_radius;
+  window_geometry_set_ = true;
   xdg_surface_set_window_geometry(xdg_surface_, frame.geometry.x,
                                   frame.geometry.y, frame.geometry.width,
                                   frame.geometry.height);
@@ -677,6 +733,13 @@ void WaylandWindow::Present(wl_buffer* buffer,
     wp_linux_drm_syncobj_surface_v1_set_release_point(
         syncobj_surface_, sync->timeline, sync->release_point >> 32,
         sync->release_point & 0xffffffff);
+  }
+  if (window_geometry_set_ && !decoration_) {
+    double scale = scale_;
+    xdg_surface_set_window_geometry(
+        xdg_surface_, 0, 0,
+        std::max(static_cast<int>(std::round(width / scale)), 1),
+        std::max(static_cast<int>(std::round(height / scale)), 1));
   }
   wl_surface_attach(surface_, buffer, 0, 0);
   wl_surface_damage_buffer(surface_, 0, 0, width, height);
@@ -832,6 +895,15 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
   bool first_configure = !self->configured_;
   self->configured_ = true;
 
+  bool decorations_changed = false;
+  if (self->toplevel_decoration_ != nullptr) {
+    bool had_decorations = self->decoration_ != nullptr;
+    self->SetClientSideDecorations(
+        self->pending_decoration_mode_ !=
+        ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    decorations_changed = had_decorations != (self->decoration_ != nullptr);
+  }
+
   bool state_changed = self->maximized_ != self->pending_maximized_ ||
                        self->fullscreen_ != self->pending_fullscreen_ ||
                        self->activated_ != self->pending_activated_;
@@ -866,8 +938,9 @@ void WaylandWindow::XdgSurfaceConfigure(void* data,
   self->width_ = width;
   self->height_ = height;
 
-  if (fullscreen_changed) {
-    // The title bar is hidden when fullscreen, changing the geometry limits.
+  if (fullscreen_changed || decorations_changed) {
+    // The title bar is hidden when fullscreen or drawn by the compositor,
+    // changing the geometry limits.
     self->UpdateSizeLimits();
   }
   self->UpdateDecoration();
@@ -948,6 +1021,13 @@ void WaylandWindow::PopupRepositioned(void* data,
   auto* self = static_cast<WaylandWindow*>(data);
   std::lock_guard<std::mutex> lock(self->surface_mutex_);
   self->received_reposition_token_ = token;
+}
+
+void WaylandWindow::ToplevelDecorationConfigure(
+    void* data,
+    zxdg_toplevel_decoration_v1* decoration,
+    uint32_t mode) {
+  static_cast<WaylandWindow*>(data)->pending_decoration_mode_ = mode;
 }
 
 void WaylandWindow::ToplevelWmCapabilities(void* data,

@@ -28,10 +28,12 @@ namespace flutter {
 // from the raster thread. The platform thread only commits the surface to
 // update the decorations, synchronized with presentation by a lock.
 //
-// If |decoration_renderer| is provided top-level windows draw their own title
-// bar and shadow in a subsurface below the content. Decorations of a new size
-// are shown with the first content buffer of the matching size, so resizing
-// is atomic and presenting content doesn't redraw the decorations.
+// Decorated top-level windows draw their own title bar and shadow in
+// subsurfaces below the content if |decoration_renderer| is provided. They use
+// server-side decorations if the compositor supports xdg-decoration and either
+// requires them or the window can't draw its own. Decorations of a new size are
+// shown with the first content buffer of the matching size, so resizing is
+// atomic and presenting content doesn't redraw the decorations.
 class WaylandWindow : public WindowDecoration::Delegate {
  public:
   class Delegate {
@@ -293,6 +295,13 @@ class WaylandWindow : public WindowDecoration::Delegate {
   // Redraws the decorations if the window state has changed.
   void UpdateDecoration();
 
+  // Whether the window can draw its own decorations.
+  bool CanDrawDecorations() const;
+
+  // Draws decorations in the client if |client_side|, otherwise leaves them
+  // to the compositor.
+  void SetClientSideDecorations(bool client_side);
+
   // Applies |frame| and sets the window geometry. The changes are shown on
   // the next commit of the surface. Called with |surface_mutex_| held.
   void ApplyDecorationFrame(const DecorationFrame& frame);
@@ -323,6 +332,10 @@ class WaylandWindow : public WindowDecoration::Delegate {
                              int32_t height);
   static void PopupDone(void* data, xdg_popup* popup);
   static void PopupRepositioned(void* data, xdg_popup* popup, uint32_t token);
+  static void ToplevelDecorationConfigure(
+      void* data,
+      zxdg_toplevel_decoration_v1* decoration,
+      uint32_t mode);
   static void ActivationTokenDone(void* data,
                                   xdg_activation_token_v1* token,
                                   const char* token_string);
@@ -349,6 +362,7 @@ class WaylandWindow : public WindowDecoration::Delegate {
   static const xdg_surface_listener kXdgSurfaceListener;
   static const xdg_toplevel_listener kToplevelListener;
   static const xdg_popup_listener kPopupListener;
+  static const zxdg_toplevel_decoration_v1_listener kToplevelDecorationListener;
   static const xdg_activation_token_v1_listener kActivationTokenListener;
   static const wp_fractional_scale_v1_listener kFractionalScaleListener;
   static const wp_presentation_feedback_listener kFeedbackListener;
@@ -372,7 +386,20 @@ class WaylandWindow : public WindowDecoration::Delegate {
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
   wp_fifo_v1* fifo_ = nullptr;
 
+  // Draws client-side decorations, or nullptr if the window has none or
+  // the compositor draws them. Changed with |surface_mutex_| held.
   std::unique_ptr<WindowDecoration> decoration_;
+  DecorationRenderer* decoration_renderer_ = nullptr;
+  bool decorated_ = false;
+
+  // Negotiates server-side decorations, if the compositor supports it.
+  zxdg_toplevel_decoration_v1* toplevel_decoration_ = nullptr;
+  uint32_t pending_decoration_mode_ = 0;
+
+  // True once client-side decorations have set the window geometry, so it
+  // must be kept up to date after they are removed. Guarded by
+  // |surface_mutex_|.
+  bool window_geometry_set_ = false;
 
   // Held while changing and committing the surfaces.
   std::mutex surface_mutex_;

@@ -25,6 +25,7 @@
 #include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-activation-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/xdg-decoration-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-dialog-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
@@ -75,6 +76,9 @@ class WaylandDisplay : public EventLoop::Source {
   }
   xdg_wm_dialog_v1* wm_dialog() const { return wm_dialog_; }
   xdg_activation_v1* activation() const { return activation_; }
+  zxdg_decoration_manager_v1* decoration_manager() const {
+    return decoration_manager_;
+  }
 
   // The first seat the compositor advertised, or nullptr if it has none.
   WaylandSeat* seat() const { return seat_.get(); }
@@ -193,6 +197,7 @@ class WaylandDisplay : public EventLoop::Source {
   wp_linux_drm_syncobj_manager_v1* syncobj_manager_ = nullptr;
   xdg_wm_dialog_v1* wm_dialog_ = nullptr;
   xdg_activation_v1* activation_ = nullptr;
+  zxdg_decoration_manager_v1* decoration_manager_ = nullptr;
 
   // The clock presentation timestamps are in.
   clockid_t presentation_clock_ = CLOCK_MONOTONIC;

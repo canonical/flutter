@@ -65,6 +65,7 @@ _wayland_protocols = [
   "protocols/viewporter.xml",
   "protocols/wayland.xml",
   "protocols/xdg-activation-v1.xml",
+  "protocols/xdg-decoration-unstable-v1.xml",
   "protocols/xdg-dialog-v1.xml",
   "protocols/xdg-shell.xml",
 ]

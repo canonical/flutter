@@ -42,6 +42,7 @@ constexpr uint32_t kMaxPresentationVersion = 2;
 constexpr uint32_t kMaxFifoManagerVersion = 1;
 constexpr uint32_t kMaxSyncobjManagerVersion = 1;
 constexpr uint32_t kMaxWmDialogVersion = 1;
+constexpr uint32_t kMaxDecorationManagerVersion = 1;
 constexpr uint32_t kMaxActivationVersion = 1;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
@@ -141,6 +142,9 @@ WaylandDisplay::~WaylandDisplay() {
   seat_.reset();
   if (activation_ != nullptr) {
     xdg_activation_v1_destroy(activation_);
+  }
+  if (decoration_manager_ != nullptr) {
+    zxdg_decoration_manager_v1_destroy(decoration_manager_);
   }
   if (wm_dialog_ != nullptr) {
     xdg_wm_dialog_v1_destroy(wm_dialog_);
@@ -371,6 +375,12 @@ void WaylandDisplay::RegistryGlobal(void* data,
     self->activation_ = Bind<xdg_activation_v1>(
         &self->protocols_, registry, name, &xdg_activation_v1_interface,
         version, kMaxActivationVersion);
+  } else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) ==
+             0) {
+    self->decoration_manager_ =
+        Bind<zxdg_decoration_manager_v1>(&self->protocols_, registry, name,
+                                         &zxdg_decoration_manager_v1_interface,
+                                         version, kMaxDecorationManagerVersion);
   }
 }
 
