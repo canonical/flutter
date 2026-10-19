@@ -102,6 +102,9 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   void OnWindowTitleChanged() override;
 
   // |WaylandWindow::Delegate|
+  void OnWindowDisplayChanged() override;
+
+  // |WaylandWindow::Delegate|
   void OnWindowPresented(uint64_t presentation_time_ns,
                          uint64_t refresh_ns) override;
 

@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
@@ -34,7 +35,8 @@ namespace flutter {
 // requires them or the window can't draw its own. Decorations of a new size are
 // shown with the first content buffer of the matching size, so resizing is
 // atomic and presenting content doesn't redraw the decorations.
-class WaylandWindow : public WindowDecoration::Delegate {
+class WaylandWindow : public WindowDecoration::Delegate,
+                      public WaylandDisplay::OutputObserver {
  public:
   class Delegate {
    public:
@@ -53,6 +55,10 @@ class WaylandWindow : public WindowDecoration::Delegate {
 
     // Called when the window title changes.
     virtual void OnWindowTitleChanged() {}
+
+    // Called when the window moves to a different output, or the outputs
+    // change.
+    virtual void OnWindowDisplayChanged() {}
 
     // Called when a frame has been shown on the screen.
     // |presentation_time_ns| is when it was shown, on CLOCK_MONOTONIC.
@@ -155,6 +161,10 @@ class WaylandWindow : public WindowDecoration::Delegate {
 
   // The number of physical pixels per logical pixel.
   double scale() const { return scale_; }
+
+  // The ID of the output the window is shown on, or the first output if the
+  // window is not shown. Zero if there are no outputs.
+  uint32_t display_id() const;
 
   // The size of the window content in physical pixels.
   int physical_width() const;
@@ -312,8 +322,24 @@ class WaylandWindow : public WindowDecoration::Delegate {
   // the next commit of the surface. Called with |surface_mutex_| held.
   void ApplyDecorationFrame(const DecorationFrame& frame);
 
+  // |WaylandDisplay::OutputObserver|
+  void OnOutputsChanged() override;
+
+  // Changes the number of physical pixels per logical pixel.
+  void SetScale(double scale);
+
+  // Updates the scale from the outputs the window is on, if the compositor
+  // doesn't provide a preferred scale.
+  void UpdateOutputScale();
+
   static void SurfaceEnter(void* data, wl_surface* surface, wl_output* output);
   static void SurfaceLeave(void* data, wl_surface* surface, wl_output* output);
+  static void SurfacePreferredBufferScale(void* data,
+                                          wl_surface* surface,
+                                          int32_t factor);
+  static void SurfacePreferredBufferTransform(void* data,
+                                              wl_surface* surface,
+                                              uint32_t transform);
   static void XdgSurfaceConfigure(void* data,
                                   xdg_surface* xdg_surface,
                                   uint32_t serial);
@@ -391,6 +417,17 @@ class WaylandWindow : public WindowDecoration::Delegate {
   wp_viewport* viewport_ = nullptr;
   wp_fractional_scale_v1* fractional_scale_ = nullptr;
   wp_fifo_v1* fifo_ = nullptr;
+
+  // The IDs of the outputs the surface is shown on, in the order it entered
+  // them. May include outputs that have since been removed.
+  std::vector<uint32_t> entered_outputs_;
+
+  // The scale the compositor prefers, if it doesn't support fractional
+  // scaling but sends wl_surface.preferred_buffer_scale.
+  int32_t preferred_buffer_scale_ = 0;
+
+  // The last output reported to the delegate.
+  uint32_t last_display_id_ = 0;
 
   // Draws client-side decorations, or nullptr if the window has none or
   // the compositor draws them. Changed with |surface_mutex_| held.

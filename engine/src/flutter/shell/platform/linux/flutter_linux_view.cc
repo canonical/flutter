@@ -86,6 +86,7 @@ FlutterWindowMetricsEvent FlutterLinuxView::GetWindowMetrics() const {
   event.height = window_->physical_height();
   event.pixel_ratio = window_->scale();
   event.view_id = view_id_;
+  event.display_id = window_->display_id();
 
   if (sizing_ != Sizing::kWindow) {
     // Let the content choose its size within the constraints, keeping it
@@ -168,6 +169,12 @@ void FlutterLinuxView::OnWindowConfigure() {
   SendWindowMetrics();
   if (state_callback_) {
     state_callback_();
+  }
+}
+
+void FlutterLinuxView::OnWindowDisplayChanged() {
+  if (window_) {
+    SendWindowMetrics();
   }
 }
 

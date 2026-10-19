@@ -28,7 +28,9 @@
 #include "flutter/shell/platform/linux/protocols/xdg-activation-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-decoration-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-dialog-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/protocols/xdg-output-unstable-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland_output.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
 
 namespace flutter {
@@ -47,6 +49,14 @@ class WaylandDisplay : public EventLoop::Source {
   static std::unique_ptr<WaylandDisplay> Create(EventLoop* event_loop);
 
   ~WaylandDisplay() override;
+
+  // Notified when outputs are added, removed or changed.
+  class OutputObserver {
+   public:
+    virtual ~OutputObserver() = default;
+
+    virtual void OnOutputsChanged() = 0;
+  };
 
   // A Wayland global in use.
   struct Protocol {
@@ -83,6 +93,22 @@ class WaylandDisplay : public EventLoop::Source {
 
   // The first seat the compositor advertised, or nullptr if it has none.
   WaylandSeat* seat() const { return seat_.get(); }
+
+  // The outputs connected to the compositor, by ID. Outputs that are not
+  // ready have not had their properties received yet.
+  const std::map<uint32_t, std::unique_ptr<WaylandOutput>>& outputs() const {
+    return outputs_;
+  }
+
+  // Returns the output with the given ID or object, or nullptr if it has
+  // been removed.
+  WaylandOutput* GetOutput(uint32_t id) const;
+  WaylandOutput* FindOutput(const wl_output* output) const;
+
+  // Adds or removes an observer, which must be removed before it is
+  // destroyed.
+  void AddOutputObserver(OutputObserver* observer);
+  void RemoveOutputObserver(OutputObserver* observer);
 
   // Converts a timestamp from wp_presentation to nanoseconds on
   // CLOCK_MONOTONIC, the clock the engine and event loop use.
@@ -123,6 +149,12 @@ class WaylandDisplay : public EventLoop::Source {
 
   // Handles a failure of the connection.
   void HandleError();
+
+  // Binds the output global |name|.
+  void AddOutput(uint32_t name, uint32_t version);
+
+  // Notifies observers of a change to the outputs.
+  void NotifyOutputsChanged();
 
   static void RegistryGlobal(void* data,
                              wl_registry* registry,
@@ -200,6 +232,9 @@ class WaylandDisplay : public EventLoop::Source {
   xdg_wm_dialog_v1* wm_dialog_ = nullptr;
   xdg_activation_v1* activation_ = nullptr;
   zxdg_decoration_manager_v1* decoration_manager_ = nullptr;
+  zxdg_output_manager_v1* xdg_output_manager_ = nullptr;
+  std::map<uint32_t, std::unique_ptr<WaylandOutput>> outputs_;
+  std::vector<OutputObserver*> output_observers_;
 
   // The clock presentation timestamps are in.
   clockid_t presentation_clock_ = CLOCK_MONOTONIC;

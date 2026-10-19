@@ -68,6 +68,7 @@ _wayland_protocols = [
   "protocols/xdg-activation-v1.xml",
   "protocols/xdg-decoration-unstable-v1.xml",
   "protocols/xdg-dialog-v1.xml",
+  "protocols/xdg-output-unstable-v1.xml",
   "protocols/xdg-shell.xml",
 ]
 
@@ -194,6 +195,7 @@ source_set("flutter_linux_sources") {
     "title_renderer.cc",
     "vsync_predictor.cc",
     "wayland_display.cc",
+    "wayland_output.cc",
     "wayland_seat.cc",
     "wayland_text_input.cc",
     "wayland_window.cc",

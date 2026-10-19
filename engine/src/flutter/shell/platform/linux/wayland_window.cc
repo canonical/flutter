@@ -35,6 +35,8 @@ void ForEachUint32(wl_array* array, Callback callback) {
 const wl_surface_listener WaylandWindow::kSurfaceListener = {
     .enter = SurfaceEnter,
     .leave = SurfaceLeave,
+    .preferred_buffer_scale = SurfacePreferredBufferScale,
+    .preferred_buffer_transform = SurfacePreferredBufferTransform,
 };
 
 const xdg_surface_listener WaylandWindow::kXdgSurfaceListener = {
@@ -92,9 +94,12 @@ std::unique_ptr<WaylandWindow> WaylandWindow::Create(
 }
 
 WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
-    : display_(display), delegate_(delegate) {}
+    : display_(display), delegate_(delegate) {
+  display_->AddOutputObserver(this);
+}
 
 WaylandWindow::~WaylandWindow() {
+  display_->RemoveOutputObserver(this);
   decoration_.reset();
   if (toplevel_decoration_ != nullptr) {
     zxdg_toplevel_decoration_v1_destroy(toplevel_decoration_);
@@ -843,13 +848,115 @@ void WaylandWindow::FeedbackDiscarded(
   static_cast<WaylandWindow*>(data)->RemoveFeedback(feedback);
 }
 
+uint32_t WaylandWindow::display_id() const {
+  for (uint32_t id : entered_outputs_) {
+    WaylandOutput* output = display_->GetOutput(id);
+    if (output != nullptr && output->ready()) {
+      return id;
+    }
+  }
+  for (const auto& [id, output] : display_->outputs()) {
+    if (output->ready()) {
+      return id;
+    }
+  }
+  return 0;
+}
+
+void WaylandWindow::OnOutputsChanged() {
+  // Forget outputs that have been removed.
+  entered_outputs_.erase(
+      std::remove_if(
+          entered_outputs_.begin(), entered_outputs_.end(),
+          [this](uint32_t id) { return display_->GetOutput(id) == nullptr; }),
+      entered_outputs_.end());
+  UpdateOutputScale();
+  uint32_t id = display_id();
+  if (id != last_display_id_) {
+    last_display_id_ = id;
+    delegate_->OnWindowDisplayChanged();
+  }
+}
+
+void WaylandWindow::SetScale(double scale) {
+  if (scale == scale_) {
+    return;
+  }
+  scale_ = scale;
+  if (configured_) {
+    UpdateDecoration();
+    delegate_->OnWindowConfigure();
+  }
+}
+
+void WaylandWindow::UpdateOutputScale() {
+  // Scales other than 1 are drawn by having the viewport scale the buffer
+  // to the logical size.
+  if (fractional_scale_ != nullptr || viewport_ == nullptr) {
+    return;
+  }
+  if (preferred_buffer_scale_ > 0) {
+    SetScale(preferred_buffer_scale_);
+    return;
+  }
+  // Draw at the highest scale of the outputs the window is on, so it is
+  // sharp on all of them.
+  int32_t scale = 0;
+  for (uint32_t id : entered_outputs_) {
+    WaylandOutput* output = display_->GetOutput(id);
+    if (output != nullptr && output->ready()) {
+      scale = std::max(scale, output->scale());
+    }
+  }
+  if (scale > 0) {
+    SetScale(scale);
+  }
+}
+
 void WaylandWindow::SurfaceEnter(void* data,
                                  wl_surface* surface,
-                                 wl_output* output) {}
+                                 wl_output* output) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  WaylandOutput* wayland_output = self->display_->FindOutput(output);
+  if (wayland_output == nullptr) {
+    return;
+  }
+  uint32_t id = wayland_output->id();
+  if (std::find(self->entered_outputs_.begin(), self->entered_outputs_.end(),
+                id) == self->entered_outputs_.end()) {
+    self->entered_outputs_.push_back(id);
+  }
+  self->OnOutputsChanged();
+}
 
 void WaylandWindow::SurfaceLeave(void* data,
                                  wl_surface* surface,
-                                 wl_output* output) {}
+                                 wl_output* output) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  WaylandOutput* wayland_output = self->display_->FindOutput(output);
+  if (wayland_output == nullptr) {
+    return;
+  }
+  uint32_t id = wayland_output->id();
+  self->entered_outputs_.erase(std::remove(self->entered_outputs_.begin(),
+                                           self->entered_outputs_.end(), id),
+                               self->entered_outputs_.end());
+  self->OnOutputsChanged();
+}
+
+void WaylandWindow::SurfacePreferredBufferScale(void* data,
+                                                wl_surface* surface,
+                                                int32_t factor) {
+  auto* self = static_cast<WaylandWindow*>(data);
+  self->preferred_buffer_scale_ = factor;
+  self->UpdateOutputScale();
+}
+
+void WaylandWindow::SurfacePreferredBufferTransform(void* data,
+                                                    wl_surface* surface,
+                                                    uint32_t transform) {
+  // The buffers are always flipped, which compositors handle efficiently.
+}
 
 void WaylandWindow::XdgSurfaceConfigure(void* data,
                                         xdg_surface* xdg_surface,
@@ -1051,16 +1158,8 @@ void WaylandWindow::ToplevelWmCapabilities(void* data,
 void WaylandWindow::PreferredScale(void* data,
                                    wp_fractional_scale_v1* fractional_scale,
                                    uint32_t scale) {
-  auto* self = static_cast<WaylandWindow*>(data);
-  double new_scale = scale / kFractionalScaleDenominator;
-  if (new_scale == self->scale_) {
-    return;
-  }
-  self->scale_ = new_scale;
-  if (self->configured_) {
-    self->UpdateDecoration();
-    self->delegate_->OnWindowConfigure();
-  }
+  static_cast<WaylandWindow*>(data)->SetScale(scale /
+                                              kFractionalScaleDenominator);
 }
 
 }  // namespace flutter

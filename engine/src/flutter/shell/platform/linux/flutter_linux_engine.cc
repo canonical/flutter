@@ -89,6 +89,7 @@ FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
   window_manager_ = std::make_unique<WindowManager>(this);
 
   application_->atspi()->AddObserver(this);
+  application_->display()->AddOutputObserver(this);
   SetMessageHandler(
       "flutter/accessibility",
       [this](const uint8_t* data, size_t size, ResponseCallback respond) {
@@ -108,6 +109,7 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
     Engines().erase(this);
   }
   application_->atspi()->RemoveObserver(this);
+  application_->display()->RemoveOutputObserver(this);
 
   window_manager_.reset();
   FML_DCHECK(views_.empty());
@@ -270,6 +272,8 @@ bool FlutterLinuxEngine::Run() {
     return false;
   }
 
+  // Views refer to the displays, so they must be known first.
+  SendDisplays();
   for (const auto& [view_id, view] : views_) {
     if (view_id == kImplicitViewId) {
       view->SendWindowMetrics();
@@ -341,6 +345,38 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::AddView(
     }
   }
   return view;
+}
+
+void FlutterLinuxEngine::OnOutputsChanged() {
+  SendDisplays();
+}
+
+void FlutterLinuxEngine::SendDisplays() {
+  if (!running()) {
+    return;
+  }
+
+  std::vector<FlutterEngineDisplay> displays;
+  for (const auto& [id, output] : application_->display()->outputs()) {
+    if (!output->ready()) {
+      continue;
+    }
+    FlutterEngineDisplay display = {};
+    display.struct_size = sizeof(FlutterEngineDisplay);
+    display.display_id = id;
+    display.refresh_rate = output->refresh_rate();
+    display.width = output->width();
+    display.height = output->height();
+    display.device_pixel_ratio = output->pixel_ratio();
+    displays.push_back(display);
+  }
+  if (displays.size() == 1) {
+    displays[0].single_display = true;
+  }
+  // There is only one update type, which replaces all the displays.
+  embedder_api_.NotifyDisplayUpdate(engine_,
+                                    kFlutterEngineDisplaysUpdateTypeStartup,
+                                    displays.data(), displays.size());
 }
 
 void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {

@@ -28,7 +28,7 @@ constexpr uint32_t kMinDmabufVersion = 3;
 // protocol come from the libwayland the application is run with, which can
 // be newer than the headers it was built with. Binding a newer version
 // would cause the compositor to send events the listeners don't handle.
-constexpr uint32_t kMaxCompositorVersion = 4;
+constexpr uint32_t kMaxCompositorVersion = 6;
 constexpr uint32_t kMaxWmBaseVersion = 7;
 constexpr uint32_t kMaxShmVersion = 1;
 constexpr uint32_t kMaxSubcompositorVersion = 1;
@@ -45,6 +45,8 @@ constexpr uint32_t kMaxSyncobjManagerVersion = 1;
 constexpr uint32_t kMaxWmDialogVersion = 1;
 constexpr uint32_t kMaxDecorationManagerVersion = 1;
 constexpr uint32_t kMaxActivationVersion = 1;
+constexpr uint32_t kMaxOutputVersion = 4;
+constexpr uint32_t kMaxXdgOutputManagerVersion = 3;
 
 // First version of zwp_linux_dmabuf_v1 that supports feedback.
 constexpr uint32_t kDmabufFeedbackVersion = 4;
@@ -121,6 +123,10 @@ WaylandDisplay::WaylandDisplay(wl_display* display, EventLoop* event_loop)
 WaylandDisplay::~WaylandDisplay() {
   if (read_prepared_) {
     wl_display_cancel_read(display_);
+  }
+  outputs_.clear();
+  if (xdg_output_manager_ != nullptr) {
+    zxdg_output_manager_v1_destroy(xdg_output_manager_);
   }
   if (fractional_scale_manager_ != nullptr) {
     wp_fractional_scale_manager_v1_destroy(fractional_scale_manager_);
@@ -208,17 +214,18 @@ bool WaylandDisplay::Initialize() {
                                           text_input_manager_,
                                           pointer_gestures_, event_loop_);
   }
-  if (dmabuf_ == nullptr) {
-    return true;
-  }
 
+  // A second roundtrip receives the buffer formats and the properties of
+  // the outputs.
   zwp_linux_dmabuf_feedback_v1* feedback = nullptr;
-  if (zwp_linux_dmabuf_v1_get_version(dmabuf_) >= kDmabufFeedbackVersion) {
-    feedback = zwp_linux_dmabuf_v1_get_default_feedback(dmabuf_);
-    zwp_linux_dmabuf_feedback_v1_add_listener(feedback, &kFeedbackListener,
-                                              this);
-  } else {
-    zwp_linux_dmabuf_v1_add_listener(dmabuf_, &kDmabufListener, this);
+  if (dmabuf_ != nullptr) {
+    if (zwp_linux_dmabuf_v1_get_version(dmabuf_) >= kDmabufFeedbackVersion) {
+      feedback = zwp_linux_dmabuf_v1_get_default_feedback(dmabuf_);
+      zwp_linux_dmabuf_feedback_v1_add_listener(feedback, &kFeedbackListener,
+                                                this);
+    } else {
+      zwp_linux_dmabuf_v1_add_listener(dmabuf_, &kDmabufListener, this);
+    }
   }
   int result = wl_display_roundtrip(display_);
   if (feedback != nullptr) {
@@ -226,7 +233,7 @@ bool WaylandDisplay::Initialize() {
   }
   format_table_.clear();
   if (result < 0) {
-    FML_LOG(ERROR) << "Failed to get Wayland buffer formats";
+    FML_LOG(ERROR) << "Failed to get Wayland buffer formats and outputs";
     return false;
   }
 
@@ -303,6 +310,59 @@ void WaylandDisplay::HandleError() {
   if (error_callback_) {
     error_callback_();
   }
+}
+
+WaylandOutput* WaylandDisplay::GetOutput(uint32_t id) const {
+  auto it = outputs_.find(id);
+  return it != outputs_.end() ? it->second.get() : nullptr;
+}
+
+WaylandOutput* WaylandDisplay::FindOutput(const wl_output* output) const {
+  for (const auto& [id, o] : outputs_) {
+    if (o->output() == output) {
+      return o.get();
+    }
+  }
+  return nullptr;
+}
+
+void WaylandDisplay::AddOutputObserver(OutputObserver* observer) {
+  output_observers_.push_back(observer);
+}
+
+void WaylandDisplay::RemoveOutputObserver(OutputObserver* observer) {
+  output_observers_.erase(
+      std::remove(output_observers_.begin(), output_observers_.end(), observer),
+      output_observers_.end());
+}
+
+void WaylandDisplay::NotifyOutputsChanged() {
+  // Observers may be removed while being notified.
+  std::vector<OutputObserver*> observers = output_observers_;
+  for (OutputObserver* observer : observers) {
+    if (std::find(output_observers_.begin(), output_observers_.end(),
+                  observer) != output_observers_.end()) {
+      observer->OnOutputsChanged();
+    }
+  }
+}
+
+void WaylandDisplay::AddOutput(uint32_t name, uint32_t version) {
+  // Outputs come and go, so only the first is recorded as a protocol in use.
+  if (std::none_of(
+          protocols_.begin(), protocols_.end(), [](const Protocol& protocol) {
+            return strcmp(protocol.name, wl_output_interface.name) == 0;
+          })) {
+    protocols_.push_back(
+        {wl_output_interface.name, std::min(version, kMaxOutputVersion)});
+  }
+  auto* output = static_cast<wl_output*>(
+      wl_registry_bind(registry_, name, &wl_output_interface,
+                       std::min(version, kMaxOutputVersion)));
+  auto wayland_output = std::make_unique<WaylandOutput>(
+      name, output, [this]() { NotifyOutputsChanged(); });
+  wayland_output->SetXdgOutputManager(xdg_output_manager_);
+  outputs_[name] = std::move(wayland_output);
 }
 
 void WaylandDisplay::RegistryGlobal(void* data,
@@ -389,6 +449,15 @@ void WaylandDisplay::RegistryGlobal(void* data,
     self->activation_ = Bind<xdg_activation_v1>(
         &self->protocols_, registry, name, &xdg_activation_v1_interface,
         version, kMaxActivationVersion);
+  } else if (strcmp(interface, wl_output_interface.name) == 0) {
+    self->AddOutput(name, version);
+  } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+    self->xdg_output_manager_ = Bind<zxdg_output_manager_v1>(
+        &self->protocols_, registry, name, &zxdg_output_manager_v1_interface,
+        version, kMaxXdgOutputManagerVersion);
+    for (const auto& [id, output] : self->outputs_) {
+      output->SetXdgOutputManager(self->xdg_output_manager_);
+    }
   } else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) ==
              0) {
     self->decoration_manager_ =
@@ -419,7 +488,12 @@ uint64_t WaylandDisplay::PresentationTimeToMonotonic(
 
 void WaylandDisplay::RegistryGlobalRemove(void* data,
                                           wl_registry* registry,
-                                          uint32_t name) {}
+                                          uint32_t name) {
+  auto* self = static_cast<WaylandDisplay*>(data);
+  if (self->outputs_.erase(name) > 0) {
+    self->NotifyOutputsChanged();
+  }
+}
 
 void WaylandDisplay::WmBasePing(void* data,
                                 xdg_wm_base* wm_base,

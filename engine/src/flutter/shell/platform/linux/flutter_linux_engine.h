@@ -38,7 +38,8 @@ constexpr FlutterViewId kImplicitViewId = 0;
 // The engine must be created, run and destroyed on the application's platform
 // thread. Multiple engines may share an application.
 class FlutterLinuxEngine : public PlatformMessenger,
-                           public AtspiApplication::Observer {
+                           public AtspiApplication::Observer,
+                           public WaylandDisplay::OutputObserver {
  public:
   struct Properties {
     std::filesystem::path assets_path;
@@ -155,6 +156,9 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |AtspiApplication::Observer|
   void OnAccessibilityEnabledChanged(bool enabled) override;
 
+  // |WaylandDisplay::OutputObserver|
+  void OnOutputsChanged() override;
+
  private:
   FlutterLinuxEngine(FlutterLinuxApplication* application,
                      Properties properties);
@@ -164,6 +168,9 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // Adds |view| to the views shown by the engine and the framework.
   std::unique_ptr<FlutterLinuxView> AddView(
       std::unique_ptr<FlutterLinuxView> view);
+
+  // Tells the running engine about the outputs views can be shown on.
+  void SendDisplays();
 
   // Tells the running engine about a view that is not the implicit view.
   void AddViewToEngine(FlutterLinuxView* view);
