@@ -30,8 +30,7 @@ from their source, not run.
   because it includes AT-SPI/D-Bus and title text layout.
 - **Features.** The new embedder leads on Wayland presentation, input, multiple
   windows and accessibility. It is still missing several platform channels the
-  old one has: clipboard, settings, lifecycle, locales, textures and system
-  sounds.
+  old one has: clipboard, settings, lifecycle, locales and system sounds.
 - **Sony.** Sony is a portable kiosk/embedded embedder: Wayland, X11 and DRM, chosen
   at compile time. On desktop Wayland it is clearly behind both of ours. It
   renders through `wl_egl_window`/`eglSwapBuffers`, has no fractional scaling, no
@@ -143,15 +142,17 @@ The CPU and GPU figures were taken for both the app and gnome-shell.
 | light | App CPU % | 22.8 | 5.4 | **−76%** |
 | light | App GPU % | 6.1 | 1.7 | **−72%** |
 | light | gnome-shell CPU % / GPU % | 20.0 / 13.3 | 11.8 / 17.2 | −41% / +29% |
-| light | Raster avg / p99 (ms) | 0.8 / 1.2 | 0.5 / 1.4 | |
-| light | RSS / PSS / GPU memory (MiB) | 195 / 103 / 208 | 145 / 86 / 156 | |
+| light | Raster avg / p99 (ms) | 0.8 / 1.2 | 0.5 / 1.4 | −38% / +17% |
+| light | RSS / PSS (MiB) | 195 / 103 | 145 / 86 | −50 / −17 |
+| light | GPU memory (MiB) | 208 | 156 | −52 |
 | heavy | FPS | 60.2 | 60.0 | – |
 | heavy | App CPU % | 74.8 | 42.0 | **−44%** |
 | heavy | App GPU % | 12.0 | 6.7 | **−44%** |
 | heavy | gnome-shell CPU % / GPU % | 20.2 / 12.7 | 10.8 / 13.4 | −47% / ~ |
-| heavy | Build avg (ms) | 4.4 | 3.8 | |
-| heavy | Raster avg / p99 (ms) | 3.1 / 4.2 | 2.2 / 3.1 | −29% |
-| heavy | RSS / PSS / GPU memory (MiB) | 212 / 120 / 225 | 158 / 98 / 156 | |
+| heavy | Build avg (ms) | 4.4 | 3.8 | −14% |
+| heavy | Raster avg / p99 (ms) | 3.1 / 4.2 | 2.2 / 3.1 | −29% / −26% |
+| heavy | RSS / PSS (MiB) | 212 / 120 | 158 / 98 | −54 / −22 |
+| heavy | GPU memory (MiB) | 225 | 156 | −69 |
 
 ### Why the new embedder is faster
 
@@ -214,7 +215,7 @@ In the excluded screen-off run:
 | Software rendering fallback | ✅ (`fl_compositor_software`) | ⚠️ GL rendering copied to `wl_shm` when there is no dmabuf | ❌ | ✅ software, fbdev and dumb buffers | ✅ |
 | Impeller | ✅ default (GLES, SDF) | ✅ default (GLES, SDF) | ⚠️ accepts the switch, GL only | ✅ (partial repaint disabled with Impeller) | ❌ no specific support |
 | Vulkan | ❌ | ❌ | ❌ | ✅ | ⚠️ optional, off by default |
-| External textures | ✅ GL and pixel buffer | ❌ | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
+| External textures | ✅ GL and pixel buffer | ✅ pixel buffer and dmabuf (zero-copy, incl. YUV) | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
 | Platform views | ❌ | ❌ | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
 
 ### Windows and displays
@@ -373,8 +374,7 @@ These are ordered by how much they affect apps:
 2. **`flutter/settings`**: dark mode, text scale, 24-hour time, accent colour,
    from the XDG settings portal over the existing D-Bus code.
 3. **Lifecycle and locales.**
-4. **External textures**, and later platform views; dmabuf import fits the
-   existing compositor.
+4. **Platform views.**
 5. **Drag and drop, primary selection, high-resolution scrolling
    (`axis_value120`, `wl_seat` v8+), tablet input.**
 6. **Vulkan / Impeller-Vulkan.**
