@@ -236,8 +236,8 @@ source_set("flutter_linux_sources") {
   public_deps = [
     ":flutter_linux_headers",
     ":wayland_protocols",
-    "//flutter/shell/platform/common:common_cpp_enums",
     "//flutter/fml",
+    "//flutter/shell/platform/common:common_cpp_enums",
     "//flutter/shell/platform/embedder:embedder_headers",
   ]
 
