@@ -11,6 +11,7 @@
 
 #include "flutter/fml/memory/weak_ptr.h"
 #include "flutter/fml/task_runner.h"
+#include "flutter/lib/ui/window/platform_configuration.h"
 #include "flutter/lib/ui/window/pointer_data_packet.h"
 #include "flutter/lib/ui/window/viewport_metrics.h"
 #include "flutter/shell/common/platform_view.h"
@@ -43,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)installFirstFrameCallback:(void (^)(void))block;
 - (void)enableSemantics:(BOOL)enabled withFlags:(int64_t)flags;
+- (void)setUserSettings:(const flutter::UserSettings&)settings;
 - (void)notifyViewCreated;
 - (void)notifyViewDestroyed;
 

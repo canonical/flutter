@@ -369,7 +369,7 @@ public class FlutterEngine implements ViewUtils.DisplayUpdater {
     restorationChannel = new RestorationChannel(dartExecutor, waitForRestorationData);
     scribeChannel = new ScribeChannel(dartExecutor);
     sensitiveContentChannel = new SensitiveContentChannel(dartExecutor);
-    settingsChannel = new SettingsChannel(dartExecutor);
+    settingsChannel = new SettingsChannel(dartExecutor, flutterJNI);
     spellCheckChannel = new SpellCheckChannel(dartExecutor);
     systemChannel = new SystemChannel(dartExecutor);
     textInputChannel = new TextInputChannel(dartExecutor);

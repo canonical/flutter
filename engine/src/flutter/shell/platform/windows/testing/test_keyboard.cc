@@ -106,9 +106,6 @@ void MockEmbedderApiForKeyboard(
   modifier.embedder_api()
       .SendPlatformMessage = [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
                                 const FlutterPlatformMessage* message) {
-    if (std::string(message->channel) == std::string("flutter/settings")) {
-      return kSuccess;
-    }
     if (std::string(message->channel) == std::string("flutter/keyevent")) {
       stored_response_controller->HandleChannelMessage([message](bool handled) {
         auto response = _keyHandlingResponse(handled);
@@ -187,6 +184,9 @@ void MockEmbedderApiForKeyboard(
   modifier.embedder_api().UpdateAccessibilityFeatures =
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; };
+  modifier.embedder_api().SetUserSettings =
+      [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
+         const FlutterUserSettings* settings) { return kSuccess; };
   modifier.embedder_api().UpdateLocales =
       [](auto engine, const FlutterLocale** locales, size_t locales_count) {
         return kSuccess;

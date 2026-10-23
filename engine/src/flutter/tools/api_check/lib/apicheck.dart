@@ -51,6 +51,25 @@ Future<List<String>> getDartClassFields({
   return fields;
 }
 
+/// Returns the names of all values in the Dart enum [enumName], in
+/// declaration order.
+///
+/// Enum values are expected to be of the form `fooBar`.
+List<String> getDartEnumValues({required String sourcePath, required String enumName}) {
+  final ParseStringResult result = parseFile(
+    path: sourcePath,
+    featureSet: FeatureSet.latestLanguageVersion(),
+  );
+  for (final EnumDeclaration declaration in result.unit.declarations.whereType<EnumDeclaration>()) {
+    if (declaration.namePart.typeName.lexeme == enumName) {
+      return declaration.body.constants
+          .map((EnumConstantDeclaration constant) => constant.name.lexeme)
+          .toList();
+    }
+  }
+  return <String>[];
+}
+
 /// Returns all values in [enumName].
 ///
 /// Enum values are expected to be of the form `kEnumNameFooBar`; prefixed with

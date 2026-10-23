@@ -555,6 +555,37 @@ static void SetAccessibilityFeatures(JNIEnv* env,
   ANDROID_SHELL_HOLDER->GetPlatformView()->SetAccessibilityFeatures(flags);
 }
 
+static void SetUserSettings(JNIEnv* env,
+                            jobject jcaller,
+                            jlong shell_holder,
+                            jfloat text_scale_factor,
+                            jboolean always_use_24_hour_format,
+                            jint platform_brightness,
+                            jboolean native_spell_check_service_defined,
+                            jboolean has_briefly_show_password,
+                            jboolean briefly_show_password,
+                            jboolean has_configuration_id,
+                            jint configuration_id) {
+  if (platform_brightness < static_cast<jint>(Brightness::kDark) ||
+      platform_brightness > static_cast<jint>(Brightness::kLight)) {
+    FML_LOG(ERROR) << "Invalid platform brightness " << platform_brightness;
+    return;
+  }
+  UserSettings settings;
+  settings.text_scale_factor = text_scale_factor;
+  settings.always_use_24_hour_format = always_use_24_hour_format;
+  settings.platform_brightness = static_cast<Brightness>(platform_brightness);
+  settings.native_spell_check_service_defined =
+      native_spell_check_service_defined;
+  if (has_briefly_show_password) {
+    settings.briefly_show_password = briefly_show_password;
+  }
+  if (has_configuration_id) {
+    settings.configuration_id = configuration_id;
+  }
+  ANDROID_SHELL_HOLDER->GetPlatformView()->SetUserSettings(settings);
+}
+
 static jboolean GetIsSoftwareRendering(JNIEnv* env, jobject jcaller) {
   return FlutterMain::Get().GetSettings().enable_software_rendering;
 }
@@ -862,6 +893,11 @@ bool RegisterApi(JNIEnv* env) {
           .name = "nativeSetAccessibilityFeatures",
           .signature = "(JI)V",
           .fnPtr = reinterpret_cast<void*>(&SetAccessibilityFeatures),
+      },
+      {
+          .name = "nativeSetUserSettings",
+          .signature = "(JFZIZZZZI)V",
+          .fnPtr = reinterpret_cast<void*>(&SetUserSettings),
       },
       {
           .name = "nativeGetIsSoftwareRenderingEnabled",

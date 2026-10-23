@@ -1310,6 +1310,20 @@ void Shell::OnPlatformViewSetAccessibilityFeatures(int32_t flags) {
 }
 
 // |PlatformView::Delegate|
+void Shell::OnPlatformViewSetUserSettings(const UserSettings& settings) {
+  FML_DCHECK(is_set_up_);
+  FML_DCHECK(task_runners_.GetPlatformTaskRunner()->RunsTasksOnCurrentThread());
+
+  fml::TaskRunner::RunNowAndFlushMessages(
+      task_runners_.GetUITaskRunner(),
+      [engine = engine_->GetWeakPtr(), settings] {
+        if (engine) {
+          engine->SetUserSettings(settings);
+        }
+      });
+}
+
+// |PlatformView::Delegate|
 void Shell::OnPlatformViewRegisterTexture(
     std::shared_ptr<flutter::Texture> texture) {
   FML_DCHECK(is_set_up_);

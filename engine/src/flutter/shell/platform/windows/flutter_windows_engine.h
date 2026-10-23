@@ -269,6 +269,9 @@ class FlutterWindowsEngine {
   // Refresh accessibility features and send them to the engine.
   void UpdateAccessibilityFeatures();
 
+  // Informs the engine of the user-configured system settings.
+  void SetUserSettings(const FlutterUserSettings& settings);
+
   // Refresh high contrast accessibility mode and notify the engine.
   void UpdateHighContrastMode();
 

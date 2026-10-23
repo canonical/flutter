@@ -455,6 +455,13 @@ NSString* const kFlutterApplicationRegistrarKey = @"io.flutter.flutter.applicati
   self.platformView->SetAccessibilityFeatures(flags);
 }
 
+- (void)setUserSettings:(const flutter::UserSettings&)settings {
+  if (!self.platformView) {
+    return;
+  }
+  self.platformView->SetUserSettings(settings);
+}
+
 - (void)notifyViewCreated {
   if (!self.platformView) {
     return;

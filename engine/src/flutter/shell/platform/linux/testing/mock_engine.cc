@@ -155,6 +155,12 @@ FlutterEngineResult FlutterEngineUpdateAccessibilityFeatures(
   return kSuccess;
 }
 
+FlutterEngineResult FlutterEngineSetUserSettings(
+    FLUTTER_API_SYMBOL(FlutterEngine) engine,
+    const FlutterUserSettings* settings) {
+  return kSuccess;
+}
+
 FlutterEngineResult FlutterEngineSendSemanticsAction(
     FLUTTER_API_SYMBOL(FlutterEngine) engine,
     const FlutterSendSemanticsActionInfo* info) {
@@ -239,6 +245,7 @@ FlutterEngineResult FlutterEngineGetProcAddresses(
   table->UnregisterExternalTexture = &FlutterEngineUnregisterExternalTexture;
   table->UpdateAccessibilityFeatures =
       &FlutterEngineUpdateAccessibilityFeatures;
+  table->SetUserSettings = &FlutterEngineSetUserSettings;
   table->NotifyDisplayUpdate = &FlutterEngineNotifyDisplayUpdate;
   table->AddView = &FlutterEngineAddView;
   table->RemoveView = &FlutterEngineRemoveView;

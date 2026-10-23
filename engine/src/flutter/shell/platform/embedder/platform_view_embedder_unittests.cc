@@ -72,6 +72,10 @@ class MockDelegate : public PlatformView::Delegate {
               (int32_t flags),
               (override));
   MOCK_METHOD(void,
+              OnPlatformViewSetUserSettings,
+              (const UserSettings& settings),
+              (override));
+  MOCK_METHOD(void,
               OnPlatformViewRegisterTexture,
               (std::shared_ptr<Texture> texture),
               (override));

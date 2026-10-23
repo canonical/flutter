@@ -167,6 +167,11 @@ class MockPlatformViewDelegate : public PlatformView::Delegate {
               (override));
 
   MOCK_METHOD(void,
+              OnPlatformViewSetUserSettings,
+              (const UserSettings& settings),
+              (override));
+
+  MOCK_METHOD(void,
               OnPlatformViewRegisterTexture,
               (std::shared_ptr<Texture> texture),
               (override));
@@ -2209,6 +2214,43 @@ TEST_F(ShellTest, IsolateCanAccessPersistentIsolateData) {
   });
 
   message_latch.Wait();
+  DestroyShell(std::move(shell), task_runners);
+}
+
+TEST_F(ShellTest, UserSettingsSetBeforeIsolateStartsAreDelivered) {
+  Settings settings = CreateSettingsForFixture();
+  TaskRunners task_runners("test",                  // label
+                           GetCurrentTaskRunner(),  // platform
+                           CreateNewThread(),       // raster
+                           CreateNewThread(),       // ui
+                           CreateNewThread()        // io
+  );
+
+  fml::AutoResetWaitableEvent message_latch;
+  std::string message;
+  AddFfiNativeCallback(
+      "NotifyMessage", CREATE_FFI_LAMBDA([&](Dart_Handle message_handle) {
+        message = tonic::DartConverter<std::string>::FromDart(message_handle);
+        message_latch.Signal();
+      }));
+
+  std::unique_ptr<Shell> shell = CreateShell(settings, task_runners);
+  ASSERT_TRUE(shell->IsSetup());
+
+  UserSettings user_settings;
+  user_settings.text_scale_factor = 1.5;
+  user_settings.always_use_24_hour_format = true;
+  user_settings.platform_brightness = Brightness::kDark;
+  shell->GetPlatformView()->SetUserSettings(user_settings);
+
+  auto configuration = RunConfiguration::InferFromSettings(settings);
+  configuration.SetEntrypoint("reportsUserSettings");
+  shell->RunEngine(std::move(configuration), [&](auto result) {
+    ASSERT_EQ(result, Engine::RunStatus::Success);
+  });
+
+  message_latch.Wait();
+  EXPECT_EQ(message, "1.5,true,Brightness.dark");
   DestroyShell(std::move(shell), task_runners);
 }
 

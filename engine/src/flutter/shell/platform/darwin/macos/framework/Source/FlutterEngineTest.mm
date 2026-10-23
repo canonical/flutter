@@ -1397,41 +1397,41 @@ TEST_F(FlutterEngineTest, DisplaySizeIsInPhysicalPixel) {
 }
 
 TEST_F(FlutterEngineTest, ReportsHourFormat) {
-  __block BOOL expectedValue;
+  BOOL expectedValue = NO;
+  BOOL* expectedValuePtr = &expectedValue;
 
   // Set up mocks.
-  id channelMock = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([channelMock messageChannelWithName:@"flutter/settings"
-                              binaryMessenger:[OCMArg any]
-                                        codec:[OCMArg any]])
-      .andReturn(channelMock);
-  OCMStub([channelMock sendMessage:[OCMArg any]]).andDo((^(NSInvocation* invocation) {
-    __weak id message;
-    [invocation getArgument:&message atIndex:2];
-    EXPECT_EQ(message[@"alwaysUse24HourFormat"], @(expectedValue));
-  }));
-
   id mockHourFormat = OCMClassMock([FlutterHourFormat class]);
   OCMStub([mockHourFormat isAlwaysUse24HourFormat]).andDo((^(NSInvocation* invocation) {
-    [invocation setReturnValue:&expectedValue];
+    [invocation setReturnValue:expectedValuePtr];
   }));
 
-  id engineMock = CreateMockFlutterEngine(nil);
+  FlutterEngine* engine = GetFlutterEngine();
+  int calls = 0;
+  auto original_set_user_settings = engine.embedderAPI.SetUserSettings;
+  engine.embedderAPI.SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([&calls, &expectedValue, &original_set_user_settings](
+                            auto engine, const FlutterUserSettings* settings) {
+        calls++;
+        EXPECT_EQ(settings->struct_size, sizeof(FlutterUserSettings));
+        EXPECT_EQ(settings->always_use_24_hour_format, static_cast<bool>(expectedValue));
+        return original_set_user_settings(engine, settings);
+      }));
 
   // Verify the YES case.
   expectedValue = YES;
-  EXPECT_TRUE([engineMock runWithEntrypoint:@"main"]);
-  [engineMock shutDownEngine];
+  EXPECT_TRUE([engine runWithEntrypoint:@"main"]);
+  EXPECT_EQ(calls, 1);
+  [engine shutDownEngine];
 
   // Verify the NO case.
   expectedValue = NO;
-  EXPECT_TRUE([engineMock runWithEntrypoint:@"main"]);
-  [engineMock shutDownEngine];
+  EXPECT_TRUE([engine runWithEntrypoint:@"main"]);
+  EXPECT_EQ(calls, 2);
+  [engine shutDownEngine];
 
   // Clean up mocks.
   [mockHourFormat stopMocking];
-  [engineMock stopMocking];
-  [channelMock stopMocking];
 }
 
 }  // namespace flutter::testing

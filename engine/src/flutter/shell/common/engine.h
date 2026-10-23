@@ -879,6 +879,17 @@ class Engine final : public RuntimeDelegate {
   ///
   void SetAccessibilityFeatures(int32_t flags);
 
+  //----------------------------------------------------------------------------
+  /// @brief      Notifies the engine that the embedder has reported new
+  ///             user-configured system settings, such as the text scale
+  ///             factor and the brightness theme. This originates in the
+  ///             platform view and is forwarded to the engine here on the UI
+  ///             task runner by the shell.
+  ///
+  /// @param[in]  settings  The user settings.
+  ///
+  void SetUserSettings(const UserSettings& settings);
+
   // |RuntimeDelegate|
   void ScheduleFrame(bool regenerate_layer_trees) override;
 
@@ -1083,6 +1094,8 @@ class Engine final : public RuntimeDelegate {
   bool HandleLocalizationPlatformMessage(PlatformMessage* message);
 
   void HandleSettingsPlatformMessage(PlatformMessage* message);
+
+  void SetUserSettingsData(const std::string& data);
 
   void HandleAssetPlatformMessage(std::unique_ptr<PlatformMessage> message);
 

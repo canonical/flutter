@@ -10,7 +10,6 @@
 #include "flutter/shell/platform/linux/fl_engine_private.h"
 #include "flutter/shell/platform/linux/fl_framebuffer.h"
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
-#include "flutter/shell/platform/linux/public/flutter_linux/fl_json_message_codec.h"
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_string_codec.h"
 #include "flutter/shell/platform/linux/testing/mock_epoxy.h"
 #include "flutter/shell/platform/linux/testing/mock_renderable.h"
@@ -303,40 +302,25 @@ TEST_F(FlEngineTest, PlatformMessageResponse) {
 // Checks settings handler sends settings on startup.
 TEST_F(FlEngineTest, SettingsHandler) {
   bool called = false;
-  fl_engine_get_embedder_api(engine)->SendPlatformMessage = MOCK_ENGINE_PROC(
-      SendPlatformMessage,
-      ([&called](auto engine, const FlutterPlatformMessage* message) {
+  fl_engine_get_embedder_api(engine)->SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings,
+      ([&called](auto engine, const FlutterUserSettings* settings) {
         called = true;
 
-        EXPECT_STREQ(message->channel, "flutter/settings");
-
-        g_autoptr(FlJsonMessageCodec) codec = fl_json_message_codec_new();
-        g_autoptr(GBytes) data =
-            g_bytes_new(message->message, message->message_size);
-        g_autoptr(GError) error = nullptr;
-        g_autoptr(FlValue) settings = fl_message_codec_decode_message(
-            FL_MESSAGE_CODEC(codec), data, &error);
         EXPECT_NE(settings, nullptr);
-        EXPECT_EQ(error, nullptr);
-
-        FlValue* text_scale_factor =
-            fl_value_lookup_string(settings, "textScaleFactor");
-        EXPECT_NE(text_scale_factor, nullptr);
-        EXPECT_EQ(fl_value_get_type(text_scale_factor), FL_VALUE_TYPE_FLOAT);
-
-        FlValue* always_use_24hr_format =
-            fl_value_lookup_string(settings, "alwaysUse24HourFormat");
-        EXPECT_NE(always_use_24hr_format, nullptr);
-        EXPECT_EQ(fl_value_get_type(always_use_24hr_format),
-                  FL_VALUE_TYPE_BOOL);
-
-        FlValue* platform_brightness =
-            fl_value_lookup_string(settings, "platformBrightness");
-        EXPECT_NE(platform_brightness, nullptr);
-        EXPECT_EQ(fl_value_get_type(platform_brightness), FL_VALUE_TYPE_STRING);
+        EXPECT_EQ(settings->struct_size, sizeof(FlutterUserSettings));
+        EXPECT_GT(settings->text_scale_factor, 0.0);
+        EXPECT_TRUE(settings->platform_brightness == kFlutterBrightnessLight ||
+                    settings->platform_brightness == kFlutterBrightnessDark);
 
         return kSuccess;
       }));
+  fl_engine_get_embedder_api(engine)->SendPlatformMessage =
+      MOCK_ENGINE_PROC(SendPlatformMessage,
+                       ([](auto engine, const FlutterPlatformMessage* message) {
+                         EXPECT_STRNE(message->channel, "flutter/settings");
+                         return kSuccess;
+                       }));
 
   StartEngine();
 

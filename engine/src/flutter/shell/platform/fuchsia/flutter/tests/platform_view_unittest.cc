@@ -145,6 +145,8 @@ class MockPlatformViewDelegate : public flutter::PlatformView::Delegate {
     semantics_features_ = flags;
   }
   // |flutter::PlatformView::Delegate|
+  void OnPlatformViewSetUserSettings(const flutter::UserSettings& settings) {}
+  // |flutter::PlatformView::Delegate|
   void OnPlatformViewRegisterTexture(
       std::shared_ptr<flutter::Texture> texture) {}
   // |flutter::PlatformView::Delegate|

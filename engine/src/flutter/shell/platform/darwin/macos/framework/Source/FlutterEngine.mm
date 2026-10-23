@@ -40,7 +40,6 @@
 @class FlutterEngineRegistrar;
 
 NSString* const kFlutterPlatformChannel = @"flutter/platform";
-NSString* const kFlutterSettingsChannel = @"flutter/settings";
 NSString* const kFlutterLifecycleChannel = @"flutter/lifecycle";
 
 using flutter::kFlutterImplicitViewId;
@@ -459,9 +458,6 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
 
   // Used to manage Flutter windows created by the Dart application
   FlutterWindowController* _windowController;
-
-  // A message channel for sending user settings to the flutter engine.
-  FlutterBasicMessageChannel* _settingsChannel;
 
   // A message channel for accessibility.
   FlutterBasicMessageChannel* _accessibilityChannel;
@@ -1169,12 +1165,14 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
   // TODO(jonahwilliams): https://github.com/flutter/flutter/issues/32015.
   NSString* brightness =
       [[NSUserDefaults standardUserDefaults] stringForKey:@"AppleInterfaceStyle"];
-  [_settingsChannel sendMessage:@{
-    @"platformBrightness" : [brightness isEqualToString:@"Dark"] ? @"dark" : @"light",
-    // TODO(jonahwilliams): https://github.com/flutter/flutter/issues/32006.
-    @"textScaleFactor" : @1.0,
-    @"alwaysUse24HourFormat" : @([FlutterHourFormat isAlwaysUse24HourFormat]),
-  }];
+  FlutterUserSettings settings = {};
+  settings.struct_size = sizeof(FlutterUserSettings);
+  settings.platform_brightness =
+      [brightness isEqualToString:@"Dark"] ? kFlutterBrightnessDark : kFlutterBrightnessLight;
+  // TODO(jonahwilliams): https://github.com/flutter/flutter/issues/32006.
+  settings.text_scale_factor = 1.0;
+  settings.always_use_24_hour_format = [FlutterHourFormat isAlwaysUse24HourFormat];
+  _embedderAPI.SetUserSettings(_engine, &settings);
 }
 
 - (void)sendInitialSettings {
@@ -1437,10 +1435,6 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
                                          delegate:self];
   [FlutterMenuPlugin registerWithRegistrar:[self registrarForPlugin:@"menu"]];
 
-  _settingsChannel =
-      [FlutterBasicMessageChannel messageChannelWithName:kFlutterSettingsChannel
-                                         binaryMessenger:self.binaryMessenger
-                                                   codec:[FlutterJSONMessageCodec sharedInstance]];
   _platformChannel =
       [FlutterMethodChannel methodChannelWithName:kFlutterPlatformChannel
                                   binaryMessenger:self.binaryMessenger

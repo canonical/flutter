@@ -4,21 +4,12 @@
 
 #include "flutter/shell/platform/windows/settings_plugin.h"
 
-#include "flutter/shell/platform/common/json_message_codec.h"
+#include "flutter/shell/platform/windows/flutter_windows_engine.h"
 #include "flutter/shell/platform/windows/system_utils.h"
 
 namespace flutter {
 
 namespace {
-constexpr char kChannelName[] = "flutter/settings";
-
-constexpr char kAlwaysUse24HourFormat[] = "alwaysUse24HourFormat";
-constexpr char kTextScaleFactor[] = "textScaleFactor";
-constexpr char kPlatformBrightness[] = "platformBrightness";
-
-constexpr char kPlatformBrightnessDark[] = "dark";
-constexpr char kPlatformBrightnessLight[] = "light";
-
 constexpr wchar_t kGetPreferredBrightnessRegKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
@@ -54,32 +45,24 @@ SettingsPlugin::PlatformBrightness GetThemeBrightness() {
 }
 }  // namespace
 
-SettingsPlugin::SettingsPlugin(BinaryMessenger* messenger,
+SettingsPlugin::SettingsPlugin(FlutterWindowsEngine* engine,
                                TaskRunner* task_runner)
-    : channel_(std::make_unique<BasicMessageChannel<rapidjson::Document>>(
-          messenger,
-          kChannelName,
-          &JsonMessageCodec::GetInstance())),
-      task_runner_(task_runner) {}
+    : engine_(engine), task_runner_(task_runner) {}
 
 SettingsPlugin::~SettingsPlugin() {
   StopWatching();
 }
 
 void SettingsPlugin::SendSettings() {
-  rapidjson::Document settings(rapidjson::kObjectType);
-  auto& allocator = settings.GetAllocator();
-  settings.AddMember(kAlwaysUse24HourFormat, GetAlwaysUse24HourFormat(),
-                     allocator);
-  settings.AddMember(kTextScaleFactor, GetTextScaleFactor(), allocator);
-
-  if (GetPreferredBrightness() == PlatformBrightness::kDark) {
-    settings.AddMember(kPlatformBrightness, kPlatformBrightnessDark, allocator);
-  } else {
-    settings.AddMember(kPlatformBrightness, kPlatformBrightnessLight,
-                       allocator);
-  }
-  channel_->Send(settings);
+  FlutterUserSettings settings = {};
+  settings.struct_size = sizeof(FlutterUserSettings);
+  settings.always_use_24_hour_format = GetAlwaysUse24HourFormat();
+  settings.text_scale_factor = GetTextScaleFactor();
+  settings.platform_brightness =
+      GetPreferredBrightness() == PlatformBrightness::kDark
+          ? kFlutterBrightnessDark
+          : kFlutterBrightnessLight;
+  engine_->SetUserSettings(settings);
 }
 
 void SettingsPlugin::StartWatching() {

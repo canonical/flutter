@@ -2359,7 +2359,7 @@ public class PlatformViewsControllerTest {
     when(engine.getRenderer()).thenReturn(new FlutterRenderer(jni));
     when(engine.getMouseCursorChannel()).thenReturn(mock(MouseCursorChannel.class));
     when(engine.getTextInputChannel()).thenReturn(mock(TextInputChannel.class));
-    when(engine.getSettingsChannel()).thenReturn(new SettingsChannel(executor));
+    when(engine.getSettingsChannel()).thenReturn(new SettingsChannel(executor, jni));
     when(engine.getScribeChannel()).thenReturn(mock(ScribeChannel.class));
     when(engine.getPlatformViewsController()).thenReturn(platformViewsController);
     when(engine.getPlatformViewsController2()).thenReturn(secondController);

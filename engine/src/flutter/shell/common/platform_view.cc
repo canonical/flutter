@@ -56,6 +56,10 @@ void PlatformView::SetAccessibilityFeatures(int32_t flags) {
   delegate_.OnPlatformViewSetAccessibilityFeatures(flags);
 }
 
+void PlatformView::SetUserSettings(const UserSettings& settings) {
+  delegate_.OnPlatformViewSetUserSettings(settings);
+}
+
 void PlatformView::SetViewportMetrics(int64_t view_id,
                                       const ViewportMetrics& metrics) {
   delegate_.OnPlatformViewSetViewportMetrics(view_id, metrics);

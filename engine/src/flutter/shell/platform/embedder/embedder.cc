@@ -5,6 +5,7 @@
 #define FML_USED_ON_EMBEDDER
 #define RAPIDJSON_HAS_STDSTRING 1
 
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -3303,6 +3304,50 @@ FlutterEngineResult FlutterEngineUpdateAccessibilityFeatures(
   return kSuccess;
 }
 
+FlutterEngineResult FlutterEngineSetUserSettings(
+    FLUTTER_API_SYMBOL(FlutterEngine) engine,
+    const FlutterUserSettings* settings) {
+  if (engine == nullptr) {
+    return LOG_EMBEDDER_ERROR(kInvalidArguments, "Invalid engine handle.");
+  }
+  if (settings == nullptr) {
+    return LOG_EMBEDDER_ERROR(kInvalidArguments,
+                              "User settings must not be null.");
+  }
+  if (!STRUCT_HAS_MEMBER(settings, platform_brightness)) {
+    return LOG_EMBEDDER_ERROR(kInvalidArguments,
+                              "The user settings struct has invalid size.");
+  }
+
+  flutter::UserSettings user_settings;
+  user_settings.text_scale_factor = settings->text_scale_factor;
+  if (!std::isfinite(user_settings.text_scale_factor) ||
+      user_settings.text_scale_factor <= 0.0) {
+    return LOG_EMBEDDER_ERROR(
+        kInvalidArguments,
+        "The text scale factor must be a finite value greater than zero.");
+  }
+  user_settings.always_use_24_hour_format = settings->always_use_24_hour_format;
+  switch (settings->platform_brightness) {
+    case kFlutterBrightnessDark:
+      user_settings.platform_brightness = flutter::Brightness::kDark;
+      break;
+    case kFlutterBrightnessLight:
+      user_settings.platform_brightness = flutter::Brightness::kLight;
+      break;
+    default:
+      return LOG_EMBEDDER_ERROR(kInvalidArguments,
+                                "Invalid platform brightness.");
+  }
+
+  if (!reinterpret_cast<flutter::EmbedderEngine*>(engine)->SetUserSettings(
+          user_settings)) {
+    return LOG_EMBEDDER_ERROR(kInternalInconsistency,
+                              "Could not set user settings.");
+  }
+  return kSuccess;
+}
+
 FlutterEngineResult FlutterEngineDispatchSemanticsAction(
     FLUTTER_API_SYMBOL(FlutterEngine) engine,
     uint64_t node_id,
@@ -3859,6 +3904,7 @@ FlutterEngineResult FlutterEngineGetProcAddresses(
   SET_PROC(AddView, FlutterEngineAddView);
   SET_PROC(RemoveView, FlutterEngineRemoveView);
   SET_PROC(SendViewFocusEvent, FlutterEngineSendViewFocusEvent);
+  SET_PROC(SetUserSettings, FlutterEngineSetUserSettings);
 #undef SET_PROC
 
   return kSuccess;

@@ -8,25 +8,22 @@
 
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/fl_engine_private.h"
-#include "flutter/shell/platform/linux/fl_settings_channel.h"
 
 struct _FlSettingsHandler {
   GObject parent_instance;
 
-  FlSettingsChannel* channel;
   GWeakRef engine;
   FlSettings* settings;
 };
 
 G_DEFINE_TYPE(FlSettingsHandler, fl_settings_handler, G_TYPE_OBJECT)
 
-static FlSettingsChannelPlatformBrightness to_platform_brightness(
-    FlColorScheme color_scheme) {
+static FlutterBrightness to_platform_brightness(FlColorScheme color_scheme) {
   switch (color_scheme) {
     case FL_COLOR_SCHEME_LIGHT:
-      return FL_SETTINGS_CHANNEL_PLATFORM_BRIGHTNESS_LIGHT;
+      return kFlutterBrightnessLight;
     case FL_COLOR_SCHEME_DARK:
-      return FL_SETTINGS_CHANNEL_PLATFORM_BRIGHTNESS_DARK;
+      return kFlutterBrightnessDark;
     default:
       g_assert_not_reached();
   }
@@ -34,16 +31,19 @@ static FlSettingsChannelPlatformBrightness to_platform_brightness(
 
 // Sends the current settings to the Flutter engine.
 static void update_settings(FlSettingsHandler* self) {
-  FlClockFormat clock_format = fl_settings_get_clock_format(self->settings);
-  FlColorScheme color_scheme = fl_settings_get_color_scheme(self->settings);
-  gdouble scaling_factor = fl_settings_get_text_scaling_factor(self->settings);
-
-  fl_settings_channel_send(self->channel, scaling_factor,
-                           clock_format == FL_CLOCK_FORMAT_24H,
-                           to_platform_brightness(color_scheme));
-
   g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
   if (engine != nullptr) {
+    FlClockFormat clock_format = fl_settings_get_clock_format(self->settings);
+    FlColorScheme color_scheme = fl_settings_get_color_scheme(self->settings);
+    FlutterUserSettings user_settings = {};
+    user_settings.struct_size = sizeof(FlutterUserSettings);
+    user_settings.text_scale_factor =
+        fl_settings_get_text_scaling_factor(self->settings);
+    user_settings.always_use_24_hour_format =
+        clock_format == FL_CLOCK_FORMAT_24H;
+    user_settings.platform_brightness = to_platform_brightness(color_scheme);
+    fl_engine_set_user_settings(engine, &user_settings);
+
     int32_t flags = 0;
     if (!fl_settings_get_enable_animations(self->settings)) {
       flags |= kFlutterAccessibilityFeatureDisableAnimations;
@@ -58,7 +58,6 @@ static void update_settings(FlSettingsHandler* self) {
 static void fl_settings_handler_dispose(GObject* object) {
   FlSettingsHandler* self = FL_SETTINGS_HANDLER(object);
 
-  g_clear_object(&self->channel);
   g_clear_object(&self->settings);
   g_weak_ref_clear(&self->engine);
 
@@ -78,9 +77,6 @@ FlSettingsHandler* fl_settings_handler_new(FlEngine* engine) {
       g_object_new(fl_settings_handler_get_type(), nullptr));
 
   g_weak_ref_init(&self->engine, engine);
-
-  FlBinaryMessenger* messenger = fl_engine_get_binary_messenger(engine);
-  self->channel = fl_settings_channel_new(messenger);
 
   return self;
 }

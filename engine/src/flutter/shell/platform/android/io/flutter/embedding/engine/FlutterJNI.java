@@ -978,6 +978,59 @@ public class FlutterJNI {
   private native void nativeSetAccessibilityFeatures(long nativeShellHolderId, int flags);
   // ------ End Accessibility Support ----
 
+  // ------ Start User Settings Support ----
+  /**
+   * Sets the user-configured system settings, such as the text scale factor and the brightness
+   * theme.
+   *
+   * @param textScaleFactor the system text scale factor.
+   * @param alwaysUse24HourFormat whether the system uses a 24-hour clock.
+   * @param platformBrightness the index of the brightness in the framework's {@code Brightness}
+   *     enum ({@code 0} for dark, {@code 1} for light).
+   * @param nativeSpellCheckServiceDefined whether a native spell check service is available.
+   * @param hasBrieflyShowPassword whether {@code brieflyShowPassword} is set.
+   * @param brieflyShowPassword whether the last typed character of a password is briefly shown.
+   * @param hasConfigurationId whether {@code configurationId} is set.
+   * @param configurationId the generation of the configuration that was sent, used to look up the
+   *     display metrics that apply to these settings.
+   */
+  @UiThread
+  public void setUserSettings(
+      float textScaleFactor,
+      boolean alwaysUse24HourFormat,
+      int platformBrightness,
+      boolean nativeSpellCheckServiceDefined,
+      boolean hasBrieflyShowPassword,
+      boolean brieflyShowPassword,
+      boolean hasConfigurationId,
+      int configurationId) {
+    ensureRunningOnMainThread();
+    if (isAttached()) {
+      nativeSetUserSettings(
+          nativeShellHolderId,
+          textScaleFactor,
+          alwaysUse24HourFormat,
+          platformBrightness,
+          nativeSpellCheckServiceDefined,
+          hasBrieflyShowPassword,
+          brieflyShowPassword,
+          hasConfigurationId,
+          configurationId);
+    }
+  }
+
+  private native void nativeSetUserSettings(
+      long nativeShellHolderId,
+      float textScaleFactor,
+      boolean alwaysUse24HourFormat,
+      int platformBrightness,
+      boolean nativeSpellCheckServiceDefined,
+      boolean hasBrieflyShowPassword,
+      boolean brieflyShowPassword,
+      boolean hasConfigurationId,
+      int configurationId);
+  // ------ End User Settings Support ----
+
   // ------ Start Texture Registration Support -----
   /**
    * Gives control of a {@link SurfaceTexture} to Flutter so that Flutter can display that texture

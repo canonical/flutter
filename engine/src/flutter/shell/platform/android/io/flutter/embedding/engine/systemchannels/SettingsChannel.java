@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.annotation.VisibleForTesting;
 import io.flutter.Log;
+import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.dart.DartExecutor;
 import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
@@ -21,6 +22,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+/**
+ * Sends user-configured system settings, such as the text scale factor and the brightness theme, to
+ * the framework.
+ *
+ * <p>When created with a {@link FlutterJNI} the settings are sent directly to the engine. The
+ * constructor that only takes a {@link DartExecutor} sends the settings on the {@code
+ * flutter/settings} platform channel, which is deprecated.
+ */
 public class SettingsChannel {
   private static final String TAG = "SettingsChannel";
 
@@ -35,10 +44,31 @@ public class SettingsChannel {
   // When hasNonlinearTextScalingSupport() returns false, this will not be initialized.
   @VisibleForTesting final ConfigurationQueue configurationQueue = new ConfigurationQueue();
 
+  // Must match the `Brightness` enum in dart:ui.
+  private static final int BRIGHTNESS_DARK = 0;
+  private static final int BRIGHTNESS_LIGHT = 1;
+
   @NonNull public final BasicMessageChannel<Object> channel;
 
+  @Nullable private final FlutterJNI flutterJNI;
+
+  /** Creates a {@code SettingsChannel} that sends the settings directly to the engine. */
+  public SettingsChannel(@NonNull DartExecutor dartExecutor, @NonNull FlutterJNI flutterJNI) {
+    this.channel = new BasicMessageChannel<>(dartExecutor, CHANNEL_NAME, JSONMessageCodec.INSTANCE);
+    this.flutterJNI = flutterJNI;
+  }
+
+  /**
+   * Creates a {@code SettingsChannel} that sends the settings on the {@code flutter/settings}
+   * platform channel.
+   *
+   * @deprecated The {@code flutter/settings} platform channel is deprecated, use {@link
+   *     #SettingsChannel(DartExecutor, FlutterJNI)} instead.
+   */
+  @Deprecated
   public SettingsChannel(@NonNull DartExecutor dartExecutor) {
     this.channel = new BasicMessageChannel<>(dartExecutor, CHANNEL_NAME, JSONMessageCodec.INSTANCE);
+    this.flutterJNI = null;
   }
 
   @SuppressLint("AnnotateVersionCheck")
@@ -62,6 +92,11 @@ public class SettingsChannel {
   public class MessageBuilder {
     @NonNull private Map<String, Object> message = new HashMap<>();
     @Nullable private DisplayMetrics displayMetrics;
+    private float textScaleFactor = 1.0f;
+    private boolean nativeSpellCheckServiceDefined = false;
+    @Nullable private Boolean brieflyShowPassword;
+    private boolean use24HourFormat = false;
+    @NonNull private PlatformBrightness platformBrightness = PlatformBrightness.light;
 
     MessageBuilder() {}
 
@@ -74,6 +109,7 @@ public class SettingsChannel {
     @NonNull
     public MessageBuilder setTextScaleFactor(float textScaleFactor) {
       message.put(TEXT_SCALE_FACTOR, textScaleFactor);
+      this.textScaleFactor = textScaleFactor;
       return this;
     }
 
@@ -81,24 +117,28 @@ public class SettingsChannel {
     public MessageBuilder setNativeSpellCheckServiceDefined(
         boolean nativeSpellCheckServiceDefined) {
       message.put(NATIVE_SPELL_CHECK_SERVICE_DEFINED, nativeSpellCheckServiceDefined);
+      this.nativeSpellCheckServiceDefined = nativeSpellCheckServiceDefined;
       return this;
     }
 
     @NonNull
     public MessageBuilder setBrieflyShowPassword(@NonNull boolean brieflyShowPassword) {
       message.put(BRIEFLY_SHOW_PASSWORD, brieflyShowPassword);
+      this.brieflyShowPassword = brieflyShowPassword;
       return this;
     }
 
     @NonNull
     public MessageBuilder setUse24HourFormat(boolean use24HourFormat) {
       message.put(ALWAYS_USE_24_HOUR_FORMAT, use24HourFormat);
+      this.use24HourFormat = use24HourFormat;
       return this;
     }
 
     @NonNull
     public MessageBuilder setPlatformBrightness(@NonNull PlatformBrightness brightness) {
       message.put(PLATFORM_BRIGHTNESS, brightness.name);
+      this.platformBrightness = brightness;
       return this;
     }
 
@@ -116,7 +156,11 @@ public class SettingsChannel {
               + message.get(PLATFORM_BRIGHTNESS));
       final DisplayMetrics metrics = this.displayMetrics;
       if (!hasNonlinearTextScalingSupport() || metrics == null) {
-        channel.send(message);
+        if (flutterJNI != null) {
+          setUserSettings(null);
+        } else {
+          channel.send(message);
+        }
         return;
       }
       final ConfigurationQueue.SentConfiguration sentConfiguration =
@@ -124,7 +168,26 @@ public class SettingsChannel {
       final BasicMessageChannel.Reply deleteCallback =
           configurationQueue.enqueueConfiguration(sentConfiguration);
       message.put(CONFIGURATION_ID, sentConfiguration.generationNumber);
-      channel.send(message, deleteCallback);
+      if (flutterJNI != null) {
+        // The engine never replied to messages on the flutter/settings channel, so
+        // deleteCallback was never invoked. Old configurations are removed by
+        // ConfigurationQueue.getConfiguration instead.
+        setUserSettings(sentConfiguration.generationNumber);
+      } else {
+        channel.send(message, deleteCallback);
+      }
+    }
+
+    private void setUserSettings(@Nullable Integer configurationId) {
+      flutterJNI.setUserSettings(
+          textScaleFactor,
+          use24HourFormat,
+          platformBrightness == PlatformBrightness.dark ? BRIGHTNESS_DARK : BRIGHTNESS_LIGHT,
+          nativeSpellCheckServiceDefined,
+          brieflyShowPassword != null,
+          brieflyShowPassword != null && brieflyShowPassword,
+          configurationId != null,
+          configurationId != null ? configurationId : 0);
     }
   }
 

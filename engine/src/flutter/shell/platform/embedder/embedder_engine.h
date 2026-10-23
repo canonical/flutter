@@ -68,6 +68,10 @@ class EmbedderEngine {
 
   bool SetAccessibilityFeatures(int32_t flags);
 
+  /// Sets the user-configured system settings. Returns false if the engine
+  /// is not running.
+  bool SetUserSettings(const flutter::UserSettings& settings);
+
   bool DispatchSemanticsAction(int64_t view_id,
                                int node_id,
                                flutter::SemanticsAction action,

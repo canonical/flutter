@@ -5,6 +5,9 @@
 #import <OCMock/OCMock.h>
 #import <XCTest/XCTest.h>
 
+#include <memory>
+#include <vector>
+
 #include "flutter/fml/platform/darwin/message_loop_darwin.h"
 #import "flutter/lib/ui/window/platform_configuration.h"
 #include "flutter/lib/ui/window/pointer_data.h"
@@ -1616,10 +1619,24 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
 
 #pragma mark - Platform Brightness
 
+// Stubs -[FlutterEngine setUserSettings:] on |engine| and returns a vector that collects a copy of
+// each settings value passed to it.
+- (std::shared_ptr<std::vector<flutter::UserSettings>>)recordUserSettingsForEngine:(id)engine {
+  auto calls = std::make_shared<std::vector<flutter::UserSettings>>();
+  flutter::UserSettings ignored;
+  OCMStub([engine setUserSettings:ignored])
+      .ignoringNonObjectArgs()
+      .andDo(^(NSInvocation* invocation) {
+        const flutter::UserSettings* settings = nullptr;
+        [invocation getArgument:&settings atIndex:2];
+        calls->push_back(*settings);
+      });
+  return calls;
+}
+
 - (void)testItReportsLightPlatformBrightnessByDefault {
   // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([self.mockEngine settingsChannel]).andReturn(settingsChannel);
+  auto calls = [self recordUserSettingsForEngine:self.mockEngine];
 
   FlutterViewController* vc = [[FlutterViewController alloc] initWithEngine:self.mockEngine
                                                                     nibName:nil
@@ -1629,20 +1646,15 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
   [vc traitCollectionDidChange:nil];
 
   // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformBrightness"] isEqualToString:@"light"];
-                             }]]);
-
-  // Clean up mocks
-  [settingsChannel stopMocking];
+  XCTAssertFalse(calls->empty());
+  XCTAssertTrue(calls->back().platform_brightness == flutter::Brightness::kLight);
 }
 
 - (void)testItReportsPlatformBrightnessWhenViewWillAppear {
   // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
   FlutterEngine* mockEngine = OCMPartialMock([[FlutterEngine alloc] init]);
   [mockEngine createShell:@"" libraryURI:@"" initialRoute:nil];
-  OCMStub([mockEngine settingsChannel]).andReturn(settingsChannel);
+  auto calls = [self recordUserSettingsForEngine:mockEngine];
   FlutterViewController* vc = [[FlutterViewController alloc] initWithEngine:mockEngine
                                                                     nibName:nil
                                                                      bundle:nil];
@@ -1651,18 +1663,13 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
   [vc viewWillAppear:false];
 
   // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformBrightness"] isEqualToString:@"light"];
-                             }]]);
-
-  // Clean up mocks
-  [settingsChannel stopMocking];
+  XCTAssertFalse(calls->empty());
+  XCTAssertTrue(calls->back().platform_brightness == flutter::Brightness::kLight);
 }
 
 - (void)testItReportsDarkPlatformBrightnessWhenTraitCollectionRequestsIt {
   // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([self.mockEngine settingsChannel]).andReturn(settingsChannel);
+  auto calls = [self recordUserSettingsForEngine:self.mockEngine];
   id mockTraitCollection =
       [self fakeTraitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark];
 
@@ -1679,13 +1686,11 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
   [partialMockVC traitCollectionDidChange:nil];
 
   // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformBrightness"] isEqualToString:@"dark"];
-                             }]]);
+  XCTAssertFalse(calls->empty());
+  XCTAssertTrue(calls->back().platform_brightness == flutter::Brightness::kDark);
 
   // Clean up mocks
   [partialMockVC stopMocking];
-  [settingsChannel stopMocking];
   [mockTraitCollection stopMocking];
 }
 
@@ -1727,109 +1732,52 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
   [mockFlutterView stopMocking];
 }
 
-#pragma mark - Platform Contrast
+#pragma mark - User Settings
 
-- (void)testItReportsNormalPlatformContrastByDefault {
+- (void)testItReportsUserSettings {
   // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([self.mockEngine settingsChannel]).andReturn(settingsChannel);
-
+  auto calls = [self recordUserSettingsForEngine:self.mockEngine];
   FlutterViewController* vc = [[FlutterViewController alloc] initWithEngine:self.mockEngine
                                                                     nibName:nil
                                                                      bundle:nil];
 
   // Exercise behavior under test.
-  [vc traitCollectionDidChange:nil];
+  [vc onUserSettingsChanged:nil];
 
   // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformContrast"] isEqualToString:@"normal"];
-                             }]]);
-
-  // Clean up mocks
-  [settingsChannel stopMocking];
-}
-
-- (void)testItReportsPlatformContrastWhenViewWillAppear {
-  FlutterEngine* mockEngine = OCMPartialMock([[FlutterEngine alloc] init]);
-  [mockEngine createShell:@"" libraryURI:@"" initialRoute:nil];
-
-  // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([mockEngine settingsChannel]).andReturn(settingsChannel);
-  FlutterViewController* vc = [[FlutterViewController alloc] initWithEngine:mockEngine
-                                                                    nibName:nil
-                                                                     bundle:nil];
-
-  // Exercise behavior under test.
-  [vc viewWillAppear:false];
-
-  // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformContrast"] isEqualToString:@"normal"];
-                             }]]);
-
-  // Clean up mocks
-  [settingsChannel stopMocking];
-}
-
-- (void)testItReportsHighContrastWhenTraitCollectionRequestsIt {
-  // Setup test.
-  id settingsChannel = OCMClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([self.mockEngine settingsChannel]).andReturn(settingsChannel);
-
-  id mockTraitCollection = [self fakeTraitCollectionWithContrast:UIAccessibilityContrastHigh];
-
-  // We partially mock the real FlutterViewController to act as the OS and report
-  // the UITraitCollection of our choice. Mocking the object under test is not
-  // desirable, but given that the OS does not offer a DI approach to providing
-  // our own UITraitCollection, this seems to be the least bad option.
-  id partialMockVC = OCMPartialMock([[FlutterViewController alloc] initWithEngine:self.mockEngine
-                                                                          nibName:nil
-                                                                           bundle:nil]);
-  OCMStub([partialMockVC traitCollection]).andReturn(mockTraitCollection);
-
-  // Exercise behavior under test.
-  [partialMockVC traitCollectionDidChange:mockTraitCollection];
-
-  // Verify behavior.
-  OCMVerify([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"platformContrast"] isEqualToString:@"high"];
-                             }]]);
-
-  // Clean up mocks
-  [partialMockVC stopMocking];
-  [settingsChannel stopMocking];
-  [mockTraitCollection stopMocking];
+  XCTAssertEqual(calls->size(), 1u);
+  XCTAssertGreaterThan(calls->back().text_scale_factor, 0.0);
+  XCTAssertTrue(calls->back().native_spell_check_service_defined);
+  BOOL supportsSystemContextMenu = NO;
+  if (@available(iOS 16.0, *)) {
+    supportsSystemContextMenu = YES;
+  }
+  XCTAssertEqual(calls->back().supports_showing_system_context_menu, supportsSystemContextMenu);
+  XCTAssertFalse(calls->back().briefly_show_password.has_value());
+  XCTAssertFalse(calls->back().configuration_id.has_value());
 }
 
 - (void)testItReportsAlwaysUsed24HourFormat {
   // Setup test.
-  id settingsChannel = OCMStrictClassMock([FlutterBasicMessageChannel class]);
-  OCMStub([self.mockEngine settingsChannel]).andReturn(settingsChannel);
+  auto calls = [self recordUserSettingsForEngine:self.mockEngine];
   FlutterViewController* vc = [[FlutterViewController alloc] initWithEngine:self.mockEngine
                                                                     nibName:nil
                                                                      bundle:nil];
   // Test the YES case.
   id mockHourFormat = OCMClassMock([FlutterHourFormat class]);
   OCMStub([mockHourFormat isAlwaysUse24HourFormat]).andReturn(YES);
-  OCMExpect([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"alwaysUse24HourFormat"] isEqual:@(YES)];
-                             }]]);
   [vc onUserSettingsChanged:nil];
   [mockHourFormat stopMocking];
+  XCTAssertEqual(calls->size(), 1u);
+  XCTAssertTrue(calls->back().always_use_24_hour_format);
 
   // Test the NO case.
   mockHourFormat = OCMClassMock([FlutterHourFormat class]);
   OCMStub([mockHourFormat isAlwaysUse24HourFormat]).andReturn(NO);
-  OCMExpect([settingsChannel sendMessage:[OCMArg checkWithBlock:^BOOL(id message) {
-                               return [message[@"alwaysUse24HourFormat"] isEqual:@(NO)];
-                             }]]);
   [vc onUserSettingsChanged:nil];
   [mockHourFormat stopMocking];
-
-  // Clean up mocks.
-  [settingsChannel stopMocking];
+  XCTAssertEqual(calls->size(), 2u);
+  XCTAssertFalse(calls->back().always_use_24_hour_format);
 }
 
 - (void)testOnAccessibilityStatusChangedCallsEnableSemanticsWithFlags {
@@ -2085,14 +2033,6 @@ extern NSNotificationName const FlutterViewControllerWillDealloc;
   [deviceMock stopMocking];
   [mockApplication stopMocking];
   XCTAssertNil(weakPreferences);
-}
-
-// Creates a mocked UITraitCollection with nil values for everything except accessibilityContrast,
-// which is set to the given "contrast".
-- (UITraitCollection*)fakeTraitCollectionWithContrast:(UIAccessibilityContrast)contrast {
-  id mockTraitCollection = OCMClassMock([UITraitCollection class]);
-  OCMStub([mockTraitCollection accessibilityContrast]).andReturn(contrast);
-  return mockTraitCollection;
 }
 
 - (void)testWillDeallocNotification {

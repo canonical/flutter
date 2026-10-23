@@ -18,6 +18,7 @@
 #include "flutter/lib/ui/semantics/custom_accessibility_action.h"
 #include "flutter/lib/ui/semantics/semantics_node.h"
 #include "flutter/lib/ui/window/key_data_packet.h"
+#include "flutter/lib/ui/window/platform_configuration.h"
 #include "flutter/lib/ui/window/platform_message.h"
 #include "flutter/lib/ui/window/pointer_data_packet.h"
 #include "flutter/lib/ui/window/viewport_metrics.h"
@@ -244,6 +245,16 @@ class PlatformView {
     /// @param[in]  flags  The features to enable in the accessibility tree.
     ///
     virtual void OnPlatformViewSetAccessibilityFeatures(int32_t flags) = 0;
+
+    //--------------------------------------------------------------------------
+    /// @brief      Notifies the delegate that the embedder has reported new
+    ///             user-configured system settings, such as the text scale
+    ///             factor and the brightness theme.
+    ///
+    /// @param[in]  settings  The user settings.
+    ///
+    virtual void OnPlatformViewSetUserSettings(
+        const UserSettings& settings) = 0;
 
     //--------------------------------------------------------------------------
     /// @brief      Notifies the delegate that the embedder has specified a
@@ -523,6 +534,16 @@ class PlatformView {
   /// @param[in]  flags  The features to enable in the accessibility tree.
   ///
   virtual void SetAccessibilityFeatures(int32_t flags);
+
+  //----------------------------------------------------------------------------
+  /// @brief      Used by embedders to report user-configured system settings,
+  ///             such as the text scale factor and the brightness theme, to
+  ///             the framework. Settings reported before the isolate is
+  ///             running are delivered when it starts.
+  ///
+  /// @param[in]  settings  The user settings.
+  ///
+  void SetUserSettings(const UserSettings& settings);
 
   //----------------------------------------------------------------------------
   /// @brief      Used by the framework to tell the embedder to apply the

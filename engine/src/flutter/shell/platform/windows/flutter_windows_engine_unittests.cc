@@ -259,14 +259,12 @@ TEST_F(FlutterWindowsEngineTest, RunDoesExpectedInitialization) {
       }));
 
   // And it should send initial settings info.
-  bool settings_message_sent = false;
-  modifier.embedder_api().SendPlatformMessage = MOCK_ENGINE_PROC(
-      SendPlatformMessage,
-      ([&settings_message_sent](auto engine, auto message) {
-        if (std::string(message->channel) == std::string("flutter/settings")) {
-          settings_message_sent = true;
-        }
-
+  bool set_user_settings_called = false;
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([&set_user_settings_called](
+                            auto engine, const FlutterUserSettings* settings) {
+        set_user_settings_called = true;
+        EXPECT_NE(settings, nullptr);
         return kSuccess;
       }));
 
@@ -292,7 +290,7 @@ TEST_F(FlutterWindowsEngineTest, RunDoesExpectedInitialization) {
 
   EXPECT_TRUE(run_called);
   EXPECT_TRUE(update_locales_called);
-  EXPECT_TRUE(settings_message_sent);
+  EXPECT_TRUE(set_user_settings_called);
   EXPECT_TRUE(notify_display_update_called);
 
   // Ensure that deallocation doesn't call the actual Shutdown with the bogus
@@ -360,6 +358,8 @@ TEST_F(FlutterWindowsEngineTest, RunSkiaWithoutANGLEUsesSoftware) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   // Stub out UpdateLocales and SendPlatformMessage as we don't have a fully
   // initialized engine instance.
@@ -437,6 +437,8 @@ TEST_F(FlutterWindowsEngineTest, RunLoadsAotDataWithExpectedSourceType) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
                          size_t locales_count) { return kSuccess; }));
@@ -486,6 +488,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithoutANGLEOnImpellerFailsToStart) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   // Stub out UpdateLocales and SendPlatformMessage as we don't have a fully
   // initialized engine instance.
@@ -520,6 +524,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithDefaultEnablesImpeller) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -582,6 +588,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithProjectFlagEnableImpeller) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -640,6 +648,8 @@ std::vector<std::string> RunImpellerWithSurfaceOrigin(
   modifier.embedder_api().UpdateAccessibilityFeatures =
       MOCK_ENGINE_PROC(UpdateAccessibilityFeatures,
                        ([](auto engine, auto flags) { return kSuccess; }));
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales,
       ([](auto engine, auto locales, auto locales_count) { return kSuccess; }));
@@ -718,6 +728,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithProjectFlagEnableFlutterGpu) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -772,6 +784,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithoutProjectFlagEnableFlutterGpu) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -827,6 +841,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithProjectFlagDisableImpeller) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -879,6 +895,8 @@ TEST_F(FlutterWindowsEngineTest, RunWithCommandLineDisableImpeller) {
       UpdateAccessibilityFeatures,
       [](FLUTTER_API_SYMBOL(FlutterEngine) engine,
          FlutterAccessibilityFeature flags) { return kSuccess; });
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().UpdateLocales = MOCK_ENGINE_PROC(
       UpdateLocales, ([](auto engine, const FlutterLocale** locales,
@@ -1229,6 +1247,8 @@ TEST_F(FlutterWindowsEngineTest, UpdateHighContrastFeature) {
         engine_flags = flags;
         return kSuccess;
       }));
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
   modifier.embedder_api().SendPlatformMessage = MOCK_ENGINE_PROC(
       SendPlatformMessage,
       [](auto engine, const auto message) { return kSuccess; });

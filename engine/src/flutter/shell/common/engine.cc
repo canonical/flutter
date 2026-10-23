@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +18,8 @@
 #include "flutter/lib/ui/text/font_collection.h"
 #include "flutter/shell/common/animator.h"
 #include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 namespace flutter {
 
@@ -450,11 +453,66 @@ bool Engine::HandleLocalizationPlatformMessage(PlatformMessage* message) {
   return false;
 }
 
+// Deprecated: Embedders should use |PlatformView::SetUserSettings|
+// (|FlutterEngineSetUserSettings| in the embedder API) instead of sending
+// messages on the flutter/settings channel.
+// TODO(robert-ancell): Remove once embedders have migrated.
 void Engine::HandleSettingsPlatformMessage(PlatformMessage* message) {
+  static std::once_flag deprecation_warning;
+  std::call_once(deprecation_warning, []() {
+    // Logged as an error as warnings are hidden once the engine is running.
+    FML_LOG(ERROR) << "Sending messages on the " << kSettingsChannel
+                   << " channel is deprecated, use "
+                      "FlutterEngineSetUserSettings in the embedder API "
+                      "instead.";
+  });
+
+  // The JSON is passed on unchanged, as it is the representation the
+  // framework receives from SetUserSettings. This keeps any keys that
+  // UserSettings does not model working for embedders that still use the
+  // channel.
   const auto& data = message->data();
   std::string jsonData(reinterpret_cast<const char*>(data.GetMapping()),
                        data.GetSize());
-  if (runtime_controller_->SetUserSettingsData(jsonData)) {
+  SetUserSettingsData(jsonData);
+}
+
+void Engine::SetUserSettings(const UserSettings& settings) {
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  writer.StartObject();
+  writer.Key("textScaleFactor");
+  writer.Double(settings.text_scale_factor);
+  writer.Key("alwaysUse24HourFormat");
+  writer.Bool(settings.always_use_24_hour_format);
+  writer.Key("platformBrightness");
+  switch (settings.platform_brightness) {
+    case Brightness::kDark:
+      writer.String("dark");
+      break;
+    case Brightness::kLight:
+      writer.String("light");
+      break;
+  }
+  writer.Key("nativeSpellCheckServiceDefined");
+  writer.Bool(settings.native_spell_check_service_defined);
+  writer.Key("supportsShowingSystemContextMenu");
+  writer.Bool(settings.supports_showing_system_context_menu);
+  if (settings.briefly_show_password.has_value()) {
+    writer.Key("brieflyShowPassword");
+    writer.Bool(settings.briefly_show_password.value());
+  }
+  if (settings.configuration_id.has_value()) {
+    writer.Key("configurationId");
+    writer.Int(settings.configuration_id.value());
+  }
+  writer.EndObject();
+
+  SetUserSettingsData(std::string(buffer.GetString(), buffer.GetSize()));
+}
+
+void Engine::SetUserSettingsData(const std::string& data) {
+  if (runtime_controller_->SetUserSettingsData(data)) {
     ScheduleFrame();
   }
 }

@@ -133,6 +133,8 @@ std::unique_ptr<FlutterWindowsEngine> GetTestEngine(
       UpdateAccessibilityFeatures,
       ([](FLUTTER_API_SYMBOL(FlutterEngine) engine,
           FlutterAccessibilityFeature flags) { return kSuccess; }));
+  modifier.embedder_api().SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings, ([](auto engine, auto settings) { return kSuccess; }));
 
   modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
       PostRenderThreadTask, ([](auto engine, auto callback, auto context) {

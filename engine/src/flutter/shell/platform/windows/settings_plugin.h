@@ -10,13 +10,12 @@
 #include <memory>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/common/client_wrapper/include/flutter/basic_message_channel.h"
-#include "flutter/shell/platform/common/client_wrapper/include/flutter/binary_messenger.h"
 #include "flutter/shell/platform/windows/event_watcher.h"
 #include "flutter/shell/platform/windows/task_runner.h"
-#include "rapidjson/document.h"
 
 namespace flutter {
+
+class FlutterWindowsEngine;
 
 // Abstract settings plugin.
 //
@@ -26,7 +25,8 @@ class SettingsPlugin {
  public:
   enum struct PlatformBrightness { kDark, kLight };
 
-  explicit SettingsPlugin(BinaryMessenger* messenger, TaskRunner* task_runner);
+  explicit SettingsPlugin(FlutterWindowsEngine* engine,
+                          TaskRunner* task_runner);
 
   virtual ~SettingsPlugin();
 
@@ -62,7 +62,7 @@ class SettingsPlugin {
   bool is_high_contrast_ = false;
 
  private:
-  std::unique_ptr<BasicMessageChannel<rapidjson::Document>> channel_;
+  FlutterWindowsEngine* engine_;
 
   HKEY preferred_brightness_reg_hkey_ = nullptr;
   HKEY text_scale_factor_reg_hkey_ = nullptr;

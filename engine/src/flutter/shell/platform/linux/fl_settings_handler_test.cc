@@ -36,108 +36,87 @@ class FlSettingsHandlerTest : public flutter::testing::LinuxTest {
   ::testing::NiceMock<flutter::testing::MockSettings> settings;
 };
 
+// MOCK_ENGINE_PROC is leaky by design
+// NOLINTBEGIN(clang-analyzer-core.StackAddressEscape)
 TEST_F(FlSettingsHandlerTest, AlwaysUse24HourFormat) {
+  StartEngine();
+
+  std::vector<FlutterUserSettings> calls;
+  fl_engine_get_embedder_api(engine)->SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings,
+      ([&calls](auto engine, const FlutterUserSettings* settings) {
+        calls.push_back(*settings);
+        return kSuccess;
+      }));
+
   EXPECT_CALL(settings, fl_settings_get_clock_format(
                             ::testing::Eq<FlSettings*>(settings)))
       .WillOnce(::testing::Return(FL_CLOCK_FORMAT_12H))
       .WillOnce(::testing::Return(FL_CLOCK_FORMAT_24H));
 
-  gboolean called = FALSE;
-  fl_mock_binary_messenger_set_json_message_channel(
-      messenger, "flutter/settings",
-      [](FlMockBinaryMessenger* messenger, GTask* task, FlValue* message,
-         gpointer user_data) {
-        gboolean* called = static_cast<gboolean*>(user_data);
-        *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value =
-            fl_value_lookup_string(message, "alwaysUse24HourFormat");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_BOOL);
-        EXPECT_FALSE(fl_value_get_bool(value));
-
-        return fl_value_new_null();
-      },
-      &called);
   fl_settings_handler_start(handler, settings);
-  EXPECT_TRUE(called);
+  ASSERT_THAT(calls, ::testing::SizeIs(1));
+  EXPECT_EQ(calls.back().struct_size, sizeof(FlutterUserSettings));
+  EXPECT_FALSE(calls.back().always_use_24_hour_format);
 
-  called = FALSE;
-  fl_mock_binary_messenger_set_json_message_channel(
-      messenger, "flutter/settings",
-      [](FlMockBinaryMessenger* messenger, GTask* task, FlValue* message,
-         gpointer user_data) {
-        gboolean* called = static_cast<gboolean*>(user_data);
-        *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value =
-            fl_value_lookup_string(message, "alwaysUse24HourFormat");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_BOOL);
-        EXPECT_TRUE(fl_value_get_bool(value));
-
-        return fl_value_new_null();
-      },
-      &called);
   fl_settings_emit_changed(settings);
-  EXPECT_TRUE(called);
+  ASSERT_THAT(calls, ::testing::SizeIs(2));
+  EXPECT_TRUE(calls.back().always_use_24_hour_format);
 }
 
 TEST_F(FlSettingsHandlerTest, PlatformBrightness) {
+  StartEngine();
+
+  std::vector<FlutterUserSettings> calls;
+  fl_engine_get_embedder_api(engine)->SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings,
+      ([&calls](auto engine, const FlutterUserSettings* settings) {
+        calls.push_back(*settings);
+        return kSuccess;
+      }));
+
   EXPECT_CALL(settings, fl_settings_get_color_scheme(
                             ::testing::Eq<FlSettings*>(settings)))
       .WillOnce(::testing::Return(FL_COLOR_SCHEME_LIGHT))
       .WillOnce(::testing::Return(FL_COLOR_SCHEME_DARK));
 
-  gboolean called = FALSE;
-  fl_mock_binary_messenger_set_json_message_channel(
-      messenger, "flutter/settings",
-      [](FlMockBinaryMessenger* messenger, GTask* task, FlValue* message,
-         gpointer user_data) {
-        gboolean* called = static_cast<gboolean*>(user_data);
-        *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value = fl_value_lookup_string(message, "platformBrightness");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_STRING);
-        EXPECT_STREQ(fl_value_get_string(value), "light");
-
-        return fl_value_new_null();
-      },
-      &called);
   fl_settings_handler_start(handler, settings);
-  EXPECT_TRUE(called);
+  ASSERT_THAT(calls, ::testing::SizeIs(1));
+  EXPECT_EQ(calls.back().platform_brightness, kFlutterBrightnessLight);
 
-  called = FALSE;
-  fl_mock_binary_messenger_set_json_message_channel(
-      messenger, "flutter/settings",
-      [](FlMockBinaryMessenger* messenger, GTask* task, FlValue* message,
-         gpointer user_data) {
-        gboolean* called = static_cast<gboolean*>(user_data);
-        *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value = fl_value_lookup_string(message, "platformBrightness");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_STRING);
-        EXPECT_STREQ(fl_value_get_string(value), "dark");
-
-        return fl_value_new_null();
-      },
-      &called);
   fl_settings_emit_changed(settings);
-  EXPECT_TRUE(called);
+  ASSERT_THAT(calls, ::testing::SizeIs(2));
+  EXPECT_EQ(calls.back().platform_brightness, kFlutterBrightnessDark);
 }
 
 TEST_F(FlSettingsHandlerTest, TextScaleFactor) {
+  StartEngine();
+
+  std::vector<FlutterUserSettings> calls;
+  fl_engine_get_embedder_api(engine)->SetUserSettings = MOCK_ENGINE_PROC(
+      SetUserSettings,
+      ([&calls](auto engine, const FlutterUserSettings* settings) {
+        calls.push_back(*settings);
+        return kSuccess;
+      }));
+
   EXPECT_CALL(settings, fl_settings_get_text_scaling_factor(
                             ::testing::Eq<FlSettings*>(settings)))
       .WillOnce(::testing::Return(1.0))
       .WillOnce(::testing::Return(2.0));
 
+  fl_settings_handler_start(handler, settings);
+  ASSERT_THAT(calls, ::testing::SizeIs(1));
+  EXPECT_EQ(calls.back().text_scale_factor, 1.0);
+
+  fl_settings_emit_changed(settings);
+  ASSERT_THAT(calls, ::testing::SizeIs(2));
+  EXPECT_EQ(calls.back().text_scale_factor, 2.0);
+}
+
+TEST_F(FlSettingsHandlerTest, DoesNotSendOnSettingsChannel) {
+  StartEngine();
+
   gboolean called = FALSE;
   fl_mock_binary_messenger_set_json_message_channel(
       messenger, "flutter/settings",
@@ -145,42 +124,15 @@ TEST_F(FlSettingsHandlerTest, TextScaleFactor) {
          gpointer user_data) {
         gboolean* called = static_cast<gboolean*>(user_data);
         *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value = fl_value_lookup_string(message, "textScaleFactor");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_FLOAT);
-        EXPECT_EQ(fl_value_get_float(value), 1.0);
-
         return fl_value_new_null();
       },
       &called);
+
   fl_settings_handler_start(handler, settings);
-  EXPECT_TRUE(called);
-
-  called = FALSE;
-  fl_mock_binary_messenger_set_json_message_channel(
-      messenger, "flutter/settings",
-      [](FlMockBinaryMessenger* messenger, GTask* task, FlValue* message,
-         gpointer user_data) {
-        gboolean* called = static_cast<gboolean*>(user_data);
-        *called = TRUE;
-
-        EXPECT_EQ(fl_value_get_type(message), FL_VALUE_TYPE_MAP);
-        FlValue* value = fl_value_lookup_string(message, "textScaleFactor");
-        EXPECT_NE(value, nullptr);
-        EXPECT_EQ(fl_value_get_type(value), FL_VALUE_TYPE_FLOAT);
-        EXPECT_EQ(fl_value_get_float(value), 2.0);
-
-        return fl_value_new_null();
-      },
-      &called);
   fl_settings_emit_changed(settings);
-  EXPECT_TRUE(called);
+  EXPECT_FALSE(called);
 }
 
-// MOCK_ENGINE_PROC is leaky by design
-// NOLINTBEGIN(clang-analyzer-core.StackAddressEscape)
 TEST_F(FlSettingsHandlerTest, AccessibilityFeatures) {
   StartEngine();
 

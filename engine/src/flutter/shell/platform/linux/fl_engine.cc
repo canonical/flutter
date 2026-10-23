@@ -1620,6 +1620,19 @@ void fl_engine_update_accessibility_features(FlEngine* self, int32_t flags) {
   }
 }
 
+void fl_engine_set_user_settings(FlEngine* self,
+                                 const FlutterUserSettings* settings) {
+  g_return_if_fail(FL_IS_ENGINE(self));
+
+  if (self->engine == nullptr) {
+    return;
+  }
+
+  if (self->embedder_api.SetUserSettings(self->engine, settings) != kSuccess) {
+    g_warning("Failed to set user settings");
+  }
+}
+
 void fl_engine_request_app_exit(FlEngine* self) {
   g_return_if_fail(FL_IS_ENGINE(self));
   fl_platform_handler_request_app_exit(self->platform_handler);

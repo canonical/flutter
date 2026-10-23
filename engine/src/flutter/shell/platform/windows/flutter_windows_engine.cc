@@ -271,8 +271,7 @@ FlutterWindowsEngine::FlutterWindowsEngine(
   platform_handler_ =
       std::make_unique<PlatformHandler>(messenger_wrapper_.get(), this);
   window_manager_ = std::make_unique<WindowManager>(this);
-  settings_plugin_ = std::make_unique<SettingsPlugin>(messenger_wrapper_.get(),
-                                                      task_runner_.get());
+  settings_plugin_ = std::make_unique<SettingsPlugin>(this, task_runner_.get());
 }
 
 FlutterWindowsEngine::~FlutterWindowsEngine() {
@@ -1093,6 +1092,11 @@ std::string FlutterWindowsEngine::GetExecutableName() const {
     return executable_path.substr(last_separator + 1);
   }
   return "Flutter";
+}
+
+void FlutterWindowsEngine::SetUserSettings(
+    const FlutterUserSettings& settings) {
+  embedder_api_.SetUserSettings(engine_, &settings);
 }
 
 void FlutterWindowsEngine::UpdateAccessibilityFeatures() {

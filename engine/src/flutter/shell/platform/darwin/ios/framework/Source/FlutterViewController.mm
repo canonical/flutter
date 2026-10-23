@@ -1759,14 +1759,13 @@ static flutter::PointerData::DeviceKind DeviceKindFromTouchType(UITouch* touch) 
 }
 
 - (void)onUserSettingsChanged:(NSNotification*)notification {
-  [self.engine.settingsChannel sendMessage:@{
-    @"textScaleFactor" : @(self.textScaleFactor),
-    @"alwaysUse24HourFormat" : @(FlutterHourFormat.isAlwaysUse24HourFormat),
-    @"platformBrightness" : self.brightnessMode,
-    @"platformContrast" : self.contrastMode,
-    @"nativeSpellCheckServiceDefined" : @YES,
-    @"supportsShowingSystemContextMenu" : @(self.supportsShowingSystemContextMenu)
-  }];
+  flutter::UserSettings settings;
+  settings.text_scale_factor = self.textScaleFactor;
+  settings.always_use_24_hour_format = FlutterHourFormat.isAlwaysUse24HourFormat;
+  settings.platform_brightness = self.platformBrightness;
+  settings.native_spell_check_service_defined = true;
+  settings.supports_showing_system_context_menu = self.supportsShowingSystemContextMenu;
+  [self.engine setUserSettings:settings];
 }
 
 - (CGFloat)textScaleFactor {
@@ -1836,29 +1835,14 @@ static flutter::PointerData::DeviceKind DeviceKindFromTouchType(UITouch* touch) 
   }
 }
 
-// The brightness mode of the platform, e.g., light or dark, expressed as a string that
-// is understood by the Flutter framework. See the settings
-// system channel for more information.
-- (NSString*)brightnessMode {
+// The brightness mode of the platform, e.g., light or dark.
+- (flutter::Brightness)platformBrightness {
   UIUserInterfaceStyle style = self.traitCollection.userInterfaceStyle;
 
   if (style == UIUserInterfaceStyleDark) {
-    return @"dark";
+    return flutter::Brightness::kDark;
   } else {
-    return @"light";
-  }
-}
-
-// The contrast mode of the platform, e.g., normal or high, expressed as a string that is
-// understood by the Flutter framework. See the settings system channel for more
-// information.
-- (NSString*)contrastMode {
-  UIAccessibilityContrast contrast = self.traitCollection.accessibilityContrast;
-
-  if (contrast == UIAccessibilityContrastHigh) {
-    return @"high";
-  } else {
-    return @"normal";
+    return flutter::Brightness::kLight;
   }
 }
 

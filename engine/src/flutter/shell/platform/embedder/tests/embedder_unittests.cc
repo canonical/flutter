@@ -4,6 +4,7 @@
 
 #define FML_USED_ON_EMBEDDER
 
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "flutter/common/constants.h"
 #include "flutter/flow/raster_cache.h"
 #include "flutter/fml/file.h"
+#include "flutter/fml/logging.h"
 #include "flutter/fml/make_copyable.h"
 #include "flutter/fml/mapping.h"
 #include "flutter/fml/message_loop.h"
@@ -2464,6 +2466,155 @@ TEST_F(EmbedderTest, CanUpdateLocales) {
       kSuccess);
 
   check_latch.Wait();
+}
+
+TEST_F(EmbedderTest, CanSetUserSettings) {
+  auto& context = GetEmbedderContext<EmbedderTestContextSoftware>();
+  EmbedderConfigBuilder builder(context);
+  builder.SetSurface(DlISize(1, 1));
+  builder.SetDartEntrypoint("can_receive_user_settings");
+  fml::AutoResetWaitableEvent ready;
+  context.AddFfiNativeCallback(
+      "SignalNativeTest", CREATE_FFI_LAMBDA([&ready]() { ready.Signal(); }));
+
+  fml::AutoResetWaitableEvent message_latch;
+  std::string message;
+  context.AddFfiNativeCallback(
+      "SignalNativeMessage", CREATE_FFI_LAMBDA([&](Dart_Handle message_handle) {
+        message = tonic::DartConverter<std::string>::FromDart(message_handle);
+        message_latch.Signal();
+      }));
+
+  auto engine = builder.LaunchEngine();
+  ASSERT_TRUE(engine.is_valid());
+
+  // Wait for the application to attach the callback.
+  ready.Wait();
+
+  FlutterUserSettings settings = {};
+  settings.struct_size = sizeof(FlutterUserSettings);
+  settings.text_scale_factor = 1.5;
+  settings.always_use_24_hour_format = true;
+  settings.platform_brightness = kFlutterBrightnessDark;
+  ASSERT_EQ(FlutterEngineSetUserSettings(engine.get(), &settings), kSuccess);
+  message_latch.Wait();
+  EXPECT_EQ(message, "1.5,true,Brightness.dark");
+
+  settings.text_scale_factor = 2.0;
+  settings.always_use_24_hour_format = false;
+  settings.platform_brightness = kFlutterBrightnessLight;
+  ASSERT_EQ(FlutterEngineSetUserSettings(engine.get(), &settings), kSuccess);
+  message_latch.Wait();
+  EXPECT_EQ(message, "2.0,false,Brightness.light");
+}
+
+TEST_F(EmbedderTest, SetUserSettingsRejectsInvalidArguments) {
+  auto& context = GetEmbedderContext<EmbedderTestContextSoftware>();
+  EmbedderConfigBuilder builder(context);
+  builder.SetSurface(DlISize(1, 1));
+  auto engine = builder.LaunchEngine();
+  ASSERT_TRUE(engine.is_valid());
+
+  FlutterUserSettings valid = {};
+  valid.struct_size = sizeof(FlutterUserSettings);
+  valid.text_scale_factor = 1.0;
+  valid.always_use_24_hour_format = false;
+  valid.platform_brightness = kFlutterBrightnessLight;
+  EXPECT_EQ(FlutterEngineSetUserSettings(engine.get(), &valid), kSuccess);
+
+  EXPECT_EQ(FlutterEngineSetUserSettings(nullptr, &valid), kInvalidArguments);
+  EXPECT_EQ(FlutterEngineSetUserSettings(engine.get(), nullptr),
+            kInvalidArguments);
+
+  FlutterUserSettings settings = valid;
+  settings.struct_size = offsetof(FlutterUserSettings, platform_brightness);
+  EXPECT_EQ(FlutterEngineSetUserSettings(engine.get(), &settings),
+            kInvalidArguments);
+
+  for (double text_scale_factor :
+       {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity()}) {
+    settings = valid;
+    settings.text_scale_factor = text_scale_factor;
+    EXPECT_EQ(FlutterEngineSetUserSettings(engine.get(), &settings),
+              kInvalidArguments)
+        << text_scale_factor;
+  }
+
+  settings = valid;
+  settings.platform_brightness = static_cast<FlutterBrightness>(-1);
+  EXPECT_EQ(FlutterEngineSetUserSettings(engine.get(), &settings),
+            kInvalidArguments);
+}
+
+TEST_F(EmbedderTest, DeprecatedSettingsChannelWarnsOnce) {
+  auto& context = GetEmbedderContext<EmbedderTestContextSoftware>();
+  EmbedderConfigBuilder builder(context);
+  builder.SetSurface(DlISize(1, 1));
+  builder.SetDartEntrypoint("can_receive_user_settings");
+  fml::AutoResetWaitableEvent ready;
+  context.AddFfiNativeCallback(
+      "SignalNativeTest", CREATE_FFI_LAMBDA([&ready]() { ready.Signal(); }));
+
+  fml::AutoResetWaitableEvent message_latch;
+  std::string message;
+  context.AddFfiNativeCallback(
+      "SignalNativeMessage", CREATE_FFI_LAMBDA([&](Dart_Handle message_handle) {
+        message = tonic::DartConverter<std::string>::FromDart(message_handle);
+        message_latch.Signal();
+      }));
+
+  auto engine = builder.LaunchEngine();
+  ASSERT_TRUE(engine.is_valid());
+  ready.Wait();
+
+  // The deprecation warning is logged on the UI thread, so capture logs there.
+  auto ui_task_runner = ToEmbedderEngine(engine.get())
+                            ->GetShell()
+                            .GetTaskRunners()
+                            .GetUITaskRunner();
+  std::unique_ptr<fml::testing::LogCapture> log_capture;
+  fml::AutoResetWaitableEvent capture_latch;
+
+  // The deprecation warning is only logged for the first message.
+  const std::string warning = "FlutterEngineSetUserSettings";
+  bool first = true;
+  for (const auto& [json, expected] :
+       std::vector<std::pair<std::string, std::string>>{
+           {R"({"textScaleFactor":1.5,"alwaysUse24HourFormat":true,)"
+            R"("platformBrightness":"dark"})",
+            "1.5,true,Brightness.dark"},
+           {R"({"textScaleFactor":3.0,"alwaysUse24HourFormat":false,)"
+            R"("platformBrightness":"light"})",
+            "3.0,false,Brightness.light"}}) {
+    ui_task_runner->PostTask([&]() {
+      log_capture = std::make_unique<fml::testing::LogCapture>();
+      capture_latch.Signal();
+    });
+    capture_latch.Wait();
+
+    FlutterPlatformMessage platform_message = {};
+    platform_message.struct_size = sizeof(FlutterPlatformMessage);
+    platform_message.channel = "flutter/settings";
+    platform_message.message = reinterpret_cast<const uint8_t*>(json.data());
+    platform_message.message_size = json.size();
+    ASSERT_EQ(FlutterEngineSendPlatformMessage(engine.get(), &platform_message),
+              kSuccess);
+
+    // The settings are delivered through dart:ui rather than the channel.
+    message_latch.Wait();
+    EXPECT_EQ(message, expected);
+
+    std::string log;
+    ui_task_runner->PostTask([&]() {
+      log = log_capture->str();
+      log_capture.reset();
+      capture_latch.Signal();
+    });
+    capture_latch.Wait();
+    EXPECT_EQ(log.find(warning) != std::string::npos, first);
+    first = false;
+  }
 }
 
 TEST_F(EmbedderTest, LocalizationCallbacksCalled) {

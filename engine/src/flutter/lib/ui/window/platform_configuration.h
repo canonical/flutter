@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -54,6 +55,48 @@ enum class AccessibilityFeatureFlag : int32_t {
   kNoAutoPlayAnimatedImages = 1 << 8,
   kNoAutoPlayVideos = 1 << 9,
   kDeterministicCursor = 1 << 10,
+};
+
+//--------------------------------------------------------------------------
+/// @brief The brightness mode of the host platform.
+///
+///        Must match the `Brightness` enum in dart:ui.
+enum class Brightness : int32_t {
+  kDark,
+  kLight,
+};
+
+//--------------------------------------------------------------------------
+/// @brief User-configured system settings reported by the embedder.
+///
+///        These are exposed in dart:ui as
+///        `PlatformDispatcher.textScaleFactor`,
+///        `PlatformDispatcher.alwaysUse24HourFormat`,
+///        `PlatformDispatcher.platformBrightness` and related getters.
+struct UserSettings {
+  /// The system-wide text scale factor, where 1.0 is the default size.
+  double text_scale_factor = 1.0;
+
+  /// Whether times should always be shown in 24 hour format.
+  bool always_use_24_hour_format = false;
+
+  /// The brightness theme in use by the platform.
+  Brightness platform_brightness = Brightness::kLight;
+
+  /// Whether the platform has a native spell check service.
+  bool native_spell_check_service_defined = false;
+
+  /// Whether the platform can show the system context menu.
+  bool supports_showing_system_context_menu = false;
+
+  /// Whether the last typed character of an obscured text field is briefly
+  /// shown. If unset, the previous value is kept.
+  std::optional<bool> briefly_show_password;
+
+  /// An identifier for the platform configuration these settings were read
+  /// from, used by Android to look up matching display metrics. If unset, no
+  /// identifier is reported.
+  std::optional<int32_t> configuration_id;
 };
 
 //--------------------------------------------------------------------------

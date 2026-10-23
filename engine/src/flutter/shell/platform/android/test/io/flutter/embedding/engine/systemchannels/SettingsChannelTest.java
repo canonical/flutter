@@ -6,14 +6,19 @@ package io.flutter.embedding.engine.systemchannels;
 
 import static io.flutter.Build.API_LEVELS;
 import static junit.framework.TestCase.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import android.annotation.TargetApi;
 import android.util.DisplayMetrics;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.dart.DartExecutor;
 import io.flutter.embedding.engine.systemchannels.SettingsChannel.ConfigurationQueue.SentConfiguration;
 import io.flutter.plugin.common.BasicMessageChannel;
@@ -43,8 +48,76 @@ public class SettingsChannelTest {
   }
 
   @Test
+  @TargetApi(API_LEVELS.API_33)
+  @Config(sdk = API_LEVELS.API_33)
+  @SuppressWarnings("deprecation")
+  // DartExecutor.send is deprecated.
+  public void sendsSettingsToEngineWhenCreatedWithFlutterJNI() {
+    final DartExecutor executor = mock(DartExecutor.class);
+    final FlutterJNI flutterJNI = mock(FlutterJNI.class);
+    final SettingsChannel settingsChannel = new SettingsChannel(executor, flutterJNI);
+
+    settingsChannel
+        .startMessage()
+        .setTextScaleFactor(2.0f)
+        .setUse24HourFormat(true)
+        .setPlatformBrightness(SettingsChannel.PlatformBrightness.dark)
+        .setNativeSpellCheckServiceDefined(true)
+        .setBrieflyShowPassword(false)
+        .setDisplayMetrics(mock(DisplayMetrics.class))
+        .send();
+
+    verify(flutterJNI).setUserSettings(2.0f, true, 0, true, true, false, false, 0);
+    verify(executor, never()).send(any(), any(), any());
+  }
+
+  @Test
+  @TargetApi(API_LEVELS.API_33)
+  @Config(sdk = API_LEVELS.API_33)
+  public void sendsDefaultsToEngineForUnsetSettings() {
+    final DartExecutor executor = mock(DartExecutor.class);
+    final FlutterJNI flutterJNI = mock(FlutterJNI.class);
+    final SettingsChannel settingsChannel = new SettingsChannel(executor, flutterJNI);
+
+    settingsChannel.startMessage().send();
+
+    verify(flutterJNI).setUserSettings(1.0f, false, 1, false, false, false, false, 0);
+  }
+
+  @Test
   @TargetApi(API_LEVELS.API_34)
   @Config(minSdk = API_LEVELS.API_34)
+  public void sendsConfigurationIdToEngineWhenCreatedWithFlutterJNI() {
+    final DartExecutor executor = mock(DartExecutor.class);
+    final FlutterJNI flutterJNI = mock(FlutterJNI.class);
+    final SettingsChannel settingsChannel = new SettingsChannel(executor, flutterJNI);
+
+    final DisplayMetrics metrics = mock(DisplayMetrics.class);
+    settingsChannel
+        .startMessage()
+        .setPlatformBrightness(SettingsChannel.PlatformBrightness.light)
+        .setDisplayMetrics(metrics)
+        .send();
+
+    final int configId = settingsChannel.configurationQueue.sentQueue.peek().generationNumber;
+    verify(flutterJNI)
+        .setUserSettings(
+            anyFloat(),
+            anyBoolean(),
+            eq(1),
+            anyBoolean(),
+            eq(false),
+            anyBoolean(),
+            eq(true),
+            eq(configId));
+    assertEquals(metrics, settingsChannel.getPastDisplayMetrics(configId));
+  }
+
+  @Test
+  @TargetApi(API_LEVELS.API_34)
+  @Config(minSdk = API_LEVELS.API_34)
+  @SuppressWarnings("deprecation")
+  // Tests the deprecated SettingsChannel(DartExecutor) constructor.
   public void twoDifferentSettingsChannelDoNotShareState() {
     final DartExecutor executor = mock(DartExecutor.class);
     executor.onAttachedToJNI();

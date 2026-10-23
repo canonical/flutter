@@ -160,6 +160,33 @@ void checkApiConsistency(String flutterRoot) {
     expect(javaEnumValues, uiFields);
   });
 
+  test('Brightness enums match', () {
+    // Dart values: fooBar.
+    final List<String> uiValues = getDartEnumValues(
+      sourcePath: path.join(flutterRoot, 'lib', 'ui', 'window.dart'),
+      enumName: 'Brightness',
+    ).map(camelCaseToPascalCase).toList();
+    final List<String> webuiValues = getDartEnumValues(
+      sourcePath: path.join(flutterRoot, 'lib', 'web_ui', 'lib', 'window.dart'),
+      enumName: 'Brightness',
+    ).map(camelCaseToPascalCase).toList();
+    // C values: kFlutterBrightnessFooBar.
+    final List<String> embedderEnumValues = getCppEnumValues(
+      sourcePath: path.join(flutterRoot, 'shell', 'platform', 'embedder', 'embedder.h'),
+      enumName: 'FlutterBrightness',
+    );
+    // C++ values: kFooBar.
+    final List<String> internalEnumValues = getCppEnumClassValues(
+      sourcePath: path.join(flutterRoot, 'lib', 'ui', 'window', 'platform_configuration.h'),
+      enumName: 'Brightness',
+    );
+
+    expect(uiValues, isNotEmpty);
+    expect(webuiValues, uiValues);
+    expect(embedderEnumValues, uiValues);
+    expect(internalEnumValues, uiValues);
+  });
+
   // TODO(hangyujin): Add this test back after fixing https://github.com/flutter/flutter/issues/166101
 
   // test('SemanticsFlag enums match', () async {

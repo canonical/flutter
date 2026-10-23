@@ -198,6 +198,16 @@ void canAccessIsolateLaunchData() {
 }
 
 @pragma('vm:entry-point')
+void reportsUserSettings() {
+  final PlatformDispatcher dispatcher = PlatformDispatcher.instance;
+  notifyMessage(
+    '${dispatcher.textScaleFactor},'
+    '${dispatcher.alwaysUse24HourFormat},'
+    '${dispatcher.platformBrightness}',
+  );
+}
+
+@pragma('vm:entry-point')
 void performanceModeImpactsNotifyIdle() {
   notifyNativeBool(false);
   PlatformDispatcher.instance.requestDartPerformanceMode(DartPerformanceMode.latency);

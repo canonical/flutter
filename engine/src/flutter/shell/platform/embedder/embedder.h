@@ -118,6 +118,30 @@ typedef enum {
   kFlutterAccessibilityFeatureDeterministicCursor = 1 << 10,
 } FlutterAccessibilityFeature;
 
+/// The brightness mode of the host platform.
+///
+/// Must match the `Brightness` enum in dart:ui.
+typedef enum {
+  /// The platform is using a dark theme.
+  kFlutterBrightnessDark,
+  /// The platform is using a light theme.
+  kFlutterBrightnessLight,
+} FlutterBrightness;
+
+/// User-configured system settings, such as the text scale factor and the
+/// brightness theme. Passed to `FlutterEngineSetUserSettings`.
+typedef struct {
+  /// The size of this struct. Must be sizeof(FlutterUserSettings).
+  size_t struct_size;
+  /// The system-wide text scale factor, where 1.0 is the default size. Must be
+  /// a finite value greater than zero.
+  double text_scale_factor;
+  /// Whether times should always be shown in 24 hour format.
+  bool always_use_24_hour_format;
+  /// The brightness theme in use by the platform.
+  FlutterBrightness platform_brightness;
+} FlutterUserSettings;
+
 /// The set of possible actions that can be conveyed to a semantics node.
 ///
 /// Must match the `SemanticsAction` enum in semantics.dart.
@@ -3335,6 +3359,27 @@ FlutterEngineResult FlutterEngineUpdateAccessibilityFeatures(
     FlutterAccessibilityFeature features);
 
 //------------------------------------------------------------------------------
+/// @brief      Sets the user-configured system settings, such as the text
+///             scale factor and the brightness theme. These are reported to
+///             the framework through `PlatformDispatcher` in dart:ui. The
+///             settings may be set before the Dart isolate is running and are
+///             delivered when it starts.
+///
+///             This replaces sending a JSON message on the `flutter/settings`
+///             platform channel, which is deprecated.
+///
+/// @param[in]  engine    A running engine instance.
+/// @param[in]  settings  The user settings. The engine does not keep a
+///                       reference to this struct after the call returns.
+///
+/// @return     The result of the call.
+///
+FLUTTER_EXPORT
+FlutterEngineResult FlutterEngineSetUserSettings(
+    FLUTTER_API_SYMBOL(FlutterEngine) engine,
+    const FlutterUserSettings* settings);
+
+//------------------------------------------------------------------------------
 /// @brief      Dispatch a semantics action to the specified semantics node
 ///             in the implicit view.
 ///
@@ -3753,6 +3798,9 @@ typedef FlutterEngineResult (*FlutterEngineUpdateSemanticsEnabledFnPtr)(
 typedef FlutterEngineResult (*FlutterEngineUpdateAccessibilityFeaturesFnPtr)(
     FLUTTER_API_SYMBOL(FlutterEngine) engine,
     FlutterAccessibilityFeature features);
+typedef FlutterEngineResult (*FlutterEngineSetUserSettingsFnPtr)(
+    FLUTTER_API_SYMBOL(FlutterEngine) engine,
+    const FlutterUserSettings* settings);
 typedef FlutterEngineResult (*FlutterEngineDispatchSemanticsActionFnPtr)(
     FLUTTER_API_SYMBOL(FlutterEngine) engine,
     uint64_t id,
@@ -3865,6 +3913,7 @@ typedef struct {
   FlutterEngineRemoveViewFnPtr RemoveView;
   FlutterEngineSendViewFocusEventFnPtr SendViewFocusEvent;
   FlutterEngineSendSemanticsActionFnPtr SendSemanticsAction;
+  FlutterEngineSetUserSettingsFnPtr SetUserSettings;
 } FlutterEngineProcTable;
 
 //------------------------------------------------------------------------------
