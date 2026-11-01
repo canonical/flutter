@@ -96,9 +96,8 @@ PlatformViewPointerEvent::DeviceKind ParseDeviceKind(const std::string& kind) {
 }  // namespace
 
 PlatformViewManager::PlatformViewManager(PlatformMessenger* messenger,
-                                         WaylandDisplay* display,
-                                         EventLoop* event_loop)
-    : messenger_(messenger), display_(display), event_loop_(event_loop) {
+                                         ViewCreator create_view)
+    : messenger_(messenger), create_view_(std::move(create_view)) {
   messenger_->SetMessageHandler(
       kChannelName, [this](const uint8_t* data, size_t size,
                            PlatformMessenger::ResponseCallback respond) {
@@ -182,10 +181,6 @@ std::vector<uint8_t> PlatformViewManager::Create(
     return *codec.EncodeErrorEnvelope(
         kCreateError, "Unknown platform view type " + view_type);
   }
-  if (!supported_) {
-    return *codec.EncodeErrorEnvelope(
-        kCreateError, "Platform views are only supported on Wayland");
-  }
   {
     std::scoped_lock lock(views_mutex_);
     if (views_.count(*id) != 0) {
@@ -201,7 +196,11 @@ std::vector<uint8_t> PlatformViewManager::Create(
     }
   }
 
-  auto view = std::make_shared<LinuxPlatformView>(*id, display_, event_loop_);
+  std::shared_ptr<LinuxPlatformView> view = create_view_(*id);
+  if (view == nullptr) {
+    return *codec.EncodeErrorEnvelope(
+        kCreateError, "Platform views aren't supported on this display");
+  }
   if (!factory->second(view.get(), params)) {
     view->Dispose();
     return *codec.EncodeErrorEnvelope(

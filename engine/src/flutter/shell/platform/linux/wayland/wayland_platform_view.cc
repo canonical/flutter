@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
+#include "flutter/shell/platform/linux/wayland/wayland_platform_view.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,39 +13,43 @@
 
 namespace flutter {
 
-const wl_buffer_listener LinuxPlatformView::Buffer::kListener = {
-    .release = LinuxPlatformView::Buffer::OnRelease,
+// A buffer shared with the compositor.
+class WaylandPlatformView::WaylandBuffer : public LinuxPlatformView::Buffer {
+ public:
+  WaylandBuffer(std::shared_ptr<WaylandPlatformView> view,
+                const DmabufFrame& frame,
+                wl_buffer* buffer)
+      : Buffer(view, frame), view_(view.get()), buffer_(buffer) {
+    wl_buffer_add_listener(buffer_, &kListener, this);
+  }
+
+  ~WaylandBuffer() override {
+    Remove();
+    wl_buffer_destroy(buffer_);
+  }
+
+  wl_buffer* buffer() const { return buffer_; }
+
+ private:
+  static void OnRelease(void* data, wl_buffer* buffer) {
+    auto* self = static_cast<WaylandBuffer*>(data);
+    self->view_->OnBufferReleased(self);
+  }
+
+  static constexpr wl_buffer_listener kListener = {
+      .release = OnRelease,
+  };
+
+  WaylandPlatformView* view_;
+  wl_buffer* buffer_;
 };
 
-LinuxPlatformView::Buffer::Buffer(std::shared_ptr<LinuxPlatformView> view,
-                                  wl_buffer* buffer,
-                                  int width,
-                                  int height,
-                                  std::function<void()> release)
-    : view_(std::move(view)),
-      buffer_(buffer),
-      width_(width),
-      height_(height),
-      release_(std::move(release)) {}
+WaylandPlatformView::WaylandPlatformView(int64_t id,
+                                         WaylandDisplay* display,
+                                         EventLoop* event_loop)
+    : LinuxPlatformView(id, event_loop), display_(display) {}
 
-LinuxPlatformView::Buffer::~Buffer() {
-  view_->RemoveBuffer(this);
-  wl_buffer_destroy(buffer_);
-}
-
-void LinuxPlatformView::Buffer::OnRelease(void* data, wl_buffer* buffer) {
-  auto* self = static_cast<Buffer*>(data);
-  self->view_->OnBufferReleased(self);
-}
-
-LinuxPlatformView::LinuxPlatformView(int64_t id,
-                                     WaylandDisplay* display,
-                                     EventLoop* event_loop)
-    : id_(id), display_(display), event_loop_(event_loop) {}
-
-LinuxPlatformView::~LinuxPlatformView() {
-  // Buffers hold a reference to the view, so they have all been freed.
-  FML_DCHECK(buffers_.empty());
+WaylandPlatformView::~WaylandPlatformView() {
   FML_DCHECK(window_ == nullptr);
   if (alpha_ != nullptr) {
     wp_alpha_modifier_surface_v1_destroy(alpha_);
@@ -58,26 +62,10 @@ LinuxPlatformView::~LinuxPlatformView() {
   }
 }
 
-void LinuxPlatformView::SetCallbacks(ResizeCallback on_resize,
-                                     PointerCallback on_pointer) {
-  on_resize_ = std::move(on_resize);
-  on_pointer_ = std::move(on_pointer);
-  if (on_resize_ && shown_width_ > 0) {
-    on_resize_(shown_width_, shown_height_, shown_scale_);
-  }
-}
-
-std::unique_ptr<LinuxPlatformView::Buffer> LinuxPlatformView::CreateBuffer(
-    const DmabufFrame& frame) {
+std::unique_ptr<LinuxPlatformView::Buffer>
+WaylandPlatformView::CreateBackendBuffer(const DmabufFrame& frame) {
   if (display_->dmabuf() == nullptr) {
     FML_LOG(ERROR) << "Platform view buffers require linux_dmabuf";
-    return nullptr;
-  }
-  if (frame.width == 0 || frame.height == 0 || frame.planes.empty() ||
-      frame.planes.size() > 4 ||
-      frame.width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
-      frame.height > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
-    FML_LOG(ERROR) << "Invalid platform view buffer";
     return nullptr;
   }
   // The compositor disconnects clients that use unsupported buffers.
@@ -98,63 +86,31 @@ std::unique_ptr<LinuxPlatformView::Buffer> LinuxPlatformView::CreateBuffer(
                                    plane.stride, frame.modifier >> 32,
                                    frame.modifier & 0xffffffff);
   }
-  wl_buffer* wl_buffer = zwp_linux_buffer_params_v1_create_immed(
+  wl_buffer* buffer = zwp_linux_buffer_params_v1_create_immed(
       params, frame.width, frame.height, frame.format, 0);
   zwp_linux_buffer_params_v1_destroy(params);
-
-  std::unique_ptr<Buffer> buffer(new Buffer(
-      shared_from_this(), wl_buffer, frame.width, frame.height, frame.release));
-  wl_buffer_add_listener(wl_buffer, &Buffer::kListener, buffer.get());
-  std::scoped_lock lock(mutex_);
-  buffers_.push_back(buffer.get());
-  return buffer;
+  return std::make_unique<WaylandBuffer>(
+      std::static_pointer_cast<WaylandPlatformView>(shared_from_this()), frame,
+      buffer);
 }
 
-void LinuxPlatformView::Present(Buffer* buffer) {
-  if (buffer != nullptr && buffer->view_.get() != this) {
-    FML_LOG(ERROR) << "Buffer presented in a different platform view";
-    return;
-  }
-  WaylandWindow* window = nullptr;
-  Buffer* replaced = nullptr;
+void WaylandPlatformView::OnPresent() {
+  WaylandWindow* window;
   {
     std::scoped_lock lock(mutex_);
-    if (disposed_ || buffer == current_) {
-      return;
-    }
-    replaced = current_;
-    current_ = buffer;
-    if (buffer != nullptr) {
-      buffer->release_pending_ = true;
-    }
-    if (replaced != nullptr && !TakeRelease(replaced)) {
-      replaced = nullptr;
-    }
     window = window_;
   }
-
   // The window can't be removed while this runs, as that is also done on
   // the platform thread.
   if (window != nullptr) {
     window->CommitPlatformView(this);
   }
-  if (replaced != nullptr && replaced->release_) {
-    replaced->release_();
-  }
 }
 
-void LinuxPlatformView::DispatchPointerEvent(
-    const PlatformViewPointerEvent& event) {
-  if (on_pointer_) {
-    on_pointer_(event);
-  }
-}
-
-void LinuxPlatformView::Dispose() {
+void WaylandPlatformView::OnDispose() {
   WaylandWindow* window;
   {
     std::scoped_lock lock(mutex_);
-    disposed_ = true;
     window = window_;
   }
   if (window != nullptr) {
@@ -164,7 +120,6 @@ void LinuxPlatformView::Dispose() {
   std::vector<std::function<void()>> released;
   {
     std::scoped_lock lock(mutex_);
-    current_ = nullptr;
     attached_ = nullptr;
     mapped_ = false;
     if (alpha_ != nullptr) {
@@ -180,27 +135,25 @@ void LinuxPlatformView::Dispose() {
       surface_ = nullptr;
     }
     // Without a surface the compositor no longer uses the buffers.
-    for (Buffer* buffer : buffers_) {
-      buffer->busy_ = false;
-      if (TakeRelease(buffer) && buffer->release_) {
-        released.push_back(buffer->release_);
-      }
-    }
+    released = RemoveAllUses();
   }
-  // Release the buffers before clearing the callbacks, as that may destroy
-  // the plugin's view and the buffers with it.
   for (const auto& release : released) {
     release();
   }
-  on_resize_ = nullptr;
-  on_pointer_ = nullptr;
 }
 
-wl_surface* LinuxPlatformView::Show(WaylandWindow* window,
-                                    wl_surface* parent,
-                                    wl_surface* above,
-                                    const PlatformViewGeometry& geometry,
-                                    double scale) {
+void WaylandPlatformView::OnBufferRemoved(Buffer* buffer) {
+  // The surface keeps showing the buffer's contents.
+  if (attached_ == buffer) {
+    attached_ = nullptr;
+  }
+}
+
+wl_surface* WaylandPlatformView::Show(WaylandWindow* window,
+                                      wl_surface* parent,
+                                      wl_surface* above,
+                                      const PlatformViewGeometry& geometry,
+                                      double scale) {
   std::scoped_lock lock(mutex_);
   if (disposed_) {
     return nullptr;
@@ -240,7 +193,7 @@ wl_surface* LinuxPlatformView::Show(WaylandWindow* window,
   wl_subsurface_place_above(subsurface_, above);
 
   if (geometry.approximated && !warned_approximated_) {
-    FML_LOG(WARNING) << "Platform view " << id_
+    FML_LOG(WARNING) << "Platform view " << id()
                      << " is rotated, skewed or has a rounded clip, which "
                         "can't be shown exactly";
     warned_approximated_ = true;
@@ -253,26 +206,11 @@ wl_surface* LinuxPlatformView::Show(WaylandWindow* window,
 
   int width = static_cast<int>(std::round(geometry.rect.width));
   int height = static_cast<int>(std::round(geometry.rect.height));
-  if (width != reported_width_ || height != reported_height_ ||
-      scale != reported_scale_) {
-    reported_width_ = width;
-    reported_height_ = height;
-    reported_scale_ = scale;
-    event_loop_->PostTask([weak = weak_from_this(), width, height, scale]() {
-      if (auto self = weak.lock()) {
-        self->shown_width_ = width;
-        self->shown_height_ = height;
-        self->shown_scale_ = scale;
-        if (self->on_resize_ && width > 0 && height > 0) {
-          self->on_resize_(width, height, scale);
-        }
-      }
-    });
-  }
+  ReportSize(width, height, scale);
   return surface_;
 }
 
-void LinuxPlatformView::Hide(WaylandWindow* window) {
+void WaylandPlatformView::Hide(WaylandWindow* window) {
   std::scoped_lock lock(mutex_);
   if (window_ != window || !shown_) {
     return;
@@ -281,19 +219,19 @@ void LinuxPlatformView::Hide(WaylandWindow* window) {
   Apply();
 }
 
-void LinuxPlatformView::Detach(WaylandWindow* window) {
+void WaylandPlatformView::Detach(WaylandWindow* window) {
   std::scoped_lock lock(mutex_);
   if (window_ == window) {
     DestroySubsurface();
   }
 }
 
-bool LinuxPlatformView::IsInWindow(WaylandWindow* window) {
+bool WaylandPlatformView::IsInWindow(WaylandWindow* window) {
   std::scoped_lock lock(mutex_);
   return window_ == window;
 }
 
-bool LinuxPlatformView::CommitBuffer(WaylandWindow* window) {
+bool WaylandPlatformView::CommitBuffer(WaylandWindow* window) {
   std::scoped_lock lock(mutex_);
   if (window_ != window || !shown_) {
     return false;
@@ -302,7 +240,7 @@ bool LinuxPlatformView::CommitBuffer(WaylandWindow* window) {
   return true;
 }
 
-void LinuxPlatformView::DestroySubsurface() {
+void WaylandPlatformView::DestroySubsurface() {
   if (subsurface_ != nullptr) {
     wl_subsurface_destroy(subsurface_);
     subsurface_ = nullptr;
@@ -312,7 +250,7 @@ void LinuxPlatformView::DestroySubsurface() {
   placed_ = false;
 }
 
-void LinuxPlatformView::Apply() {
+void WaylandPlatformView::Apply() {
   SurfacePlacement placement;
   bool visible =
       shown_ && current_ != nullptr &&
@@ -348,46 +286,28 @@ void LinuxPlatformView::Apply() {
   }
 
   if (!mapped_ || attached_ != current_) {
-    wl_surface_attach(surface_, current_->buffer_, 0, 0);
+    wl_surface_attach(surface_, static_cast<WaylandBuffer*>(current_)->buffer(),
+                      0, 0);
     wl_surface_damage_buffer(surface_, 0, 0, current_->width(),
                              current_->height());
-    current_->busy_ = true;
+    // The compositor releases a buffer once, however often it is attached.
+    if (!InUse(current_)) {
+      AddUse(current_);
+    }
     attached_ = current_;
     mapped_ = true;
   }
   wl_surface_commit(surface_);
 }
 
-bool LinuxPlatformView::TakeRelease(Buffer* buffer) {
-  if (!buffer->release_pending_ || buffer->busy_ || buffer == current_) {
-    return false;
-  }
-  buffer->release_pending_ = false;
-  return true;
-}
-
-void LinuxPlatformView::RemoveBuffer(Buffer* buffer) {
-  std::scoped_lock lock(mutex_);
-  buffers_.erase(std::remove(buffers_.begin(), buffers_.end(), buffer),
-                 buffers_.end());
-  if (current_ == buffer) {
-    current_ = nullptr;
-  }
-  // The surface keeps showing the buffer's contents.
-  if (attached_ == buffer) {
-    attached_ = nullptr;
-  }
-}
-
-void LinuxPlatformView::OnBufferReleased(Buffer* buffer) {
-  bool release;
+void WaylandPlatformView::OnBufferReleased(WaylandBuffer* buffer) {
+  std::function<void()> release;
   {
     std::scoped_lock lock(mutex_);
-    buffer->busy_ = false;
-    release = TakeRelease(buffer);
+    release = RemoveUse(buffer);
   }
-  if (release && buffer->release_) {
-    buffer->release_();
+  if (release) {
+    release();
   }
 }
 

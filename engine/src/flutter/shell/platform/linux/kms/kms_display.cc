@@ -19,6 +19,7 @@
 
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/kms/kms_input.h"
+#include "flutter/shell/platform/linux/kms/kms_platform_view.h"
 #include "flutter/shell/platform/linux/kms/kms_seat.h"
 #include "flutter/shell/platform/linux/kms/kms_session.h"
 #include "flutter/shell/platform/linux/kms/kms_window.h"
@@ -687,6 +688,12 @@ std::unique_ptr<Window> KmsDisplay::CreateWindow(
   auto window = std::make_unique<KmsWindow>(this, delegate, params);
   window_ = window.get();
   return window;
+}
+
+std::shared_ptr<LinuxPlatformView> KmsDisplay::CreatePlatformView(
+    int64_t id,
+    std::function<void()> redraw) {
+  return std::make_shared<KmsPlatformView>(id, event_loop_, std::move(redraw));
 }
 
 void KmsDisplay::RemoveWindow(KmsWindow* window) {

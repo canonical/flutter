@@ -701,8 +701,8 @@ class FlutterDesktopEngine {
   }
 
   // Registers |factory| to create platform views of |view_type|, replacing
-  // any existing factory. Platform views are only supported on Wayland; on
-  // X11 requests to create them fail.
+  // any existing factory. Platform views are supported on Wayland and KMS;
+  // on X11 requests to create them fail.
   void register_platform_view_type(const std::string& view_type,
                                    FlutterDesktopPlatformViewFactory factory) {
     flutter_linux_engine_register_platform_view_type(

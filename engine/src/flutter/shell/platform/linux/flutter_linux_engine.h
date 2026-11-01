@@ -184,6 +184,10 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |TextureRegistrar::Delegate|
   bool IsEngineRunning() const override;
 
+  // Draws the last frame again, e.g. to show a new platform view buffer
+  // where views are drawn into frames. Called on the platform thread.
+  void RedrawLastFrame();
+
   // |TextureRegistrar::Delegate|
   bool RegisterExternalTexture(int64_t texture_id) override;
 

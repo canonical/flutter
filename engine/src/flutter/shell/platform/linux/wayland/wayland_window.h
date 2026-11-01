@@ -17,10 +17,10 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
-#include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
 #include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/protocols/xdg-shell-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/wayland_platform_view.h"
 #include "flutter/shell/platform/linux/wayland/window_decoration.h"
 #include "flutter/shell/platform/linux/window.h"
 
@@ -117,10 +117,10 @@ class WaylandWindow : public Window,
 
   // Shows the latest buffer of |view|, if it is in this window. Called on
   // the platform thread.
-  void CommitPlatformView(LinuxPlatformView* view);
+  void CommitPlatformView(WaylandPlatformView* view);
 
   // Removes |view| from this window. Called on the platform thread.
-  void RemovePlatformView(LinuxPlatformView* view);
+  void RemovePlatformView(WaylandPlatformView* view);
 
   // |WindowDecoration::Delegate|
   void OnDecorationFrame(const DecorationFrame& frame) override;
@@ -354,7 +354,7 @@ class WaylandWindow : public Window,
 
   // Platform views that have been shown in this window. Guarded by
   // |surface_mutex_|.
-  std::vector<std::shared_ptr<LinuxPlatformView>> platform_views_;
+  std::vector<std::shared_ptr<WaylandPlatformView>> platform_views_;
 
   bool configured_ = false;
 

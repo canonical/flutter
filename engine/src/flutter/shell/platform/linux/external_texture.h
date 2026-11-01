@@ -134,6 +134,10 @@ struct DmabufFrame {
   std::function<void()> release;
 };
 
+// Returns the EGL attributes for the YUV conversion of |frame|, terminated by
+// EGL_NONE, for importing it with GpuDevice::ImportDmabuf.
+std::vector<EGLint> GetYuvAttributes(const DmabufFrame& frame);
+
 // A texture that shows frames from GPU buffers without copying them.
 class DmabufTexture : public ExternalTexture {
  public:

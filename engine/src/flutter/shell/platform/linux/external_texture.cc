@@ -69,7 +69,8 @@ struct ImportedFrame {
   }
 };
 
-// Returns the EGL attributes for the YUV conversion of |frame|.
+}  // namespace
+
 std::vector<EGLint> GetYuvAttributes(const DmabufFrame& frame) {
   std::vector<EGLint> attributes;
   switch (frame.color_space) {
@@ -103,8 +104,6 @@ std::vector<EGLint> GetYuvAttributes(const DmabufFrame& frame) {
   attributes.push_back(EGL_NONE);
   return attributes;
 }
-
-}  // namespace
 
 PixelBufferTexture::PixelBufferTexture(EGLManager* egl, Callback callback)
     : egl_(egl), callback_(std::move(callback)) {}

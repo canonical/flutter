@@ -140,6 +140,11 @@ class WaylandDisplay : public Display {
                                        Window::Delegate* delegate,
                                        const Window::Params& params) override;
 
+  // |Display|
+  std::shared_ptr<LinuxPlatformView> CreatePlatformView(
+      int64_t id,
+      std::function<void()> redraw) override;
+
   // |EventLoop::Source|
   int GetFd() const override;
 

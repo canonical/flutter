@@ -13,12 +13,14 @@
 #include <cmath>
 #include <cstring>
 #include <tuple>
+#include <utility>
 
 #include "flutter/fml/logging.h"
 #include "flutter/fml/unique_fd.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
 #include "flutter/shell/platform/linux/kms/kms_display.h"
+#include "flutter/shell/platform/linux/kms/kms_platform_view.h"
 #include "flutter/shell/platform/linux/kms/kms_seat.h"
 #include "flutter/shell/platform/linux/texture_blitter.h"
 #include "flutter/shell/platform/linux/texture_buffer.h"
@@ -54,6 +56,10 @@ struct KmsWindow::Buffer {
   // Signals when rendering into the buffer is complete, if the display waits
   // for it.
   fml::UniqueFD fence;
+
+  // Platform view buffers drawn into this buffer, released once its
+  // rendering is complete.
+  std::vector<ViewUse> view_uses;
 
   // Must be destroyed with the render context current.
   ~Buffer() {
@@ -100,6 +106,9 @@ KmsWindow::~KmsWindow() {
     std::lock_guard<std::mutex> lock(mutex_);
     buffers = std::move(buffers_);
     front_ = pending_ = queued_ = nullptr;
+  }
+  for (auto& buffer : buffers) {
+    EndViewUses(std::exchange(buffer->view_uses, {}));
   }
   // Removing the framebuffer on the screen turns it off. The display
   // restores what was shown before when it is destroyed.
@@ -173,8 +182,7 @@ size_t KmsWindow::frames_in_flight() {
 void KmsWindow::Present(RenderBuffer* buffer,
                         const SyncPoints* sync,
                         const std::vector<Layer>& layers) {
-  // Platform views aren't supported, so there are no layers. The compositor
-  // renders into textures for this backend.
+  // The compositor renders into textures for this backend.
   auto* source = static_cast<TextureBuffer*>(buffer);
   Buffer* target = AcquireBuffer(source);
   if (target == nullptr) {
@@ -190,15 +198,26 @@ void KmsWindow::Present(RenderBuffer* buffer,
                       /*swap_red_blue=*/false)) {
     return;
   }
+  // If the target is reused before it was shown, the views drawn into it
+  // before are released with these, as rendering is done in order.
+  for (ViewUse& use : DrawLayers(target, source, layers)) {
+    target->view_uses.push_back(std::move(use));
+  }
   target->fence = CreateFence(source->egl_manager()->gpu());
   if (!target->fence.is_valid()) {
     // The display reads the buffer without synchronizing with this context.
     glFinish();
+    EndViewUses(std::exchange(target->view_uses, {}));
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (queued_ != nullptr) {
-    // Replace a frame that hasn't been shown yet.
+    // Replace a frame that hasn't been shown yet. Its rendering finishes
+    // before this frame's does.
+    for (ViewUse& use : queued_->view_uses) {
+      target->view_uses.push_back(std::move(use));
+    }
+    queued_->view_uses.clear();
     frames_completed_++;
   }
   queued_ = target;
@@ -206,6 +225,64 @@ void KmsWindow::Present(RenderBuffer* buffer,
   if (active_ && pending_ == nullptr) {
     Submit();
   }
+}
+
+std::vector<KmsWindow::ViewUse> KmsWindow::DrawLayers(
+    Buffer* target,
+    TextureBuffer* source,
+    const std::vector<Layer>& layers) {
+  std::vector<ViewUse> uses;
+  int width = physical_width();
+  int height = physical_height();
+  // Layers are positioned in the frame, which is scaled to the screen.
+  double scale_x = static_cast<double>(width) / source->width();
+  double scale_y = static_cast<double>(height) / source->height();
+  auto to_screen = [scale_x, scale_y](const PixelRect& rect) {
+    return PixelRect{rect.x * scale_x, rect.y * scale_y, rect.width * scale_x,
+                     rect.height * scale_y};
+  };
+  PixelRect screen = {0, 0, static_cast<double>(width),
+                      static_cast<double>(height)};
+
+  for (const Layer& layer : layers) {
+    if (layer.platform_view != nullptr) {
+      // The display only creates KMS platform views.
+      auto view =
+          std::static_pointer_cast<KmsPlatformView>(layer.platform_view);
+      const PlatformViewGeometry& geometry = layer.geometry;
+      uint64_t serial = view->Draw(
+          source->egl_manager(), geometry, scale(),
+          [&](GLenum texture_target, GLuint texture) {
+            return blitter_->DrawLayer(
+                texture_target, texture, target->framebuffer, width, height,
+                to_screen(geometry.rect), to_screen(geometry.visible),
+                geometry.opacity, /*flip=*/false);
+          });
+      if (serial != 0) {
+        uses.push_back({std::move(view), serial});
+      }
+      continue;
+    }
+
+    // Flutter content above platform views, which is the size of the frame.
+    auto* overlay = static_cast<TextureBuffer*>(layer.buffer);
+    blitter_->DrawLayer(GL_TEXTURE_2D, overlay->texture(), target->framebuffer,
+                        width, height, screen, to_screen(layer.content),
+                        /*opacity=*/1.0, /*flip=*/true);
+  }
+  return uses;
+}
+
+void KmsWindow::EndViewUses(std::vector<ViewUse> uses) {
+  if (uses.empty()) {
+    return;
+  }
+  // Buffers are released on the platform thread.
+  display_->event_loop()->PostTask([uses = std::move(uses)]() {
+    for (const ViewUse& use : uses) {
+      use.view->EndUse(use.serial);
+    }
+  });
 }
 
 KmsWindow::Buffer* KmsWindow::AcquireBuffer(TextureBuffer* source) {
@@ -360,10 +437,13 @@ void KmsWindow::Submit() {
         FML_LOG(ERROR) << "Failed to set the display mode: " << strerror(errno);
         reported_error_ = true;
       }
+      EndViewUses(std::exchange(buffer->view_uses, {}));
       frames_completed_++;
       PostFrameDone(false, 0);
       return;
     }
+    // The mode is set once the buffer has been rendered.
+    EndViewUses(std::exchange(buffer->view_uses, {}));
     needs_modeset_ = false;
     front_ = buffer;
     frames_completed_++;
@@ -376,6 +456,7 @@ void KmsWindow::Submit() {
       FML_LOG(ERROR) << "Failed to show a frame: " << strerror(errno);
       reported_error_ = true;
     }
+    EndViewUses(std::exchange(buffer->view_uses, {}));
     frames_completed_++;
     PostFrameDone(false, 0);
     return;
@@ -406,6 +487,8 @@ void KmsWindow::OnPageFlip(uint64_t time_ns) {
     }
     front_ = pending_;
     pending_ = nullptr;
+    // The buffer is only shown once it has been rendered.
+    EndViewUses(std::exchange(front_->view_uses, {}));
     frames_completed_++;
     if (queued_ != nullptr && active_) {
       Submit();
@@ -424,6 +507,7 @@ void KmsWindow::Suspend() {
     if (pending_ != nullptr) {
       front_ = pending_;
       pending_ = nullptr;
+      EndViewUses(std::exchange(front_->view_uses, {}));
       frames_completed_++;
     }
   }

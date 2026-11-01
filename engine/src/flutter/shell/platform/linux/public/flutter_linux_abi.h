@@ -417,10 +417,11 @@ FLUTTER_EXPORT void flutter_linux_engine_unregister_texture(
     void* user_data);
 
 // Platform views show native content (e.g. video or a web page) in a
-// PlatformView widget, such as LinuxView. The content is shown in its own
-// Wayland surface, so the compositor can put it on screen directly without it
-// being drawn by Flutter. The plugin provides the content as dmabufs, and the
-// engine places, clips and stacks the surface to match the widget.
+// PlatformView widget, such as LinuxView. The plugin provides the content as
+// dmabufs. On Wayland the content is shown in its own surface, so the
+// compositor can put it on screen directly without it being drawn by Flutter,
+// and the engine places, clips and stacks the surface to match the widget.
+// With KMS the engine draws the content into each frame.
 
 typedef struct _FlutterLinuxPlatformView FlutterLinuxPlatformView;
 typedef struct _FlutterLinuxPlatformViewBuffer FlutterLinuxPlatformViewBuffer;
@@ -436,8 +437,8 @@ typedef bool (*FlutterLinuxPlatformViewFactory)(FlutterLinuxPlatformView* view,
 
 // Registers |factory| to create views of |view_type|, replacing any existing
 // factory. |destroy|, which may be NULL, is called when the factory is
-// replaced or the engine is freed. Platform views are only supported on
-// Wayland; on X11 requests to create them fail.
+// replaced or the engine is freed. Platform views are supported on Wayland
+// and KMS; on X11 requests to create them fail.
 FLUTTER_EXPORT void flutter_linux_engine_register_platform_view_type(
     FlutterLinuxEngine* engine,
     const char* view_type,
@@ -511,12 +512,12 @@ flutter_linux_platform_view_get_id(FlutterLinuxPlatformView* view);
 
 // Creates a buffer that can be presented in |view| from |dmabuf|. The file
 // descriptors are not closed or kept. The format and modifier must be
-// supported by the Wayland compositor; DRM_FORMAT_ARGB8888,
-// DRM_FORMAT_XRGB8888 and DRM_FORMAT_NV12 usually are. |dmabuf|'s release
-// callback is called each time the buffer can be reused after it has been
-// presented: once another buffer has replaced it and the compositor has
-// finished with it. The color space and range are not used. Returns NULL if
-// the buffer can't be used.
+// supported by the Wayland compositor, or the GPU with KMS;
+// DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888 and DRM_FORMAT_NV12 usually are.
+// |dmabuf|'s release callback is called each time the buffer can be reused
+// after it has been presented: once another buffer has replaced it and the
+// compositor or GPU has finished with it. The color space and range are only
+// used with KMS. Returns NULL if the buffer can't be used.
 FLUTTER_EXPORT FlutterLinuxPlatformViewBuffer*
 flutter_linux_platform_view_create_buffer(FlutterLinuxPlatformView* view,
                                           const FlutterLinuxDmabuf* dmabuf);

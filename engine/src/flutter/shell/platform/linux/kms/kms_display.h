@@ -57,6 +57,9 @@ class KmsDisplay : public Display {
   std::unique_ptr<Window> CreateWindow(DecorationRenderer* decoration_renderer,
                                        Window::Delegate* delegate,
                                        const Window::Params& params) override;
+  std::shared_ptr<LinuxPlatformView> CreatePlatformView(
+      int64_t id,
+      std::function<void()> redraw) override;
 
   EventLoop* event_loop() const { return event_loop_; }
   int drm_fd() const { return drm_fd_.get(); }

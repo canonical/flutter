@@ -36,8 +36,9 @@ from their source, not run.
   (`FLUTTER_LINUX_BACKEND`, otherwise Wayland if `WAYLAND_DISPLAY` is set, then
   X11 if `DISPLAY` is set, then KMS). The backends share the engine, input,
   text, accessibility and compositor code behind backend-neutral `Display` and
-  `Window` interfaces. X11 and KMS are simpler than Wayland: no platform views,
-  and KMS has a single undecorated fullscreen window.
+  `Window` interfaces. X11 and KMS are simpler than Wayland: X11 has no
+  platform views, KMS composites them with GL rather than putting them on
+  their own surfaces, and KMS has a single undecorated fullscreen window.
 - **Features.** The new embedder leads on Wayland presentation, input, multiple
   windows and accessibility. It now matches the old one's platform channels
   (clipboard, settings, lifecycle, locales and the system bell), but has no
@@ -95,9 +96,9 @@ Notes:
   | Wayland (excluding decorations) | 6.2k |
   | Accessibility and D-Bus | 5.5k |
   | X11 | 3.8k |
-  | Rendering, textures and platform views | 3.5k |
+  | Rendering, textures and platform views | 3.7k |
   | Input and text | 3.0k |
-  | KMS | 2.7k |
+  | KMS | 3.0k |
   | Decorations | 1.6k |
 
 ## Benchmarks
@@ -231,7 +232,7 @@ In the excluded screen-off run:
 | Impeller | ✅ default (GLES, SDF) | ✅ default (GLES, SDF) | ⚠️ accepts the switch, GL only | ✅ (partial repaint disabled with Impeller) | ❌ no specific support |
 | Vulkan | ❌ | ❌ | ❌ | ✅ | ⚠️ optional, off by default |
 | External textures | ✅ GL and pixel buffer | ✅ pixel buffer and dmabuf (zero-copy, incl. YUV) | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
-| Platform views | ❌ | ⚠️ Wayland only: zero-copy plugin dmabufs in subsurfaces, Flutter overlays in subsurfaces above them | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
+| Platform views | ❌ | ⚠️ Wayland and KMS: on Wayland zero-copy plugin dmabufs in subsurfaces, Flutter overlays in subsurfaces above them; on KMS dmabufs composited with GL; not on X11 | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
 
 ### Windows and displays
 
@@ -393,8 +394,8 @@ These are ordered by how much they affect apps:
    (`axis_value120`, `wl_seat` v8+), tablet input.**
 4. **X11 follow-ups**: IME (XIM or IBus), platform views, zero-copy
    presentation.
-5. **KMS follow-ups**: hardware planes for platform views
-   and overlays, multiple outputs and hotplug, a system clipboard. flutter-pi's
+5. **KMS follow-ups**: hardware planes for platform views and overlays
+   (they are currently composited with GL), multiple outputs and hotplug, a system clipboard. flutter-pi's
    plane-based design is the best reference.
 6. **Vulkan / Impeller-Vulkan.**
 

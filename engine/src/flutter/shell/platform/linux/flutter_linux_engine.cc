@@ -28,6 +28,10 @@ namespace {
 // compositors that refresh slower than they report.
 constexpr size_t kMaxFramesInFlight = 1;
 
+// A texture ID that is never registered, used to redraw the last frame.
+// Registered textures start at 1.
+constexpr int64_t kRedrawTextureId = -1;
+
 // Converts a Flutter task target time to an event loop time.
 EventLoop::TimePoint ToEventLoopTime(uint64_t target_time_nanos,
                                      uint64_t engine_now_nanos) {
@@ -161,17 +165,11 @@ bool FlutterLinuxEngine::Initialize() {
   compositor_ = std::make_unique<CompositorOpenGL>(
       egl_.get(), application_->display(), IsImpellerEnabled());
   texture_registrar_ = std::make_unique<TextureRegistrar>(this);
-  // Platform views are shown in Wayland subsurfaces, and aren't supported on
-  // other backends.
-  Display* display = application_->display();
-  platform_view_manager_ = std::make_unique<PlatformViewManager>(
-      this,
-      display->backend() == Display::Backend::kWayland
-          ? static_cast<WaylandDisplay*>(display)
-          : nullptr,
-      application_->event_loop());
-  platform_view_manager_->set_supported(display->backend() ==
-                                        Display::Backend::kWayland);
+  platform_view_manager_ =
+      std::make_unique<PlatformViewManager>(this, [this](int64_t id) {
+        return application_->display()->CreatePlatformView(
+            id, [this]() { RedrawLastFrame(); });
+      });
   compositor_->SetPlatformViewLookup(
       [manager = platform_view_manager_.get()](int64_t id) {
         return manager->GetView(id);
@@ -904,6 +902,15 @@ bool FlutterLinuxEngine::RegisterExternalTexture(int64_t texture_id) {
 
 void FlutterLinuxEngine::UnregisterExternalTexture(int64_t texture_id) {
   embedder_api_.UnregisterExternalTexture(engine_, texture_id);
+}
+
+void FlutterLinuxEngine::RedrawLastFrame() {
+  if (!running()) {
+    return;
+  }
+  // Marking a texture that doesn't exist draws the last frame again without
+  // the framework building a new one.
+  embedder_api_.MarkExternalTextureFrameAvailable(engine_, kRedrawTextureId);
 }
 
 void FlutterLinuxEngine::MarkExternalTextureFrameAvailable(int64_t texture_id) {

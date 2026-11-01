@@ -19,6 +19,7 @@ namespace flutter {
 
 class GpuDevice;
 class KmsDisplay;
+class KmsPlatformView;
 class TextureBlitter;
 class TextureBuffer;
 
@@ -28,6 +29,8 @@ class TextureBuffer;
 // Frames are copied into buffers the display hardware scans out directly, and
 // shown with a page flip at the next vertical blank. Where possible the
 // display waits for a fence, so the copy doesn't have to finish first.
+// Platform views and the Flutter content above them are drawn over the
+// frame as it is copied.
 class KmsWindow : public Window {
  public:
   KmsWindow(KmsDisplay* display, Delegate* delegate, const Params& params);
@@ -87,6 +90,22 @@ class KmsWindow : public Window {
 
  private:
   struct Buffer;
+
+  // A platform view buffer drawn into a frame.
+  struct ViewUse {
+    std::shared_ptr<KmsPlatformView> view;
+    uint64_t serial;
+  };
+
+  // Draws |layers| over |target|, where |source| is the frame they belong
+  // to. Returns the platform view buffers drawn.
+  std::vector<ViewUse> DrawLayers(Buffer* target,
+                                  TextureBuffer* source,
+                                  const std::vector<Layer>& layers);
+
+  // Releases platform view buffers drawn into frames that have finished
+  // rendering.
+  void EndViewUses(std::vector<ViewUse> uses);
 
   // Returns a buffer that isn't shown or waiting to be shown, creating it if
   // needed. Called with the render context current.

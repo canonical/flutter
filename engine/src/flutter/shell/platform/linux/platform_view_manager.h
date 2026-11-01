@@ -17,8 +17,7 @@
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/encodable_value.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
-#include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
-#include "flutter/shell/platform/linux/wayland/wayland_display.h"
+#include "flutter/shell/platform/linux/platform_view.h"
 
 namespace flutter {
 
@@ -33,19 +32,18 @@ class PlatformViewManager {
   using Factory = std::function<bool(LinuxPlatformView* view,
                                      const std::vector<uint8_t>& params)>;
 
-  // |messenger|, |display| and |event_loop| must outlive the manager.
-  PlatformViewManager(PlatformMessenger* messenger,
-                      WaylandDisplay* display,
-                      EventLoop* event_loop);
+  // Creates a view with |id| for the display backend, or returns nullptr if
+  // the backend doesn't support platform views.
+  using ViewCreator =
+      std::function<std::shared_ptr<LinuxPlatformView>(int64_t id)>;
+
+  // |messenger| must outlive the manager.
+  PlatformViewManager(PlatformMessenger* messenger, ViewCreator create_view);
   ~PlatformViewManager();
 
   // Registers the factory for views of |view_type|, replacing any existing
   // one. Called on the platform thread.
   void RegisterViewType(const std::string& view_type, Factory factory);
-
-  // Sets whether the display server supports platform views. If not, requests
-  // to create them fail.
-  void set_supported(bool supported) { supported_ = supported; }
 
   // Returns the view with |id|, or nullptr. May be called from any thread.
   std::shared_ptr<LinuxPlatformView> GetView(int64_t id);
@@ -64,9 +62,7 @@ class PlatformViewManager {
   std::vector<uint8_t> DispatchPointerEvent(const EncodableValue* arguments);
 
   PlatformMessenger* messenger_;
-  WaylandDisplay* display_;
-  bool supported_ = true;
-  EventLoop* event_loop_;
+  ViewCreator create_view_;
 
   std::map<std::string, Factory> factories_;
 

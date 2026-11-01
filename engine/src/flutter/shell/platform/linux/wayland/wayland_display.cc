@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/wayland/wayland_platform_view.h"
 #include "flutter/shell/platform/linux/wayland/wayland_window.h"
 
 namespace flutter {
@@ -630,6 +631,13 @@ std::unique_ptr<Window> WaylandDisplay::CreateWindow(
     Window::Delegate* delegate,
     const Window::Params& params) {
   return WaylandWindow::Create(this, decoration_renderer, delegate, params);
+}
+
+std::shared_ptr<LinuxPlatformView> WaylandDisplay::CreatePlatformView(
+    int64_t id,
+    std::function<void()> redraw) {
+  // The compositor shows new buffers without Flutter redrawing.
+  return std::make_shared<WaylandPlatformView>(id, this, event_loop_);
 }
 
 }  // namespace flutter

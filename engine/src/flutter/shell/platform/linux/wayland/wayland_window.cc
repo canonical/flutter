@@ -874,15 +874,18 @@ void WaylandWindow::PresentLayers(const std::vector<Layer>& layers,
   // Each layer is placed above the one before it, starting with the content.
   wl_surface* above = surface_;
   size_t n_overlays = 0;
-  std::vector<std::shared_ptr<LinuxPlatformView>> shown_views;
+  std::vector<std::shared_ptr<WaylandPlatformView>> shown_views;
   for (const Layer& layer : layers) {
     if (layer.platform_view != nullptr) {
-      wl_surface* view_surface = layer.platform_view->Show(
-          this, surface_, above, layer.geometry, scale_);
+      // The display only creates Wayland platform views.
+      auto view =
+          std::static_pointer_cast<WaylandPlatformView>(layer.platform_view);
+      wl_surface* view_surface =
+          view->Show(this, surface_, above, layer.geometry, scale_);
       if (view_surface != nullptr) {
         above = view_surface;
       }
-      shown_views.push_back(layer.platform_view);
+      shown_views.push_back(std::move(view));
       continue;
     }
 
@@ -978,7 +981,7 @@ void WaylandWindow::PresentOverlay(Overlay* overlay,
   overlay->mapped = true;
 }
 
-void WaylandWindow::CommitPlatformView(LinuxPlatformView* view) {
+void WaylandWindow::CommitPlatformView(WaylandPlatformView* view) {
   std::lock_guard<std::mutex> lock(surface_mutex_);
   if (!view->CommitBuffer(this)) {
     return;
@@ -990,7 +993,7 @@ void WaylandWindow::CommitPlatformView(LinuxPlatformView* view) {
   wl_display_flush(display_->display());
 }
 
-void WaylandWindow::RemovePlatformView(LinuxPlatformView* view) {
+void WaylandWindow::RemovePlatformView(WaylandPlatformView* view) {
   std::lock_guard<std::mutex> lock(surface_mutex_);
   view->Detach(this);
   platform_views_.erase(

@@ -16,6 +16,7 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/clipboard.h"
 #include "flutter/shell/platform/linux/event_loop.h"
+#include "flutter/shell/platform/linux/platform_view.h"
 #include "flutter/shell/platform/linux/window.h"
 
 namespace flutter {
@@ -94,6 +95,16 @@ class Display : public EventLoop::Source {
       DecorationRenderer* decoration_renderer,
       Window::Delegate* delegate,
       const Window::Params& params) = 0;
+
+  // Creates a platform view with |id|, or returns nullptr if the backend
+  // doesn't support them. |redraw| is called on the platform thread when a
+  // backend that draws platform views into Flutter frames needs the last
+  // frame drawn again to show a new buffer.
+  virtual std::shared_ptr<LinuxPlatformView> CreatePlatformView(
+      int64_t id,
+      std::function<void()> redraw) {
+    return nullptr;
+  }
 
   // Adds or removes an observer, which must be removed before it is
   // destroyed.
