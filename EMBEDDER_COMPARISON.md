@@ -220,7 +220,7 @@ In the excluded screen-off run:
 |---|---|---|---|---|---|
 | Wayland | ✅ via GTK | ✅ | ✅ | ✅ xdg, AGL, IVI and simple shells | ❌ |
 | X11 | ✅ via GTK | ✅ XCB; DRI3 or MIT-SHM pixmaps shown with Present | ✅ | ❌ | ❌ |
-| DRM/KMS without a compositor | ❌ | ✅ legacy modeset and page flip, logind session, libinput; one fullscreen window on one output | ✅ GBM and EGLStream, chosen at compile time | ✅ EGL, Vulkan or dumb buffers, plus DRM leasing; chosen at run time | ✅ only mode; atomic KMS with legacy fallback |
+| DRM/KMS without a compositor | ❌ | ✅ atomic KMS with render fences and legacy fallback, logind session, libinput; one fullscreen window on one output | ✅ GBM and EGLStream, chosen at compile time | ✅ EGL, Vulkan or dumb buffers, plus DRM leasing; chosen at run time | ✅ only mode; atomic KMS with legacy fallback |
 | Toolkit-free | ❌ GTK 3 | ✅ | ✅ | ✅ | ✅ |
 | Embedder API rendering path | `FlutterCompositor` | `FlutterCompositor` | simple GL renderer config (`make_current`/`present`) | GL renderer config; `FlutterCompositor` optional (needed for platform views) | `FlutterCompositor`, with layers mapped to hardware planes |
 | Frame presentation on Wayland | FBO, then a copy into a `wl_egl_window` subsurface via `eglSwapBuffers` | zero-copy GBM dmabuf, `linux-dmabuf` v4 feedback (X11: one copy into a DRI3 or SHM pixmap; KMS: GBM scanout buffers, no copy) | `wl_egl_window` + `eglSwapBuffers` | EGL: `wl_egl_window` + `eglSwapBuffers`; Vulkan: swapchain or dmabuf | n/a (GBM buffers flipped by KMS) |
@@ -393,7 +393,7 @@ These are ordered by how much they affect apps:
    (`axis_value120`, `wl_seat` v8+), tablet input.**
 4. **X11 follow-ups**: IME (XIM or IBus), platform views, zero-copy
    presentation.
-5. **KMS follow-ups**: atomic modesetting, hardware planes for platform views
+5. **KMS follow-ups**: hardware planes for platform views
    and overlays, multiple outputs and hotplug, a system clipboard. flutter-pi's
    plane-based design is the best reference.
 6. **Vulkan / Impeller-Vulkan.**

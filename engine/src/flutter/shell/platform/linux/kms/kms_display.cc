@@ -5,6 +5,7 @@
 #include "flutter/shell/platform/linux/kms/kms_display.h"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <xf86drm.h>
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/kms/kms_input.h"
@@ -129,6 +131,43 @@ uint32_t FindCrtc(int fd,
   return fallback;
 }
 
+// The properties of a KMS object, by name, with their IDs and values.
+using Properties = std::map<std::string, std::pair<uint32_t, uint64_t>>;
+
+Properties GetProperties(int fd, uint32_t object_id, uint32_t object_type) {
+  Properties result;
+  drmModeObjectProperties* properties =
+      drmModeObjectGetProperties(fd, object_id, object_type);
+  if (properties == nullptr) {
+    return result;
+  }
+  for (uint32_t i = 0; i < properties->count_props; i++) {
+    drmModePropertyRes* property = drmModeGetProperty(fd, properties->props[i]);
+    if (property != nullptr) {
+      result[property->name] = {property->prop_id, properties->prop_values[i]};
+      drmModeFreeProperty(property);
+    }
+  }
+  drmModeFreeObjectProperties(properties);
+  return result;
+}
+
+// Returns the ID of the property |name|, or 0 if there is none.
+uint32_t PropertyId(const Properties& properties, const char* name) {
+  auto it = properties.find(name);
+  return it != properties.end() ? it->second.first : 0;
+}
+
+// Waits for the rendering |fence_fd| refers to to finish.
+void WaitForFence(int fence_fd) {
+  if (fence_fd < 0) {
+    return;
+  }
+  pollfd fd = {.fd = fence_fd, .events = POLLIN};
+  while (poll(&fd, 1, -1) < 0 && errno == EINTR) {
+  }
+}
+
 // The classic arrow pointer, with its tip at the top left. 'X' is the
 // outline and '.' the fill.
 constexpr const char* kArrow[] = {
@@ -184,6 +223,9 @@ KmsDisplay::~KmsDisplay() {
       drmIoctl(drm_fd_.get(), DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
     }
     RestoreCrtc();
+    if (mode_blob_id_ != 0) {
+      drmModeDestroyPropertyBlob(drm_fd_.get(), mode_blob_id_);
+    }
     session_->CloseDevice(drm_fd_.release());
   }
   if (saved_crtc_ != nullptr) {
@@ -223,9 +265,13 @@ bool KmsDisplay::Initialize() {
   supports_modifiers_ =
       drmGetCap(drm_fd_.get(), DRM_CAP_ADDFB2_MODIFIERS, &value) == 0 &&
       value != 0;
+  atomic_ = InitializeAtomic();
   FML_LOG(INFO) << "Using " << connector_name_ << " at " << mode_.hdisplay
                 << "x" << mode_.vdisplay << "@" << mode_.vrefresh
-                << "Hz, scale " << scale_;
+                << "Hz, scale " << scale_ << ", "
+                << (!atomic_            ? "legacy modesetting"
+                    : supports_fences() ? "atomic modesetting with fences"
+                                        : "atomic modesetting");
 
   clipboard_ = std::make_unique<KmsClipboard>();
 
@@ -367,6 +413,196 @@ void KmsDisplay::ChooseScale(const drmModeConnector* connector) {
   }
 }
 
+bool KmsDisplay::InitializeAtomic() {
+  const char* disabled = getenv("FLUTTER_KMS_NO_ATOMIC");
+  if (disabled != nullptr && disabled[0] != '\0' &&
+      strcmp(disabled, "0") != 0) {
+    return false;
+  }
+  int fd = drm_fd_.get();
+  if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) != 0 ||
+      drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1) != 0) {
+    return false;
+  }
+
+  // Planes refer to CRTCs by their index.
+  int crtc_index = -1;
+  drmModeRes* resources = drmModeGetResources(fd);
+  if (resources != nullptr) {
+    for (int i = 0; i < resources->count_crtcs; i++) {
+      if (resources->crtcs[i] == crtc_id_) {
+        crtc_index = i;
+      }
+    }
+    drmModeFreeResources(resources);
+  }
+  drmModePlaneRes* planes = drmModeGetPlaneResources(fd);
+  if (crtc_index < 0 || planes == nullptr) {
+    if (planes != nullptr) {
+      drmModeFreePlaneResources(planes);
+    }
+    DisableAtomic();
+    return false;
+  }
+  // Use the primary plane on the CRTC, preferring the one already showing
+  // on it.
+  Properties plane_properties;
+  bool plane_on_crtc = false;
+  for (uint32_t i = 0; i < planes->count_planes; i++) {
+    drmModePlane* plane = drmModeGetPlane(fd, planes->planes[i]);
+    if (plane == nullptr) {
+      continue;
+    }
+    bool usable = (plane->possible_crtcs & (1u << crtc_index)) != 0;
+    bool on_crtc = plane->crtc_id == crtc_id_;
+    uint32_t id = plane->plane_id;
+    drmModeFreePlane(plane);
+    if (!usable) {
+      continue;
+    }
+    Properties properties = GetProperties(fd, id, DRM_MODE_OBJECT_PLANE);
+    auto type = properties.find("type");
+    if (type == properties.end()) {
+      continue;
+    }
+    if (type->second.second == DRM_PLANE_TYPE_OVERLAY) {
+      other_planes_.push_back({id, PropertyId(properties, "FB_ID"),
+                               PropertyId(properties, "CRTC_ID")});
+    } else if (type->second.second == DRM_PLANE_TYPE_PRIMARY &&
+               (plane_id_ == 0 || (on_crtc && !plane_on_crtc))) {
+      plane_id_ = id;
+      plane_on_crtc = on_crtc;
+      plane_properties = std::move(properties);
+    }
+  }
+  drmModeFreePlaneResources(planes);
+
+  Properties connector_properties =
+      GetProperties(fd, connector_id_, DRM_MODE_OBJECT_CONNECTOR);
+  Properties crtc_properties =
+      GetProperties(fd, crtc_id_, DRM_MODE_OBJECT_CRTC);
+  connector_crtc_id_prop_ = PropertyId(connector_properties, "CRTC_ID");
+  crtc_active_prop_ = PropertyId(crtc_properties, "ACTIVE");
+  crtc_mode_id_prop_ = PropertyId(crtc_properties, "MODE_ID");
+  fb_id_prop_ = PropertyId(plane_properties, "FB_ID");
+  crtc_id_prop_ = PropertyId(plane_properties, "CRTC_ID");
+  src_x_prop_ = PropertyId(plane_properties, "SRC_X");
+  src_y_prop_ = PropertyId(plane_properties, "SRC_Y");
+  src_w_prop_ = PropertyId(plane_properties, "SRC_W");
+  src_h_prop_ = PropertyId(plane_properties, "SRC_H");
+  crtc_x_prop_ = PropertyId(plane_properties, "CRTC_X");
+  crtc_y_prop_ = PropertyId(plane_properties, "CRTC_Y");
+  crtc_w_prop_ = PropertyId(plane_properties, "CRTC_W");
+  crtc_h_prop_ = PropertyId(plane_properties, "CRTC_H");
+  in_fence_fd_prop_ = PropertyId(plane_properties, "IN_FENCE_FD");
+  uint32_t required[] = {
+      plane_id_,         connector_crtc_id_prop_,
+      crtc_active_prop_, crtc_mode_id_prop_,
+      fb_id_prop_,       crtc_id_prop_,
+      src_x_prop_,       src_y_prop_,
+      src_w_prop_,       src_h_prop_,
+      crtc_x_prop_,      crtc_y_prop_,
+      crtc_w_prop_,      crtc_h_prop_,
+  };
+  if (std::find(std::begin(required), std::end(required), 0u) !=
+          std::end(required) ||
+      drmModeCreatePropertyBlob(fd, &mode_, sizeof(mode_), &mode_blob_id_) !=
+          0) {
+    FML_LOG(WARNING) << "Atomic modesetting is unavailable";
+    DisableAtomic();
+    return false;
+  }
+  return true;
+}
+
+void KmsDisplay::DisableAtomic() {
+  atomic_ = false;
+  drmSetClientCap(drm_fd_.get(), DRM_CLIENT_CAP_ATOMIC, 0);
+  drmSetClientCap(drm_fd_.get(), DRM_CLIENT_CAP_UNIVERSAL_PLANES, 0);
+}
+
+bool KmsDisplay::CommitAtomic(uint32_t fb_id, int fence_fd, bool modeset) {
+  drmModeAtomicReq* request = drmModeAtomicAlloc();
+  if (request == nullptr) {
+    return false;
+  }
+  int fd = drm_fd_.get();
+  if (modeset) {
+    drmModeAtomicAddProperty(request, connector_id_, connector_crtc_id_prop_,
+                             crtc_id_);
+    drmModeAtomicAddProperty(request, crtc_id_, crtc_active_prop_, 1);
+    drmModeAtomicAddProperty(request, crtc_id_, crtc_mode_id_prop_,
+                             mode_blob_id_);
+    // Turn off planes left on the screen by whatever used it before.
+    for (const OtherPlane& other : other_planes_) {
+      drmModePlane* plane = drmModeGetPlane(fd, other.id);
+      bool on_crtc = plane != nullptr && plane->crtc_id == crtc_id_;
+      drmModeFreePlane(plane);
+      if (on_crtc && other.fb_id_prop != 0 && other.crtc_id_prop != 0) {
+        drmModeAtomicAddProperty(request, other.id, other.fb_id_prop, 0);
+        drmModeAtomicAddProperty(request, other.id, other.crtc_id_prop, 0);
+      }
+    }
+  }
+  // The plane fills the screen. Source coordinates are in 16.16 fixed point.
+  drmModeAtomicAddProperty(request, plane_id_, fb_id_prop_, fb_id);
+  drmModeAtomicAddProperty(request, plane_id_, crtc_id_prop_, crtc_id_);
+  drmModeAtomicAddProperty(request, plane_id_, src_x_prop_, 0);
+  drmModeAtomicAddProperty(request, plane_id_, src_y_prop_, 0);
+  drmModeAtomicAddProperty(request, plane_id_, src_w_prop_,
+                           static_cast<uint64_t>(mode_.hdisplay) << 16);
+  drmModeAtomicAddProperty(request, plane_id_, src_h_prop_,
+                           static_cast<uint64_t>(mode_.vdisplay) << 16);
+  drmModeAtomicAddProperty(request, plane_id_, crtc_x_prop_, 0);
+  drmModeAtomicAddProperty(request, plane_id_, crtc_y_prop_, 0);
+  drmModeAtomicAddProperty(request, plane_id_, crtc_w_prop_, mode_.hdisplay);
+  drmModeAtomicAddProperty(request, plane_id_, crtc_h_prop_, mode_.vdisplay);
+  if (fence_fd >= 0) {
+    drmModeAtomicAddProperty(request, plane_id_, in_fence_fd_prop_, fence_fd);
+  }
+  uint32_t flags = modeset
+                       ? DRM_MODE_ATOMIC_ALLOW_MODESET
+                       : DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT;
+  int result = drmModeAtomicCommit(fd, request, flags, this);
+  int error = errno;
+  drmModeAtomicFree(request);
+  errno = error;
+  return result == 0;
+}
+
+bool KmsDisplay::SetMode(uint32_t fb_id, int fence_fd) {
+  if (atomic_) {
+    if (CommitAtomic(fb_id, fence_fd, /*modeset=*/true)) {
+      return true;
+    }
+    FML_LOG(WARNING) << "Atomic modesetting failed, using legacy modesetting: "
+                     << strerror(errno);
+    DisableAtomic();
+  }
+  WaitForFence(fence_fd);
+  drmModeModeInfo mode = mode_;
+  return drmModeSetCrtc(drm_fd_.get(), crtc_id_, fb_id, 0, 0, &connector_id_, 1,
+                        &mode) == 0;
+}
+
+bool KmsDisplay::Flip(uint32_t fb_id, int fence_fd) {
+  if (atomic_) {
+    if (CommitAtomic(fb_id, fence_fd, /*modeset=*/false)) {
+      return true;
+    }
+    // A flip may be refused while the previous one is still pending.
+    if (errno == EBUSY) {
+      return false;
+    }
+    FML_LOG(WARNING) << "Atomic page flip failed, using legacy modesetting: "
+                     << strerror(errno);
+    DisableAtomic();
+  }
+  WaitForFence(fence_fd);
+  return drmModePageFlip(drm_fd_.get(), crtc_id_, fb_id,
+                         DRM_MODE_PAGE_FLIP_EVENT, this) == 0;
+}
+
 void KmsDisplay::RestoreCrtc() {
   if (saved_crtc_ == nullptr || !active()) {
     return;
@@ -417,7 +653,7 @@ void KmsDisplay::Dispatch(bool readable) {
       self->window_->OnPageFlip(self->FlipTimeNs(sec, usec));
     }
   };
-  // The window requests page flips with the display as the user data.
+  // Page flips are requested with the display as the user data.
   drmHandleEvent(drm_fd_.get(), &context);
 }
 

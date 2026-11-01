@@ -12,10 +12,12 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/fml/unique_fd.h"
 #include "flutter/shell/platform/linux/window.h"
 
 namespace flutter {
 
+class GpuDevice;
 class KmsDisplay;
 class TextureBlitter;
 class TextureBuffer;
@@ -24,7 +26,8 @@ class TextureBuffer;
 // screen and has no decorations.
 //
 // Frames are copied into buffers the display hardware scans out directly, and
-// shown with a page flip at the next vertical blank.
+// shown with a page flip at the next vertical blank. Where possible the
+// display waits for a fence, so the copy doesn't have to finish first.
 class KmsWindow : public Window {
  public:
   KmsWindow(KmsDisplay* display, Delegate* delegate, const Params& params);
@@ -89,6 +92,10 @@ class KmsWindow : public Window {
   // needed. Called with the render context current.
   Buffer* AcquireBuffer(TextureBuffer* source);
   std::unique_ptr<Buffer> CreateBuffer(TextureBuffer* source);
+
+  // Returns a fence that signals when the rendering so far is complete, or
+  // an invalid fd if the display can't wait for one.
+  fml::UniqueFD CreateFence(GpuDevice* gpu);
 
   // Shows the queued buffer. Called with |mutex_| held.
   void Submit();

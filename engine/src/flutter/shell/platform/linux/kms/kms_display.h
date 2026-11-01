@@ -7,6 +7,7 @@
 
 #include <xf86drmMode.h>
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +32,10 @@ class KmsWindow;
 // (e.g. /dev/dri/card1). The screen is the first connected, or
 // FLUTTER_KMS_CONNECTOR (e.g. HDMI-A-1). FLUTTER_KMS_SCALE overrides the
 // scale chosen from the screen's pixel density.
+//
+// The screen is configured with atomic modesetting. The legacy modesetting
+// calls are used if the driver doesn't support atomic modesetting, if it
+// rejects the configuration, or if FLUTTER_KMS_NO_ATOMIC is set.
 class KmsDisplay : public Display {
  public:
   // Returns nullptr if no screen can be used.
@@ -71,6 +76,19 @@ class KmsDisplay : public Display {
   // Converts a page flip time to nanoseconds on CLOCK_MONOTONIC.
   uint64_t FlipTimeNs(unsigned int sec, unsigned int usec) const;
 
+  // True if frames can be shown with a fence the display waits for, rather
+  // than rendering having to finish first.
+  bool supports_fences() const { return atomic_ && in_fence_fd_prop_ != 0; }
+
+  // Configures the screen to show the framebuffer |fb_id| once |fence_fd|
+  // signals, if it is not -1. Blocks until the frame is shown.
+  bool SetMode(uint32_t fb_id, int fence_fd);
+
+  // Shows the framebuffer |fb_id| at the next vertical blank once
+  // |fence_fd| signals, if it is not -1. The window's OnPageFlip is called
+  // when it is shown.
+  bool Flip(uint32_t fb_id, int fence_fd);
+
   // Called by the window when it is destroyed.
   void RemoveWindow(KmsWindow* window);
 
@@ -85,6 +103,13 @@ class KmsDisplay : public Display {
   // has none.
   bool OpenDevice(const std::string& path, const char* connector_name);
   void ChooseScale(const drmModeConnector* connector);
+  // Enables atomic modesetting. Returns false if it can't be used.
+  bool InitializeAtomic();
+  // Shows |fb_id| with an atomic commit. With |modeset| the screen is also
+  // configured, blocking until it is done.
+  bool CommitAtomic(uint32_t fb_id, int fence_fd, bool modeset);
+  // Stops using atomic modesetting after it failed.
+  void DisableAtomic();
   void OnActiveChanged(bool active);
   void CreateCursor();
   void UpdateCursor();
@@ -106,6 +131,35 @@ class KmsDisplay : public Display {
   bool monotonic_timestamps_ = false;
   bool supports_modifiers_ = false;
   KmsWindow* window_ = nullptr;
+
+  // Atomic modesetting state. Property IDs are 0 if the driver doesn't have
+  // them. |atomic_| may be cleared on the thread showing a frame.
+  std::atomic<bool> atomic_ = false;
+  uint32_t plane_id_ = 0;
+  uint32_t mode_blob_id_ = 0;
+  uint32_t connector_crtc_id_prop_ = 0;
+  uint32_t crtc_active_prop_ = 0;
+  uint32_t crtc_mode_id_prop_ = 0;
+  uint32_t fb_id_prop_ = 0;
+  uint32_t crtc_id_prop_ = 0;
+  uint32_t src_x_prop_ = 0;
+  uint32_t src_y_prop_ = 0;
+  uint32_t src_w_prop_ = 0;
+  uint32_t src_h_prop_ = 0;
+  uint32_t crtc_x_prop_ = 0;
+  uint32_t crtc_y_prop_ = 0;
+  uint32_t crtc_w_prop_ = 0;
+  uint32_t crtc_h_prop_ = 0;
+  uint32_t in_fence_fd_prop_ = 0;
+  // Other planes that can be shown on the CRTC, which are turned off when
+  // the screen is configured. Each is the plane and its FB_ID and CRTC_ID
+  // property IDs.
+  struct OtherPlane {
+    uint32_t id;
+    uint32_t fb_id_prop;
+    uint32_t crtc_id_prop;
+  };
+  std::vector<OtherPlane> other_planes_;
 
   // The cursor is drawn by the display hardware from a dumb buffer.
   uint32_t cursor_handle_ = 0;

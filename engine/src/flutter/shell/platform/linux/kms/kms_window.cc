@@ -51,6 +51,10 @@ struct KmsWindow::Buffer {
   uint32_t handle = 0;
   uint32_t fb_id = 0;
 
+  // Signals when rendering into the buffer is complete, if the display waits
+  // for it.
+  fml::UniqueFD fence;
+
   // Must be destroyed with the render context current.
   ~Buffer() {
     if (framebuffer != 0) {
@@ -186,8 +190,11 @@ void KmsWindow::Present(RenderBuffer* buffer,
                       /*swap_red_blue=*/false)) {
     return;
   }
-  // The display reads the buffer without synchronizing with this context.
-  glFinish();
+  target->fence = CreateFence(source->egl_manager()->gpu());
+  if (!target->fence.is_valid()) {
+    // The display reads the buffer without synchronizing with this context.
+    glFinish();
+  }
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (queued_ != nullptr) {
@@ -322,16 +329,33 @@ std::unique_ptr<KmsWindow::Buffer> KmsWindow::CreateBuffer(
   return buffer;
 }
 
+fml::UniqueFD KmsWindow::CreateFence(GpuDevice* gpu) {
+  if (!display_->supports_fences() || gpu->CreateSync == nullptr ||
+      gpu->DupNativeFenceFD == nullptr) {
+    return fml::UniqueFD();
+  }
+  const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+                               EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
+  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
+                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  // The fence is only created once the commands are submitted.
+  glFlush();
+  if (sync == EGL_NO_SYNC_KHR) {
+    return fml::UniqueFD();
+  }
+  fml::UniqueFD fence(gpu->DupNativeFenceFD(gpu->display(), sync));
+  gpu->DestroySync(gpu->display(), sync);
+  return fence;
+}
+
 void KmsWindow::Submit() {
   Buffer* buffer = queued_;
   queued_ = nullptr;
-  int drm_fd = display_->drm_fd();
+  // The display holds its own reference to the fence.
+  fml::UniqueFD fence = std::move(buffer->fence);
 
   if (needs_modeset_) {
-    uint32_t connector = display_->connector_id();
-    drmModeModeInfo mode = display_->mode();
-    if (drmModeSetCrtc(drm_fd, display_->crtc_id(), buffer->fb_id, 0, 0,
-                       &connector, 1, &mode) != 0) {
+    if (!display_->SetMode(buffer->fb_id, fence.get())) {
       if (!reported_error_) {
         FML_LOG(ERROR) << "Failed to set the display mode: " << strerror(errno);
         reported_error_ = true;
@@ -347,8 +371,7 @@ void KmsWindow::Submit() {
     return;
   }
 
-  if (drmModePageFlip(drm_fd, display_->crtc_id(), buffer->fb_id,
-                      DRM_MODE_PAGE_FLIP_EVENT, display_) != 0) {
+  if (!display_->Flip(buffer->fb_id, fence.get())) {
     if (!reported_error_) {
       FML_LOG(ERROR) << "Failed to show a frame: " << strerror(errno);
       reported_error_ = true;
@@ -417,10 +440,7 @@ void KmsWindow::Resume() {
       Submit();
     } else if (front_ != nullptr) {
       // Show the last frame again until a new one is drawn.
-      uint32_t connector = display_->connector_id();
-      drmModeModeInfo mode = display_->mode();
-      if (drmModeSetCrtc(display_->drm_fd(), display_->crtc_id(), front_->fb_id,
-                         0, 0, &connector, 1, &mode) == 0) {
+      if (display_->SetMode(front_->fb_id, -1)) {
         needs_modeset_ = false;
       }
     }
