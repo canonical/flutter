@@ -97,11 +97,11 @@ typedef struct {
   bool fractional_scale;
 } FlutterLinuxRenderingInfo;
 
-// Connects to the display server: the Wayland compositor if available,
-// otherwise the X server if DISPLAY is set, otherwise the screen is used
-// directly with kernel modesetting (KMS). The FLUTTER_LINUX_BACKEND
-// environment variable may be set to "wayland", "x11" or "kms" to choose one.
-// Returns NULL if no display or GPU is available.
+// Connects to the display server: the Wayland compositor if
+// WAYLAND_DISPLAY is set, otherwise the X server if DISPLAY is set, otherwise
+// the screen is used directly with kernel modesetting (KMS). The
+// FLUTTER_LINUX_BACKEND environment variable may be set to "wayland", "x11" or
+// "kms" to choose one. Returns NULL if no display or GPU is available.
 FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
 
 FLUTTER_EXPORT void flutter_linux_application_free(
@@ -119,9 +119,9 @@ FLUTTER_EXPORT void flutter_linux_application_set_application_id(
     const char* application_id);
 
 // Returns the display server the application is connected to. Wayland is
-// used if available, otherwise X11 if DISPLAY is set, otherwise KMS. The
-// FLUTTER_LINUX_BACKEND environment variable may be set to "wayland", "x11"
-// or "kms" to choose one.
+// used if WAYLAND_DISPLAY is set, otherwise X11 if DISPLAY is set, otherwise
+// KMS. The FLUTTER_LINUX_BACKEND environment variable may be set to "wayland",
+// "x11" or "kms" to choose one.
 FLUTTER_EXPORT FlutterLinuxDisplayBackend
 flutter_linux_application_get_display_backend(
     FlutterLinuxApplication* application);

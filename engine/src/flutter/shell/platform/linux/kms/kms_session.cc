@@ -97,7 +97,8 @@ bool KmsSession::InitializeLogind(const std::string& bus_address) {
     return false;
   }
 
-  std::optional<DBusMessage> seat = GetSessionProperty("Seat");
+  std::optional<DBusMessage> seat =
+      GetProperty(session_path_, kSessionInterface, "Seat");
   if (!seat.has_value()) {
     return false;
   }
@@ -111,7 +112,8 @@ bool KmsSession::InitializeLogind(const std::string& bus_address) {
   }
   seat_ = seat_id;
 
-  std::optional<DBusMessage> active = GetSessionProperty("Active");
+  std::optional<DBusMessage> active =
+      GetProperty(session_path_, kSessionInterface, "Active");
   if (!active.has_value()) {
     return false;
   }
@@ -119,6 +121,17 @@ bool KmsSession::InitializeLogind(const std::string& bus_address) {
   if (!active_reader.OpenVariant() || !active_reader.ReadBoolean(&active_)) {
     return false;
   }
+  std::optional<DBusMessage> lid =
+      GetProperty(kManagerPath, kManagerInterface, "LidClosed");
+  if (lid.has_value()) {
+    DBusReader lid_reader = lid->reader();
+    if (!lid_reader.OpenVariant() || !lid_reader.ReadBoolean(&lid_closed_)) {
+      lid_closed_ = false;
+    }
+  }
+
+  FML_LOG(INFO) << "Using logind session " << session_path_ << " on " << seat_
+                << (active_ ? "" : ", waiting for it to be in the foreground");
 
   // Receive the signals logind sends when devices are paused and resumed.
   connection_->set_signal_handler(
@@ -153,10 +166,12 @@ std::optional<DBusMessage> KmsSession::Call(DBusMessage message) {
   return reply;
 }
 
-std::optional<DBusMessage> KmsSession::GetSessionProperty(const char* name) {
-  DBusMessage message = DBusMessage::MethodCall(kLogindName, session_path_,
-                                                kPropertiesInterface, "Get");
-  message.writer().WriteString(kSessionInterface);
+std::optional<DBusMessage> KmsSession::GetProperty(const std::string& path,
+                                                   const char* interface,
+                                                   const char* name) {
+  DBusMessage message =
+      DBusMessage::MethodCall(kLogindName, path, kPropertiesInterface, "Get");
+  message.writer().WriteString(interface);
   message.writer().WriteString(name);
   std::optional<DBusMessage> reply = Call(std::move(message));
   if (!IsMethodReturn(reply)) {

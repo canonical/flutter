@@ -56,10 +56,10 @@ class Display : public EventLoop::Source {
   };
 
   // Connects to the display server specified by the environment. Wayland is
-  // used if available, otherwise X11 if DISPLAY is set, otherwise the screen
-  // is used directly with KMS. The FLUTTER_LINUX_BACKEND environment variable
-  // may be set to "wayland", "x11" or "kms" to choose one. Returns nullptr if
-  // unable to connect.
+  // used if WAYLAND_DISPLAY is set, otherwise X11 if DISPLAY is set, otherwise
+  // the screen is used directly with KMS. The FLUTTER_LINUX_BACKEND environment
+  // variable may be set to "wayland", "x11" or "kms" to choose one. Returns
+  // nullptr if unable to connect.
   //
   // |event_loop| is the loop the display is dispatched from, and must
   // outlive it.

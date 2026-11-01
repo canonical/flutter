@@ -393,11 +393,11 @@ class FlutterDesktopMessenger : public BinaryMessenger {
 // The platform resources shared by all engines in a process.
 class FlutterDesktopApplication {
  public:
-  // Connects to the display server: the Wayland compositor if available,
-  // otherwise the X server if DISPLAY is set, otherwise the screen is used
-  // directly with kernel modesetting (KMS). The FLUTTER_LINUX_BACKEND
-  // environment variable may be set to "wayland", "x11" or "kms" to choose
-  // one. Returns nullptr if no display or GPU is available.
+  // Connects to the display server: the Wayland compositor if
+  // WAYLAND_DISPLAY is set, otherwise the X server if DISPLAY is set, otherwise
+  // the screen is used directly with kernel modesetting (KMS). The
+  // FLUTTER_LINUX_BACKEND environment variable may be set to "wayland", "x11"
+  // or "kms" to choose one. Returns nullptr if no display or GPU is available.
   static std::shared_ptr<FlutterDesktopApplication> create() {
     FlutterLinuxApplication* application = flutter_linux_application_new();
     if (application == nullptr) {

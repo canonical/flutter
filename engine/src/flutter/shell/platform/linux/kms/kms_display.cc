@@ -66,21 +66,47 @@ const drmModeModeInfo* PreferredMode(const drmModeConnector* connector) {
   return connector->count_modes > 0 ? &connector->modes[0] : nullptr;
 }
 
+// True for screens built into the device, e.g. a laptop's screen.
+bool IsInternal(const drmModeConnector* connector) {
+  return connector->connector_type == DRM_MODE_CONNECTOR_eDP ||
+         connector->connector_type == DRM_MODE_CONNECTOR_LVDS ||
+         connector->connector_type == DRM_MODE_CONNECTOR_DSI;
+}
+
+// Returns the CRTC currently driving |connector|, or 0 if it is off.
+uint32_t CurrentCrtc(int fd, const drmModeConnector* connector) {
+  if (connector->encoder_id == 0) {
+    return 0;
+  }
+  drmModeEncoder* encoder = drmModeGetEncoder(fd, connector->encoder_id);
+  if (encoder == nullptr) {
+    return 0;
+  }
+  uint32_t crtc = encoder->crtc_id;
+  drmModeFreeEncoder(encoder);
+  return crtc;
+}
+
+bool IsCrtcInUse(int fd, uint32_t crtc_id) {
+  drmModeCrtc* crtc = drmModeGetCrtc(fd, crtc_id);
+  if (crtc == nullptr) {
+    return false;
+  }
+  bool in_use = crtc->mode_valid != 0;
+  drmModeFreeCrtc(crtc);
+  return in_use;
+}
+
 // Returns a CRTC that can drive |connector|, or 0 if none.
 uint32_t FindCrtc(int fd,
                   const drmModeRes* resources,
                   const drmModeConnector* connector) {
-  // Prefer the CRTC already driving the connector.
-  if (connector->encoder_id != 0) {
-    drmModeEncoder* encoder = drmModeGetEncoder(fd, connector->encoder_id);
-    if (encoder != nullptr) {
-      uint32_t crtc = encoder->crtc_id;
-      drmModeFreeEncoder(encoder);
-      if (crtc != 0) {
-        return crtc;
-      }
-    }
+  uint32_t current = CurrentCrtc(fd, connector);
+  if (current != 0) {
+    return current;
   }
+  // Prefer a CRTC that isn't showing another screen.
+  uint32_t fallback = 0;
   for (int i = 0; i < connector->count_encoders; i++) {
     drmModeEncoder* encoder = drmModeGetEncoder(fd, connector->encoders[i]);
     if (encoder == nullptr) {
@@ -89,12 +115,18 @@ uint32_t FindCrtc(int fd,
     uint32_t possible = encoder->possible_crtcs;
     drmModeFreeEncoder(encoder);
     for (int j = 0; j < resources->count_crtcs; j++) {
-      if (possible & (1u << j)) {
+      if ((possible & (1u << j)) == 0) {
+        continue;
+      }
+      if (!IsCrtcInUse(fd, resources->crtcs[j])) {
         return resources->crtcs[j];
+      }
+      if (fallback == 0) {
+        fallback = resources->crtcs[j];
       }
     }
   }
-  return 0;
+  return fallback;
 }
 
 // The classic arrow pointer, with its tip at the top left. 'X' is the
@@ -246,8 +278,12 @@ bool KmsDisplay::OpenDevice(const std::string& path,
     session_->CloseDevice(fd.release());
     return false;
   }
+  // Prefer a screen that is on (e.g. showing the console), as other
+  // connected screens may be off. A laptop's screen isn't used while the lid
+  // is closed, unless there is no other screen.
   drmModeConnector* chosen = nullptr;
-  for (int i = 0; i < resources->count_connectors && chosen == nullptr; i++) {
+  int chosen_score = -1;
+  for (int i = 0; i < resources->count_connectors; i++) {
     drmModeConnector* connector =
         drmModeGetConnector(fd.get(), resources->connectors[i]);
     if (connector == nullptr) {
@@ -256,10 +292,22 @@ bool KmsDisplay::OpenDevice(const std::string& path,
     bool matches = connector_name != nullptr
                        ? ConnectorName(connector) == connector_name
                        : connector->connection == DRM_MODE_CONNECTED;
-    if (matches && connector->count_modes > 0) {
-      crtc_id_ = FindCrtc(fd.get(), resources, connector);
-      if (crtc_id_ != 0) {
+    int score = 0;
+    if (!(session_->lid_closed() && IsInternal(connector))) {
+      score += 2;
+    }
+    if (CurrentCrtc(fd.get(), connector) != 0) {
+      score += 1;
+    }
+    if (matches && connector->count_modes > 0 && score > chosen_score) {
+      uint32_t crtc = FindCrtc(fd.get(), resources, connector);
+      if (crtc != 0) {
+        if (chosen != nullptr) {
+          drmModeFreeConnector(chosen);
+        }
         chosen = connector;
+        chosen_score = score;
+        crtc_id_ = crtc;
         continue;
       }
     }

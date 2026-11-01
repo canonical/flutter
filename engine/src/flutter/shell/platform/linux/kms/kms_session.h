@@ -43,6 +43,10 @@ class KmsSession {
   // True if the session is in the foreground, so devices can be used.
   bool active() const { return active_; }
 
+  // True if the laptop lid was closed when the session was created. Only
+  // known with logind.
+  bool lid_closed() const { return lid_closed_; }
+
   // True if devices are opened through logind.
   bool uses_logind() const { return connection_ != nullptr; }
 
@@ -73,8 +77,10 @@ class KmsSession {
   // there was no reply.
   std::optional<DBusMessage> Call(DBusMessage message);
 
-  // Reads a property of the session. Returns nullopt on failure.
-  std::optional<DBusMessage> GetSessionProperty(const char* name);
+  // Reads a property of a logind object. Returns nullopt on failure.
+  std::optional<DBusMessage> GetProperty(const std::string& path,
+                                         const char* interface,
+                                         const char* name);
 
   void HandleSignal(const DBusMessage& signal);
 
@@ -86,6 +92,7 @@ class KmsSession {
   std::string seat_path_;
   std::string seat_ = "seat0";
   bool active_ = true;
+  bool lid_closed_ = false;
   std::function<void(bool)> active_callback_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(KmsSession);

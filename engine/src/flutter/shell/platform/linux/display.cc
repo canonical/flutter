@@ -15,6 +15,15 @@
 
 namespace flutter {
 
+namespace {
+
+bool IsSet(const char* name) {
+  const char* value = getenv(name);
+  return value != nullptr && value[0] != '\0';
+}
+
+}  // namespace
+
 std::unique_ptr<Display> Display::Create(EventLoop* event_loop) {
   const char* backend = getenv("FLUTTER_LINUX_BACKEND");
   if (backend != nullptr && backend[0] != '\0') {
@@ -32,11 +41,15 @@ std::unique_ptr<Display> Display::Create(EventLoop* event_loop) {
                      << "\", expected \"wayland\", \"x11\" or \"kms\"";
   }
 
-  std::unique_ptr<Display> display = WaylandDisplay::Create(event_loop);
-  if (display != nullptr) {
-    return display;
+  // The Wayland library connects to "wayland-0" when WAYLAND_DISPLAY isn't
+  // set, which would find a compositor running on another virtual terminal.
+  if (IsSet("WAYLAND_DISPLAY") || IsSet("WAYLAND_SOCKET")) {
+    std::unique_ptr<Display> display = WaylandDisplay::Create(event_loop);
+    if (display != nullptr) {
+      return display;
+    }
   }
-  if (getenv("DISPLAY") != nullptr) {
+  if (IsSet("DISPLAY")) {
     return X11Display::Create(event_loop);
   }
   // Without a display server, show the application on the screen directly.
