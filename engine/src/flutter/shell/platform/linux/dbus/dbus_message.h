@@ -240,9 +240,7 @@ class DBusMessage {
   // connection sends and receives the file descriptors alongside the
   // message.
   void set_unix_fds(std::vector<fml::UniqueFD> fds);
-  const std::vector<fml::UniqueFD>* unix_fds() const {
-    return unix_fds_.get();
-  }
+  const std::vector<fml::UniqueFD>* unix_fds() const { return unix_fds_.get(); }
 
   // Returns a duplicate of the attached file descriptor at |index|, or an
   // invalid one if there is no such file descriptor.

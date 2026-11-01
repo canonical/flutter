@@ -60,9 +60,7 @@ class DBusConnection {
                                                  bool unix_fds = false);
 
   // Uses an already connected |socket|.
-  DBusConnection(EventLoop* loop,
-                 fml::UniqueFD socket,
-                 bool unix_fds = false);
+  DBusConnection(EventLoop* loop, fml::UniqueFD socket, bool unix_fds = false);
   ~DBusConnection();
 
   // True once the bus has assigned this connection a unique name.
