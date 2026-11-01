@@ -3,7 +3,8 @@
 This compares five embedders:
 
 - **New**: `flutter_linux`, the new embedder on branch `linux-next-test`.
-  Wayland only, C++, no toolkit.
+  C++, no toolkit. Wayland first, with X11 and DRM/KMS backends chosen at run
+  time.
 - **Old**: `flutter_linux_gtk`, the GTK embedder on `master` at `56f0dcbb331`,
   which is the base of this branch.
 - **Sony**: [sony/flutter-embedded-linux](https://github.com/sony/flutter-embedded-linux)
@@ -13,7 +14,8 @@ This compares five embedders:
 - **flutter-pi**: [ardera/flutter-pi](https://github.com/ardera/flutter-pi)
   at `8b86c52` (2026-09-17).
 
-Only Old and New were benchmarked. The three third-party embedders were analysed
+Only Old and New were benchmarked, and only on Wayland; the benchmarks predate
+the X11 and KMS backends. The three third-party embedders were analysed
 from their source, not run.
 
 ## Summary
@@ -25,9 +27,17 @@ from their source, not run.
   CPU when animating.
 - **Background rendering.** When the window can't be seen, the new embedder stops
   drawing. The old one keeps rendering at 60 fps; see the note under Benchmarks.
-- **Dependencies.** The new embedder loads 16 shared libraries, compared with 68
-  for GTK. The engine library is a similar size; the new one is 0.2 MB larger
-  because it includes AT-SPI/D-Bus and title text layout.
+- **Dependencies.** The new embedder links 22 shared libraries (including the
+  XCB ones for X11), compared with 68 for GTK. libxkbcommon-x11, libinput and
+  libudev are only loaded when the X11 or KMS backend needs them. The engine
+  library is a similar size; the new one was 0.2 MB larger before the X11 and
+  KMS backends, because it includes AT-SPI/D-Bus and title text layout.
+- **Backends.** One binary picks Wayland, X11 or DRM/KMS at run time
+  (`FLUTTER_LINUX_BACKEND`, otherwise Wayland if `WAYLAND_DISPLAY` is set, then
+  X11 if `DISPLAY` is set, then KMS). The backends share the engine, input,
+  text, accessibility and compositor code behind backend-neutral `Display` and
+  `Window` interfaces. X11 and KMS are simpler than Wayland: no platform views,
+  and KMS has a single undecorated fullscreen window.
 - **Features.** The new embedder leads on Wayland presentation, input, multiple
   windows and accessibility. It now matches the old one's platform channels
   (clipboard, settings, lifecycle, locales and the system bell), but has no
@@ -37,7 +47,8 @@ from their source, not run.
   renders through `wl_egl_window`/`eglSwapBuffers`, has no fractional scaling, no
   accessibility, a single window and vsync off by default. It also needs a forked
   `flutter-elinux` tool, and the last commit was May 2025. It is not a good base
-  for an upstream desktop embedder. Its DRM/GBM backend is its main unique value.
+  for an upstream desktop embedder. Its DRM/GBM backend was its main unique
+  value, and the new embedder now has one too.
 - **ivi-homescreen.** This is the strongest third-party option, and it is very
   actively maintained. It targets automotive and embedded systems. It has many
   backends chosen at run time: Wayland, DRM/KMS and headless, each with EGL or
@@ -52,20 +63,20 @@ from their source, not run.
   and kiosks. It cannot run under a Wayland compositor, so it is not a candidate
   for desktop use. Its KMS design is excellent, though: `FlutterCompositor`
   layers mapped onto hardware planes with atomic commits, a hardware cursor
-  plane, and libinput. It is a good reference if a KMS backend is ever added to
-  the new embedder.
+  plane, and libinput. It is a good reference for extending the new embedder's
+  simpler KMS backend.
 
 ## Code size
 
 | | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---:|---:|---:|---:|---:|
 | Language | C (GObject) | C++ | C++ | C++ | C |
-| Lines, all | 52,468 | 25,010 | ~24.0k (incl. ~8.8k copied from Flutter) | ~146k (93k `shell/` + 22k `shared/` + 31k tests) | ~39k |
-| Lines, excluding tests | 27,645 | 21,218 | 15,212 embedder + ~8.8k copied | ~115k; backends 48k, bundled plugins 12k, Wayland 5k | ~39k; core 27k, plugins 9k, util 3k |
+| Lines, all | 52,468 | 39,588 | ~24.0k (incl. ~8.8k copied from Flutter) | ~146k (93k `shell/` + 22k `shared/` + 31k tests) | ~39k |
+| Lines, excluding tests | 27,645 | 34,072; Wayland 7.8k, X11 3.8k, KMS 2.7k | 15,212 embedder + ~8.8k copied | ~115k; backends 48k, bundled plugins 12k, Wayland 5k | ~39k; core 27k, plugins 9k, util 3k |
 | Shared code also used | `common` (input, switches) | `common` C++ client wrapper, input, json (~3k lines, shared with Windows) | copies of `common` and the client wrapper | own C plugin ABI with C++ wrappers | none |
-| Object code (profile, `size`) | ~312 KB | ~495 KB | n/a | n/a | n/a |
-| `libflutter_linux*.so` (profile, stripped) | 18.30 MB | 18.48 MB | uses a separately built `libflutter_engine.so` | uses `libflutter_engine.so` | uses `libflutter_engine.so` |
-| Shared libraries loaded by the embedder | 68 (GTK, GLib, Pango, Cairo, ATK, X11…) | 16 (wayland-client, xkbcommon, EGL, GLES, gbm, drm, libc…) | EGL, GLES, xkbcommon, plus wayland-client/cursor/egl, or X11, or drm/gbm/libinput/udev/systemd | wayland, EGL/GLES, Vulkan, drm/gbm, libinput/udev/libseat, xkbcommon, AccessKit (optional), pugixml, fmt, toml++ | drm, gbm, libinput, udev, systemd, xkbcommon; EGL/GLES, Vulkan, GStreamer optional |
+| Object code (profile, `size`) | ~312 KB | ~495 KB (before X11 and KMS) | n/a | n/a | n/a |
+| `libflutter_linux*.so` (profile, stripped) | 18.30 MB | 18.48 MB (before X11 and KMS) | uses a separately built `libflutter_engine.so` | uses `libflutter_engine.so` | uses `libflutter_engine.so` |
+| Shared libraries loaded by the embedder | 68 (GTK, GLib, Pango, Cairo, ATK, X11…) | 22 linked (wayland-client, xcb and its extensions, xkbcommon, EGL, GLES, gbm, drm, libc…); xkbcommon-x11, libinput and libudev loaded on demand | EGL, GLES, xkbcommon, plus wayland-client/cursor/egl, or X11, or drm/gbm/libinput/udev/systemd | wayland, EGL/GLES, Vulkan, drm/gbm, libinput/udev/libseat, xkbcommon, AccessKit (optional), pugixml, fmt, toml++ | drm, gbm, libinput, udev, systemd, xkbcommon; EGL/GLES, Vulkan, GStreamer optional |
 | App template, lines | 403 (`main.cc` plus a GTK `MyApplication` class) | 294 (a single `main.cc`) | provided by the `flutter-elinux` tool | none; app bundles plus `config.toml` | provided by `flutterpi_tool` |
 
 Notes:
@@ -75,16 +86,19 @@ Notes:
   - AT-SPI and the D-Bus implementation: about 170 KB and 5.2k lines;
   - client-side decorations with title text layout: 1.7k lines;
   - the Wayland protocol code.
-- Lines in the new embedder by area, excluding tests:
+- Lines in the new embedder by area, excluding tests and generated protocol
+  code:
 
   | Area | Lines |
   |---|---:|
-  | Accessibility and D-Bus | 5.2k |
-  | Wayland | 4.5k |
-  | Input and text | 2.9k |
-  | Engine, view and event loop | 4.0k |
-  | Rendering | 1.6k |
-  | Decorations | 1.7k |
+  | Engine, view, public API, channels and event loop | 7.9k |
+  | Wayland (excluding decorations) | 6.2k |
+  | Accessibility and D-Bus | 5.5k |
+  | X11 | 3.8k |
+  | Rendering, textures and platform views | 3.5k |
+  | Input and text | 3.0k |
+  | KMS | 2.7k |
+  | Decorations | 1.6k |
 
 ## Benchmarks
 
@@ -205,27 +219,27 @@ In the excluded screen-off run:
 | Feature | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---|---|---|---|---|
 | Wayland | ✅ via GTK | ✅ | ✅ | ✅ xdg, AGL, IVI and simple shells | ❌ |
-| X11 | ✅ via GTK | ❌ | ✅ | ❌ | ❌ |
-| DRM/KMS without a compositor | ❌ | ❌ | ✅ GBM and EGLStream, chosen at compile time | ✅ EGL, Vulkan or dumb buffers, plus DRM leasing; chosen at run time | ✅ only mode; atomic KMS with legacy fallback |
+| X11 | ✅ via GTK | ✅ XCB; DRI3 or MIT-SHM pixmaps shown with Present | ✅ | ❌ | ❌ |
+| DRM/KMS without a compositor | ❌ | ✅ legacy modeset and page flip, logind session, libinput; one fullscreen window on one output | ✅ GBM and EGLStream, chosen at compile time | ✅ EGL, Vulkan or dumb buffers, plus DRM leasing; chosen at run time | ✅ only mode; atomic KMS with legacy fallback |
 | Toolkit-free | ❌ GTK 3 | ✅ | ✅ | ✅ | ✅ |
 | Embedder API rendering path | `FlutterCompositor` | `FlutterCompositor` | simple GL renderer config (`make_current`/`present`) | GL renderer config; `FlutterCompositor` optional (needed for platform views) | `FlutterCompositor`, with layers mapped to hardware planes |
-| Frame presentation on Wayland | FBO, then a copy into a `wl_egl_window` subsurface via `eglSwapBuffers` | zero-copy GBM dmabuf, `linux-dmabuf` v4 feedback | `wl_egl_window` + `eglSwapBuffers` | EGL: `wl_egl_window` + `eglSwapBuffers`; Vulkan: swapchain or dmabuf | n/a (GBM buffers flipped by KMS) |
+| Frame presentation on Wayland | FBO, then a copy into a `wl_egl_window` subsurface via `eglSwapBuffers` | zero-copy GBM dmabuf, `linux-dmabuf` v4 feedback (X11: one copy into a DRI3 or SHM pixmap; KMS: GBM scanout buffers, no copy) | `wl_egl_window` + `eglSwapBuffers` | EGL: `wl_egl_window` + `eglSwapBuffers`; Vulkan: swapchain or dmabuf | n/a (GBM buffers flipped by KMS) |
 | Explicit sync (`linux-drm-syncobj`) | ❌ | ✅ | ❌ | ⚠️ Vulkan only, experimental | n/a (KMS fences) |
 | `fifo-v1` / `presentation-time` | ❌ / ❌ | ✅ / ✅ | ❌ / ✅ | ❌ / ✅ | n/a |
-| Vsync driven by the compositor | ❌ timer fallback, renders while hidden | ✅ frame callbacks + presentation times | ⚠️ off by default (`ENABLE_VSYNC=OFF`) | ✅ presentation feedback, or page flip on DRM | ✅ page-flip events (no engine `vsync_callback`) |
+| Vsync driven by the compositor | ❌ timer fallback, renders while hidden | ✅ frame callbacks + presentation times (X11: Present complete events; KMS: page-flip events) | ⚠️ off by default (`ENABLE_VSYNC=OFF`) | ✅ presentation feedback, or page flip on DRM | ✅ page-flip events (no engine `vsync_callback`) |
 | Software rendering fallback | ✅ (`fl_compositor_software`) | ⚠️ GL rendering copied to `wl_shm` when there is no dmabuf | ❌ | ✅ software, fbdev and dumb buffers | ✅ |
 | Impeller | ✅ default (GLES, SDF) | ✅ default (GLES, SDF) | ⚠️ accepts the switch, GL only | ✅ (partial repaint disabled with Impeller) | ❌ no specific support |
 | Vulkan | ❌ | ❌ | ❌ | ✅ | ⚠️ optional, off by default |
 | External textures | ✅ GL and pixel buffer | ✅ pixel buffer and dmabuf (zero-copy, incl. YUV) | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
-| Platform views | ❌ | ✅ zero-copy plugin dmabufs in Wayland subsurfaces, Flutter overlays in subsurfaces above them | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
+| Platform views | ❌ | ⚠️ Wayland only: zero-copy plugin dmabufs in subsurfaces, Flutter overlays in subsurfaces above them | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
 
 ### Windows and displays
 
 | Feature | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---|---|---|---|---|
-| HiDPI | ✅ integer (GTK 3) | ✅ fractional (`fractional-scale-v1` + viewporter), integer fallback | ⚠️ integer `wl_output.scale` only | ✅ `fractional-scale-v1` + viewporter | ⚠️ ratio from the panel's physical size, or `--pixel-ratio` |
+| HiDPI | ✅ integer (GTK 3) | ✅ fractional (`fractional-scale-v1` + viewporter), integer fallback (X11: `Xft.dpi`; KMS: from panel size or `FLUTTER_KMS_SCALE`) | ⚠️ integer `wl_output.scale` only | ✅ `fractional-scale-v1` + viewporter | ⚠️ ratio from the panel's physical size, or `--pixel-ratio` |
 | Display updates (`NotifyDisplayUpdate`) and display ID per view | ✅ | ✅ `wl_output` + `xdg-output`, hotplug | ❌ | ✅ multiple displays, hotplug | ⚠️ one display, at startup |
-| Multiple views and windows | ⚠️ windowing API, top-level windows | ✅ top-levels, dialogs (`xdg-dialog`), popups and tooltips, sized to content, constraints | ❌ single view | ⚠️ multiple views/outputs, mostly fullscreen surfaces | ❌ single view |
+| Multiple views and windows | ⚠️ windowing API, top-level windows | ✅ top-levels, dialogs (`xdg-dialog`), popups and tooltips, sized to content, constraints (also on X11; KMS has one window) | ❌ single view | ⚠️ multiple views/outputs, mostly fullscreen surfaces | ❌ single view |
 | Multiple engines | ✅ | ✅ sharing one display connection | ❌ | ✅ | ❌ |
 | Decorations | ✅ GTK header bar | ✅ client-side (title text, buttons, shadows, rounded corners) or server-side via `xdg-decoration` | ⚠️ client-side drawn with GL shaders (title, buttons, resize) | ❌ none (no `xdg-decoration` or CSD) | n/a |
 | Window activation (`xdg-activation`) | ✅ via GTK | ✅ | ❌ | ❌ | n/a |
@@ -235,8 +249,8 @@ In the excluded screen-off run:
 | Feature | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---|---|---|---|---|
 | Keyboard | ✅ GDK | ✅ xkbcommon, embedder key events, key repeat | ⚠️ xkbcommon, **no key repeat** | ✅ xkbcommon, key repeat | ✅ libinput + xkbcommon, key repeat |
-| Text input / IME | ✅ GtkIMContext | ✅ `text-input-v3` | ⚠️ text-input v1 and v3; many client options ignored | ✅ text-input v1 or v3 (chosen at build time) | ⚠️ no IME |
-| Mouse cursor | ✅ GDK cursor names | ✅ `cursor-shape-v1` | ⚠️ `wayland-cursor` themes, a few shapes | ✅ `cursor-shape-v1` | ✅ hardware cursor plane |
+| Text input / IME | ✅ GtkIMContext | ✅ `text-input-v3` (no IME on X11 or KMS) | ⚠️ text-input v1 and v3; many client options ignored | ✅ text-input v1 or v3 (chosen at build time) | ⚠️ no IME |
+| Mouse cursor | ✅ GDK cursor names | ✅ `cursor-shape-v1` (X11: cursor font; KMS: hardware cursor plane) | ⚠️ `wayland-cursor` themes, a few shapes | ✅ `cursor-shape-v1` | ✅ hardware cursor plane |
 | Scrolling | ✅ smooth and discrete | ⚠️ smooth and discrete (no `axis_value120`) | ⚠️ basic axis events | ⚠️ no `axis_value120` | ✅ libinput |
 | Touchpad pinch and rotate | ✅ GTK gestures | ✅ `pointer-gestures` | ❌ | ❌ | ❌ |
 | Touch | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -246,7 +260,7 @@ In the excluded screen-off run:
 
 | Feature | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---|---|---|---|---|
-| Clipboard | ✅ | ✅ `wl_data_device` | ✅ `wl_data_device` | ❌ TODO | ❌ stub |
+| Clipboard | ✅ | ✅ `wl_data_device`, X11 selections (KMS: within the app only) | ✅ `wl_data_device` | ❌ TODO | ❌ stub |
 | `flutter/platform`: exit, `SystemNavigator.pop`, sounds | ✅ | ✅ bell through `xdg-system-bell`; exit code ignored | ⚠️ exit and clipboard | ✅ | ⚠️ |
 | `flutter/settings` (dark mode, text scale, 24-hour time) | ✅ portal and GSettings | ⚠️ portal only, plus high contrast and reduced motion | ⚠️ hard-coded light theme | ⚠️ from config | ⚠️ |
 | Lifecycle | ✅ | ✅ from activated/suspended state | ✅ | ✅ | ✅ |
@@ -297,9 +311,8 @@ These are from source analysis of `/tmp/sony`.
   most of what the new embedder already has: zero-copy presentation, fractional
   scaling, accessibility, multi-window and multi-engine support, and newer
   protocols. It also has a less maintainable structure: compile-time backends
-  and copies of Flutter's `common` code. If DRM/KMS support is wanted, adding a
-  KMS backend to the new embedder looks like less work. Its GBM buffers,
-  explicit sync and frame scheduling already fit atomic KMS page-flips.
+  and copies of Flutter's `common` code. Its X11 and DRM backends are no longer
+  unique: the new embedder now has both, chosen at run time.
 
 ## ivi-homescreen notes
 
@@ -363,8 +376,8 @@ These are from source analysis of `/tmp/flutterpi`.
   keyboard, text input, external textures, platform views, and GStreamer video
   and audio players.
 - **Assessment.** It is not a desktop embedder. Its plane-based KMS compositor
-  is the best design reference for a future DRM/KMS backend in the new
-  embedder, which already uses the same GBM/dmabuf buffers.
+  is the best design reference for extending the new embedder's KMS backend,
+  which already uses the same GBM/dmabuf buffers.
 
 ## Gaps in the new embedder
 
@@ -378,10 +391,12 @@ These are ordered by how much they affect apps:
    plugin access to a raw `wl_surface`, acquire fences for plugin buffers.
 3. **Drag and drop, primary selection, high-resolution scrolling
    (`axis_value120`, `wl_seat` v8+), tablet input.**
-4. **Vulkan / Impeller-Vulkan.**
-5. **Optional:** a DRM/KMS backend for embedded devices, which is the niche of
-   Sony, ivi-homescreen and flutter-pi. flutter-pi's plane-based design is the
-   best reference.
+4. **X11 follow-ups**: IME (XIM or IBus), platform views, zero-copy
+   presentation.
+5. **KMS follow-ups**: atomic modesetting, hardware planes for platform views
+   and overlays, multiple outputs and hotplug, a system clipboard. flutter-pi's
+   plane-based design is the best reference.
+6. **Vulkan / Impeller-Vulkan.**
 
 ## Reproducing
 
