@@ -18,13 +18,13 @@
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/corner_mask.h"
 #include "flutter/shell/platform/linux/display.h"
-#include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
-#include "flutter/shell/platform/linux/linux_platform_view.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/drm_timeline.h"
+#include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
 #include "flutter/shell/platform/linux/window.h"
 
 namespace flutter {

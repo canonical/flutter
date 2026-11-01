@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_SHM_BUFFER_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_SHM_BUFFER_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SHM_BUFFER_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SHM_BUFFER_H_
 
 #include <cstddef>
 #include <memory>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
 
 namespace flutter {
 
@@ -58,4 +58,4 @@ class ShmBuffer : public RenderBuffer {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_SHM_BUFFER_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SHM_BUFFER_H_

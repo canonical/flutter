@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/window_decoration.h"
+#include "flutter/shell/platform/linux/wayland/window_decoration.h"
 
 #include <linux/input-event-codes.h>
 

@@ -16,7 +16,7 @@
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
 // Provides the xdg_positioner values used to place popups on all display
 // backends.
-#include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-shell-client-protocol.h"
 
 struct wp_linux_drm_syncobj_timeline_v1;
 

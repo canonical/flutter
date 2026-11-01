@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_DECORATION_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_DECORATION_H_
 
 #include <array>
 #include <chrono>
@@ -13,11 +13,11 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/decoration_renderer.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
+#include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/wayland_seat.h"
 
 namespace flutter {
 
@@ -273,4 +273,4 @@ class WindowDecoration : public InputHandler {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WINDOW_DECORATION_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WINDOW_DECORATION_H_

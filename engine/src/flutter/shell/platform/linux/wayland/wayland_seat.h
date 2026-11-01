@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SEAT_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SEAT_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_SEAT_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_SEAT_H_
 
 #include <cstdint>
 #include <map>
@@ -16,10 +16,10 @@
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/input_handler.h"
 #include "flutter/shell/platform/linux/key_event_converter.h"
-#include "flutter/shell/platform/linux/protocols/cursor-shape-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/pointer-gestures-unstable-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
-#include "flutter/shell/platform/linux/wayland_text_input.h"
+#include "flutter/shell/platform/linux/wayland/protocols/cursor-shape-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/pointer-gestures-unstable-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/wayland_text_input.h"
 #include "flutter/shell/platform/linux/xkb.h"
 
 namespace flutter {
@@ -288,4 +288,4 @@ class WaylandSeat {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_SEAT_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_SEAT_H_

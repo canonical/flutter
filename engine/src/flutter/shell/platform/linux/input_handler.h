@@ -11,8 +11,8 @@
 #include "flutter/shell/platform/linux/key_event_converter.h"
 // Provides the wl_pointer_axis_source and wp_cursor_shape_device_v1 values
 // used by all display backends.
-#include "flutter/shell/platform/linux/protocols/cursor-shape-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/cursor-shape-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/xkb.h"
 
 namespace flutter {

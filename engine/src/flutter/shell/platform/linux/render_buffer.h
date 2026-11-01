@@ -10,7 +10,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
 
 namespace flutter {
 

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DISPLAY_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DISPLAY_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_DISPLAY_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_DISPLAY_H_
 
 #include <sys/types.h>
 #include <time.h>
@@ -18,24 +18,24 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
-#include "flutter/shell/platform/linux/protocols/alpha-modifier-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/fifo-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/fractional-scale-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/linux-dmabuf-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/linux-drm-syncobj-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/pointer-gestures-unstable-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/presentation-time-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/viewporter-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-activation-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-decoration-unstable-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-dialog-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-output-unstable-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-shell-client-protocol.h"
-#include "flutter/shell/platform/linux/protocols/xdg-system-bell-v1-client-protocol.h"
-#include "flutter/shell/platform/linux/wayland_clipboard.h"
-#include "flutter/shell/platform/linux/wayland_output.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
+#include "flutter/shell/platform/linux/wayland/protocols/alpha-modifier-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/fifo-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/fractional-scale-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/linux-dmabuf-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/linux-drm-syncobj-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/pointer-gestures-unstable-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/presentation-time-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/viewporter-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-activation-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-decoration-unstable-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-dialog-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-output-unstable-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-shell-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-system-bell-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/wayland_clipboard.h"
+#include "flutter/shell/platform/linux/wayland/wayland_output.h"
+#include "flutter/shell/platform/linux/wayland/wayland_seat.h"
 
 namespace flutter {
 
@@ -260,4 +260,4 @@ class WaylandDisplay : public Display {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DISPLAY_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_DISPLAY_H_

@@ -16,11 +16,11 @@
 
 #include "flutter/fml/eintr_wrapper.h"
 #include "flutter/fml/logging.h"
-#include "flutter/shell/platform/linux/dmabuf_buffer.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
-#include "flutter/shell/platform/linux/shm_buffer.h"
 #include "flutter/shell/platform/linux/texture_buffer.h"
+#include "flutter/shell/platform/linux/wayland/dmabuf_buffer.h"
+#include "flutter/shell/platform/linux/wayland/shm_buffer.h"
 
 namespace flutter {
 

@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
 
 #include <algorithm>
 
 #include "flutter/fml/logging.h"
-#include "flutter/shell/platform/linux/dmabuf_buffer.h"
-#include "flutter/shell/platform/linux/shm_buffer.h"
+#include "flutter/shell/platform/linux/wayland/dmabuf_buffer.h"
+#include "flutter/shell/platform/linux/wayland/shm_buffer.h"
 
 namespace flutter {
 

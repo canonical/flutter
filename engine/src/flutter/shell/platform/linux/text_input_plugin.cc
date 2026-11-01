@@ -12,7 +12,7 @@
 #include "flutter/fml/string_conversion.h"
 #include "flutter/shell/platform/common/json_method_codec.h"
 #include "flutter/shell/platform/common/text_editing_delta.h"
-#include "flutter/shell/platform/linux/protocols/text-input-unstable-v3-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/text-input-unstable-v3-client-protocol.h"
 
 namespace flutter {
 

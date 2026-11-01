@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/wayland_output.h"
+#include "flutter/shell/platform/linux/wayland/wayland_output.h"
 
 #include <utility>
 

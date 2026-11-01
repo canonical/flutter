@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_CLIPBOARD_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_CLIPBOARD_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_CLIPBOARD_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_CLIPBOARD_H_
 
 #include <cstdint>
 #include <map>
@@ -15,8 +15,8 @@
 #include "flutter/fml/unique_fd.h"
 #include "flutter/shell/platform/linux/clipboard.h"
 #include "flutter/shell/platform/linux/event_loop.h"
-#include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
+#include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/wayland_seat.h"
 
 namespace flutter {
 
@@ -146,4 +146,4 @@ class WaylandClipboard : public Clipboard {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_CLIPBOARD_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_CLIPBOARD_H_

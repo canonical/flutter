@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_LINUX_PLATFORM_VIEW_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_LINUX_PLATFORM_VIEW_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_LINUX_PLATFORM_VIEW_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_LINUX_PLATFORM_VIEW_H_
 
 #include <functional>
 #include <memory>
@@ -13,7 +13,7 @@
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/external_texture.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
 
 namespace flutter {
 
@@ -248,4 +248,4 @@ class LinuxPlatformView
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_LINUX_PLATFORM_VIEW_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_LINUX_PLATFORM_VIEW_H_

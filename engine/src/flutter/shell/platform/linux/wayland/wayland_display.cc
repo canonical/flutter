@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -12,7 +12,7 @@
 #include <cstring>
 
 #include "flutter/fml/logging.h"
-#include "flutter/shell/platform/linux/wayland_window.h"
+#include "flutter/shell/platform/linux/wayland/wayland_window.h"
 
 namespace flutter {
 

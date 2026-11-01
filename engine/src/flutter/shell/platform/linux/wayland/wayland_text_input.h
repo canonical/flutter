@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_TEXT_INPUT_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_TEXT_INPUT_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_TEXT_INPUT_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_TEXT_INPUT_H_
 
 #include <map>
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/input_method.h"
-#include "flutter/shell/platform/linux/protocols/text-input-unstable-v3-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/text-input-unstable-v3-client-protocol.h"
 
 namespace flutter {
 
@@ -83,4 +83,4 @@ class WaylandTextInput : public InputMethod {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_TEXT_INPUT_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_WAYLAND_TEXT_INPUT_H_

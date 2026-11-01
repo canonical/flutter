@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DRM_TIMELINE_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_DRM_TIMELINE_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DRM_TIMELINE_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DRM_TIMELINE_H_
 
 #include <cstdint>
 #include <memory>
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
-#include "flutter/shell/platform/linux/protocols/linux-drm-syncobj-v1-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/linux-drm-syncobj-v1-client-protocol.h"
 
 namespace flutter {
 
@@ -78,4 +78,4 @@ class DrmTimeline {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DRM_TIMELINE_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DRM_TIMELINE_H_

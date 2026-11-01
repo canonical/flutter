@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DECORATION_RENDERER_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_DECORATION_RENDERER_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DECORATION_RENDERER_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DECORATION_RENDERER_H_
 
 #include <array>
 #include <memory>
@@ -12,8 +12,8 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
-#include "flutter/shell/platform/linux/title_renderer.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/title_renderer.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
 
 namespace flutter {
 
@@ -156,4 +156,4 @@ class DecorationRenderer {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DECORATION_RENDERER_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DECORATION_RENDERER_H_

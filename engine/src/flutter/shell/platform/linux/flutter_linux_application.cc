@@ -5,8 +5,8 @@
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 
 #include "flutter/fml/logging.h"
-#include "flutter/shell/platform/linux/decoration_renderer.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
+#include "flutter/shell/platform/linux/wayland/wayland_display.h"
 
 namespace flutter {
 

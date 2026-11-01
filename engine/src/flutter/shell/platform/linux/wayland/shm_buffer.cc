@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/shm_buffer.h"
+#include "flutter/shell/platform/linux/wayland/shm_buffer.h"
 
 #include <drm_fourcc.h>
 #include <sys/mman.h>

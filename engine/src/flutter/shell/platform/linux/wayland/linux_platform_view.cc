@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/linux_platform_view.h"
+#include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "flutter/fml/logging.h"
-#include "flutter/shell/platform/linux/wayland_window.h"
+#include "flutter/shell/platform/linux/wayland/wayland_window.h"
 
 namespace flutter {
 

@@ -5,7 +5,7 @@
 #include "flutter/shell/platform/linux/text_input_plugin.h"
 
 #include "flutter/shell/platform/linux/fake_platform_messenger.h"
-#include "flutter/shell/platform/linux/protocols/text-input-unstable-v3-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/text-input-unstable-v3-client-protocol.h"
 #include "gtest/gtest.h"
 
 namespace flutter {
