@@ -7,9 +7,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,14 +46,23 @@ class DBusConnection {
   // Returns the address of the session bus.
   static std::string SessionBusAddress();
 
+  // Returns the address of the system bus.
+  static std::string SystemBusAddress();
+
   // Connects to the bus at |address|, a list of D-Bus server addresses.
   // Returns nullptr if none can be connected to. The connection is ready to
   // use, though messages are only exchanged once authentication completes.
+  //
+  // If |unix_fds| is true, the connection asks to receive file descriptors
+  // attached to messages.
   static std::unique_ptr<DBusConnection> Connect(EventLoop* loop,
-                                                 std::string_view address);
+                                                 std::string_view address,
+                                                 bool unix_fds = false);
 
   // Uses an already connected |socket|.
-  DBusConnection(EventLoop* loop, fml::UniqueFD socket);
+  DBusConnection(EventLoop* loop,
+                 fml::UniqueFD socket,
+                 bool unix_fds = false);
   ~DBusConnection();
 
   // True once the bus has assigned this connection a unique name.
@@ -88,6 +99,18 @@ class DBusConnection {
             ReplyCallback callback,
             std::chrono::milliseconds timeout = kDefaultTimeout);
 
+  // Sends the method call |message| and waits for the reply, which is either
+  // a method return or an error. Returns nullopt if the call timed out or
+  // the connection was lost. Messages received while waiting are dispatched
+  // afterwards, so this may be called from callbacks.
+  std::optional<DBusMessage> CallSync(
+      const DBusMessage& message,
+      std::chrono::milliseconds timeout = kDefaultTimeout);
+
+  // True if file descriptors can be received on the connection. Only known
+  // once authentication completes.
+  bool unix_fds_enabled() const { return unix_fds_enabled_; }
+
   // Subscribes to signals matching |rule| from other connections.
   void AddMatch(std::string_view rule);
 
@@ -96,12 +119,25 @@ class DBusConnection {
     ReplyCallback callback;
   };
 
+  uint32_t NextSerial();
   void Write(std::vector<uint8_t> data);
   void Flush();
   void OnEvents(uint32_t events);
   // Returns false if the connection was destroyed or lost.
   bool ProcessInput();
+  // Reads the available data and file descriptors. Returns false if the
+  // connection closed or failed.
+  bool ReadSocket();
+  // Moves complete messages from the input into |incoming_|. Returns false
+  // if the input is invalid.
+  bool ParseInput();
   bool ProcessAuthentication();
+  // Dispatches the messages in |incoming_|. Returns false if the connection
+  // was destroyed or lost.
+  bool DispatchIncoming();
+  // Dispatches |incoming_| from the loop, for messages received while
+  // waiting for a reply.
+  void ScheduleDispatch();
   bool Dispatch(const DBusMessage& message);
   void OnTimeout(uint32_t serial);
   void Disconnect();
@@ -110,10 +146,20 @@ class DBusConnection {
   fml::UniqueFD socket_;
   uint64_t watch_ = 0;
   bool authenticated_ = false;
+  bool negotiate_unix_fds_ = false;
+  bool unix_fds_enabled_ = false;
+  // True once the server has accepted authentication, while waiting for the
+  // reply to the file descriptor negotiation.
+  bool auth_accepted_ = false;
+  bool dispatch_scheduled_ = false;
   bool write_failed_ = false;
   uint32_t next_serial_ = 1;
   std::string unique_name_;
   std::vector<uint8_t> input_;
+  // File descriptors received that haven't been attached to a message.
+  std::deque<fml::UniqueFD> received_fds_;
+  // Messages received that haven't been dispatched.
+  std::deque<DBusMessage> incoming_;
   std::vector<uint8_t> output_;
   std::map<uint32_t, PendingCall> pending_calls_;
   std::function<void()> ready_callback_;

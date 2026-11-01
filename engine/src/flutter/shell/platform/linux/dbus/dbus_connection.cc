@@ -5,6 +5,7 @@
 #include "flutter/shell/platform/linux/dbus/dbus_connection.h"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -26,6 +27,9 @@ constexpr char kBusName[] = "org.freedesktop.DBus";
 constexpr char kBusPath[] = "/org/freedesktop/DBus";
 constexpr char kBusInterface[] = "org.freedesktop.DBus";
 constexpr char kPeerInterface[] = "org.freedesktop.DBus.Peer";
+
+// The most file descriptors read from the socket at once.
+constexpr size_t kMaxReadFds = 32;
 
 // Splits |value| at each |separator|.
 std::vector<std::string_view> Split(std::string_view value, char separator) {
@@ -129,20 +133,31 @@ std::string DBusConnection::SessionBusAddress() {
   return std::string("unix:path=") + runtime_dir + "/bus";
 }
 
+std::string DBusConnection::SystemBusAddress() {
+  const char* address = getenv("DBUS_SYSTEM_BUS_ADDRESS");
+  if (address != nullptr && address[0] != '\0') {
+    return address;
+  }
+  return "unix:path=/run/dbus/system_bus_socket";
+}
+
 std::unique_ptr<DBusConnection> DBusConnection::Connect(
     EventLoop* loop,
-    std::string_view address) {
+    std::string_view address,
+    bool unix_fds) {
   for (std::string_view entry : Split(address, ';')) {
     fml::UniqueFD fd = ConnectUnix(entry);
     if (fd.is_valid()) {
-      return std::make_unique<DBusConnection>(loop, std::move(fd));
+      return std::make_unique<DBusConnection>(loop, std::move(fd), unix_fds);
     }
   }
   return nullptr;
 }
 
-DBusConnection::DBusConnection(EventLoop* loop, fml::UniqueFD socket)
-    : loop_(loop), socket_(std::move(socket)) {
+DBusConnection::DBusConnection(EventLoop* loop,
+                               fml::UniqueFD socket,
+                               bool unix_fds)
+    : loop_(loop), socket_(std::move(socket)), negotiate_unix_fds_(unix_fds) {
   int flags = fcntl(socket_.get(), F_GETFL);
   fcntl(socket_.get(), F_SETFL, flags | O_NONBLOCK);
 
@@ -155,7 +170,11 @@ DBusConnection::DBusConnection(EventLoop* loop, fml::UniqueFD socket)
     auth.push_back(kHex[static_cast<uint8_t>(c) >> 4]);
     auth.push_back(kHex[static_cast<uint8_t>(c) & 0xf]);
   }
-  auth += "\r\nBEGIN\r\n";
+  auth += "\r\n";
+  if (negotiate_unix_fds_) {
+    auth += "NEGOTIATE_UNIX_FD\r\n";
+  }
+  auth += "BEGIN\r\n";
   output_.assign(auth.begin(), auth.end());
 
   watch_ = loop_->AddWatch(socket_.get(), EPOLLIN,
@@ -192,13 +211,18 @@ void DBusConnection::Send(const DBusMessage& message) {
   Write(message.Serialize(next_serial_++));
 }
 
-void DBusConnection::Call(const DBusMessage& message,
-                          ReplyCallback callback,
-                          std::chrono::milliseconds timeout) {
+uint32_t DBusConnection::NextSerial() {
   uint32_t serial = next_serial_++;
   if (next_serial_ == 0) {
     next_serial_ = 1;
   }
+  return serial;
+}
+
+void DBusConnection::Call(const DBusMessage& message,
+                          ReplyCallback callback,
+                          std::chrono::milliseconds timeout) {
+  uint32_t serial = NextSerial();
   if (!socket_.is_valid()) {
     // Report the failure asynchronously, as if the reply was lost.
     std::weak_ptr<bool> alive = alive_;
@@ -220,6 +244,79 @@ void DBusConnection::Call(const DBusMessage& message,
         }
       },
       EventLoop::Clock::now() + timeout);
+}
+
+std::optional<DBusMessage> DBusConnection::CallSync(
+    const DBusMessage& message,
+    std::chrono::milliseconds timeout) {
+  if (!socket_.is_valid()) {
+    return std::nullopt;
+  }
+  uint32_t serial = NextSerial();
+  Write(message.Serialize(serial));
+
+  // Failures are reported from the loop, as the caller may not expect the
+  // connection's callbacks to run.
+  std::weak_ptr<bool> alive = alive_;
+  auto fail = [this, alive]() {
+    loop_->PostTask([this, alive]() {
+      if (!alive.expired()) {
+        Disconnect();
+      }
+    });
+  };
+
+  auto deadline = EventLoop::Clock::now() + timeout;
+  while (true) {
+    for (auto it = incoming_.begin(); it != incoming_.end(); ++it) {
+      if ((it->type() == DBusMessage::Type::kMethodReturn ||
+           it->type() == DBusMessage::Type::kError) &&
+          it->reply_serial() == serial) {
+        DBusMessage reply = std::move(*it);
+        incoming_.erase(it);
+        ScheduleDispatch();
+        return reply;
+      }
+    }
+    ScheduleDispatch();
+    if (write_failed_) {
+      return std::nullopt;
+    }
+
+    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - EventLoop::Clock::now());
+    if (remaining.count() <= 0) {
+      return std::nullopt;
+    }
+    pollfd fd = {socket_.get(),
+                 static_cast<int16_t>(POLLIN | (output_.empty() ? 0 : POLLOUT)),
+                 0};
+    int result = poll(&fd, 1, static_cast<int>(remaining.count()));
+    if (result < 0 && errno != EINTR) {
+      fail();
+      return std::nullopt;
+    }
+    if (fd.revents & POLLOUT) {
+      Flush();
+    }
+    if (fd.revents & (POLLIN | POLLERR | POLLHUP)) {
+      bool open = ReadSocket();
+      if (!ParseInput() || !open) {
+        fail();
+        // Return the reply if it arrived before the connection closed.
+        for (auto it = incoming_.begin(); it != incoming_.end(); ++it) {
+          if (it->reply_serial() == serial &&
+              it->type() != DBusMessage::Type::kSignal &&
+              it->type() != DBusMessage::Type::kMethodCall) {
+            DBusMessage reply = std::move(*it);
+            incoming_.erase(it);
+            return reply;
+          }
+        }
+        return std::nullopt;
+      }
+    }
+  }
 }
 
 void DBusConnection::AddMatch(std::string_view rule) {
@@ -276,75 +373,149 @@ void DBusConnection::OnEvents(uint32_t events) {
 }
 
 bool DBusConnection::ProcessInput() {
-  bool closed = false;
-  while (true) {
-    uint8_t buffer[4096];
-    ssize_t result = recv(socket_.get(), buffer, sizeof(buffer), 0);
-    if (result > 0) {
-      input_.insert(input_.end(), buffer, buffer + result);
-      continue;
-    }
-    if (result < 0 && errno == EINTR) {
-      continue;
-    }
-    closed = result == 0 || errno != EAGAIN;
-    break;
-  }
-
-  std::weak_ptr<bool> alive = alive_;
-  if (!authenticated_ && !ProcessAuthentication()) {
+  bool open = ReadSocket();
+  if (!ParseInput()) {
+    Disconnect();
     return false;
   }
-
-  size_t offset = 0;
-  while (authenticated_ && input_.size() - offset >= 16) {
-    size_t length =
-        DBusMessage::GetLength(input_.data() + offset, input_.size() - offset);
-    if (length == 0) {
-      FML_LOG(ERROR) << "Invalid D-Bus message header";
-      Disconnect();
-      return false;
-    }
-    if (input_.size() - offset < length) {
-      break;
-    }
-    std::optional<DBusMessage> message =
-        DBusMessage::Parse(input_.data() + offset, length);
-    offset += length;
-    if (!message.has_value()) {
-      FML_LOG(ERROR) << "Invalid D-Bus message";
-      Disconnect();
-      return false;
-    }
-    if (!Dispatch(*message) || alive.expired() || !socket_.is_valid()) {
-      return false;
-    }
+  if (!DispatchIncoming()) {
+    return false;
   }
-  input_.erase(input_.begin(), input_.begin() + offset);
-
-  if (closed) {
+  if (!open) {
     Disconnect();
     return false;
   }
   return true;
 }
 
-bool DBusConnection::ProcessAuthentication() {
-  static constexpr std::string_view kNewline = "\r\n";
-  auto end = std::search(input_.begin(), input_.end(), kNewline.begin(),
-                         kNewline.end());
-  if (end == input_.end()) {
-    return true;
+bool DBusConnection::ReadSocket() {
+  while (true) {
+    uint8_t buffer[4096];
+    iovec iov = {buffer, sizeof(buffer)};
+    alignas(cmsghdr) uint8_t control[CMSG_SPACE(sizeof(int) * kMaxReadFds)];
+    msghdr header = {};
+    header.msg_iov = &iov;
+    header.msg_iovlen = 1;
+    header.msg_control = control;
+    header.msg_controllen = sizeof(control);
+    ssize_t result = recvmsg(socket_.get(), &header, MSG_CMSG_CLOEXEC);
+    if (result > 0) {
+      for (cmsghdr* message = CMSG_FIRSTHDR(&header); message != nullptr;
+           message = CMSG_NXTHDR(&header, message)) {
+        if (message->cmsg_level != SOL_SOCKET ||
+            message->cmsg_type != SCM_RIGHTS) {
+          continue;
+        }
+        size_t count = (message->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+        for (size_t i = 0; i < count; i++) {
+          int fd;
+          std::memcpy(&fd, CMSG_DATA(message) + i * sizeof(int), sizeof(fd));
+          received_fds_.emplace_back(fd);
+        }
+      }
+      if (header.msg_flags & MSG_CTRUNC) {
+        FML_LOG(ERROR) << "Too many file descriptors received from D-Bus";
+        return false;
+      }
+      input_.insert(input_.end(), buffer, buffer + result);
+      continue;
+    }
+    if (result < 0 && errno == EINTR) {
+      continue;
+    }
+    return result < 0 && errno == EAGAIN;
   }
-  std::string line(input_.begin(), end);
-  input_.erase(input_.begin(), end + 2);
-  if (line.compare(0, 3, "OK ") != 0) {
-    FML_LOG(ERROR) << "D-Bus authentication failed: " << line;
-    Disconnect();
+}
+
+bool DBusConnection::ParseInput() {
+  if (!authenticated_ && !ProcessAuthentication()) {
     return false;
   }
-  authenticated_ = true;
+  while (authenticated_ && input_.size() >= 16) {
+    size_t length = DBusMessage::GetLength(input_.data(), input_.size());
+    if (length == 0) {
+      FML_LOG(ERROR) << "Invalid D-Bus message header";
+      return false;
+    }
+    if (input_.size() < length) {
+      break;
+    }
+    std::optional<DBusMessage> message =
+        DBusMessage::Parse(input_.data(), length);
+    input_.erase(input_.begin(), input_.begin() + length);
+    if (!message.has_value()) {
+      FML_LOG(ERROR) << "Invalid D-Bus message";
+      return false;
+    }
+    // File descriptors arrive no later than the end of their message.
+    uint32_t fd_count = message->unix_fd_count();
+    if (fd_count > received_fds_.size()) {
+      FML_LOG(ERROR) << "D-Bus message is missing file descriptors";
+      return false;
+    }
+    if (fd_count > 0) {
+      std::vector<fml::UniqueFD> fds;
+      for (uint32_t i = 0; i < fd_count; i++) {
+        fds.push_back(std::move(received_fds_.front()));
+        received_fds_.pop_front();
+      }
+      message->set_unix_fds(std::move(fds));
+    }
+    incoming_.push_back(std::move(*message));
+  }
   return true;
+}
+
+bool DBusConnection::ProcessAuthentication() {
+  static constexpr std::string_view kNewline = "\r\n";
+  while (!authenticated_) {
+    auto end = std::search(input_.begin(), input_.end(), kNewline.begin(),
+                           kNewline.end());
+    if (end == input_.end()) {
+      return true;
+    }
+    std::string line(input_.begin(), end);
+    input_.erase(input_.begin(), end + 2);
+    if (!auth_accepted_) {
+      if (line.compare(0, 3, "OK ") != 0) {
+        FML_LOG(ERROR) << "D-Bus authentication failed: " << line;
+        return false;
+      }
+      auth_accepted_ = true;
+      authenticated_ = !negotiate_unix_fds_;
+      continue;
+    }
+    // The reply to NEGOTIATE_UNIX_FD is AGREE_UNIX_FD or an error.
+    unix_fds_enabled_ = line == "AGREE_UNIX_FD";
+    authenticated_ = true;
+  }
+  return true;
+}
+
+bool DBusConnection::DispatchIncoming() {
+  std::weak_ptr<bool> alive = alive_;
+  while (!incoming_.empty() && socket_.is_valid()) {
+    DBusMessage message = std::move(incoming_.front());
+    incoming_.pop_front();
+    if (!Dispatch(message) || alive.expired() || !socket_.is_valid()) {
+      return false;
+    }
+  }
+  return socket_.is_valid();
+}
+
+void DBusConnection::ScheduleDispatch() {
+  if (incoming_.empty() || dispatch_scheduled_) {
+    return;
+  }
+  dispatch_scheduled_ = true;
+  loop_->PostTask([this, alive = std::weak_ptr<bool>(alive_)]() {
+    if (alive.expired()) {
+      return;
+    }
+    dispatch_scheduled_ = false;
+    DispatchIncoming();
+  });
 }
 
 bool DBusConnection::Dispatch(const DBusMessage& message) {
@@ -410,6 +581,8 @@ void DBusConnection::Disconnect() {
   unique_name_.clear();
   output_.clear();
   input_.clear();
+  incoming_.clear();
+  received_fds_.clear();
 
   std::weak_ptr<bool> alive = alive_;
   std::map<uint32_t, PendingCall> pending_calls;

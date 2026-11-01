@@ -4,6 +4,8 @@
 
 #include "flutter/shell/platform/linux/dbus/dbus_message.h"
 
+#include <unistd.h>
+
 #include "gtest/gtest.h"
 
 namespace flutter {
@@ -293,6 +295,39 @@ TEST(DBusMessageTest, ParseInvalid) {
   // Serial zero.
   data = signal.Serialize(0);
   EXPECT_FALSE(DBusMessage::Parse(data.data(), data.size()).has_value());
+}
+
+TEST(DBusMessageTest, UnixFds) {
+  int pipe_fds[2];
+  ASSERT_EQ(pipe(pipe_fds), 0);
+  close(pipe_fds[1]);
+  std::vector<fml::UniqueFD> fds;
+  fds.emplace_back(pipe_fds[0]);
+
+  std::vector<uint8_t> call_data =
+      DBusMessage::MethodCall("org.example", "/", "org.example", "Open")
+          .Serialize(1);
+  std::optional<DBusMessage> call =
+      DBusMessage::Parse(call_data.data(), call_data.size());
+  ASSERT_TRUE(call.has_value());
+  DBusMessage reply = DBusMessage::MethodReturn(*call);
+  reply.writer().WriteUnixFd(0);
+  reply.set_unix_fds(std::move(fds));
+  EXPECT_EQ(reply.unix_fd_count(), 1u);
+  EXPECT_TRUE(reply.DupUnixFd(0).is_valid());
+  EXPECT_FALSE(reply.DupUnixFd(1).is_valid());
+
+  // The count is sent in the header, the descriptors alongside the message.
+  std::vector<uint8_t> data = reply.Serialize(2);
+  std::optional<DBusMessage> parsed =
+      DBusMessage::Parse(data.data(), data.size());
+  ASSERT_TRUE(parsed.has_value());
+  EXPECT_EQ(parsed->signature(), "h");
+  EXPECT_EQ(parsed->unix_fd_count(), 1u);
+  EXPECT_EQ(parsed->unix_fds(), nullptr);
+  uint32_t index = 99;
+  EXPECT_TRUE(parsed->reader().ReadUnixFd(&index));
+  EXPECT_EQ(index, 0u);
 }
 
 }  // namespace testing

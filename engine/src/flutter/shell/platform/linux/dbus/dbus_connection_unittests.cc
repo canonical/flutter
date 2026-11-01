@@ -10,6 +10,7 @@
 
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include "flutter/shell/platform/linux/dbus/fake_dbus_bus.h"
 #include "gtest/gtest.h"
@@ -214,6 +215,67 @@ TEST(DBusConnectionTest, ConnectAddress) {
   connection.reset();
   unlink(path.c_str());
   rmdir(dir_template);
+}
+
+TEST(DBusConnectionTest, CallSyncReceivesUnixFd) {
+  EventLoop loop;
+  FakeBus bus;
+  DBusConnection connection(&loop, bus.TakeClientFd(), /*unix_fds=*/true);
+  bus.Start();
+  int signals = 0;
+  connection.set_signal_handler([&signals](const DBusMessage&) { signals++; });
+
+  // Reply from another thread, sending a signal first.
+  std::thread responder([&bus]() {
+    std::optional<DBusMessage> call = bus.ReadMessage();
+    ASSERT_TRUE(call.has_value());
+    EXPECT_EQ(call->member(), "Open");
+    bus.Send(DBusMessage::Signal("/", "org.example", "Changed"));
+
+    int pipe_fds[2];
+    ASSERT_EQ(pipe(pipe_fds), 0);
+    EXPECT_EQ(write(pipe_fds[1], "x", 1), 1);
+    close(pipe_fds[1]);
+    std::vector<fml::UniqueFD> fds;
+    fds.emplace_back(pipe_fds[0]);
+    DBusMessage reply = DBusMessage::MethodReturn(*call);
+    reply.writer().WriteUnixFd(0);
+    reply.set_unix_fds(std::move(fds));
+    bus.Send(reply);
+  });
+
+  std::optional<DBusMessage> reply = connection.CallSync(
+      DBusMessage::MethodCall("org.example", "/", "org.example", "Open"),
+      std::chrono::seconds(5));
+  responder.join();
+  EXPECT_TRUE(connection.unix_fds_enabled());
+  ASSERT_TRUE(reply.has_value());
+  EXPECT_EQ(reply->type(), DBusMessage::Type::kMethodReturn);
+  uint32_t index = 0;
+  ASSERT_TRUE(reply->reader().ReadUnixFd(&index));
+  fml::UniqueFD fd = reply->DupUnixFd(index);
+  ASSERT_TRUE(fd.is_valid());
+  char c = 0;
+  EXPECT_EQ(read(fd.get(), &c, 1), 1);
+  EXPECT_EQ(c, 'x');
+
+  // The signal received while waiting is dispatched from the loop.
+  EXPECT_EQ(signals, 0);
+  EXPECT_TRUE(RunUntil(loop, [&signals]() { return signals == 1; }));
+  EXPECT_TRUE(connection.is_ready());
+}
+
+TEST(DBusConnectionTest, CallSyncTimesOut) {
+  EventLoop loop;
+  FakeBus bus;
+  DBusConnection connection(&loop, bus.TakeClientFd());
+  bus.Start();
+  std::optional<DBusMessage> reply = connection.CallSync(
+      DBusMessage::MethodCall("org.example", "/", "org.example", "Slow"),
+      std::chrono::milliseconds(50));
+  EXPECT_FALSE(reply.has_value());
+  EXPECT_FALSE(connection.unix_fds_enabled());
+  EXPECT_TRUE(connection.is_connected());
 }
 
 }  // namespace testing

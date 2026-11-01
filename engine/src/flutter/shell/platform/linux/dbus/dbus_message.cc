@@ -4,6 +4,8 @@
 
 #include "flutter/shell/platform/linux/dbus/dbus_message.h"
 
+#include <fcntl.h>
+
 #include <cstring>
 #include <utility>
 
@@ -193,6 +195,11 @@ void DBusWriter::WriteUInt32(uint32_t value) {
   WriteFixed(value, 4);
 }
 
+void DBusWriter::WriteUnixFd(uint32_t index) {
+  AddType("h");
+  WriteFixed(index, 4);
+}
+
 void DBusWriter::WriteInt64(int64_t value) {
   AddType("x");
   WriteFixed(value, 8);
@@ -363,6 +370,10 @@ bool DBusReader::ReadInt32(int32_t* value) {
 
 bool DBusReader::ReadUInt32(uint32_t* value) {
   return ReadFixed('u', value);
+}
+
+bool DBusReader::ReadUnixFd(uint32_t* index) {
+  return ReadFixed('h', index);
 }
 
 bool DBusReader::ReadInt64(int64_t* value) {
@@ -723,8 +734,7 @@ std::optional<DBusMessage> DBusMessage::Parse(const uint8_t* data,
       return std::nullopt;
     }
   }
-  // File descriptors are not negotiated, so can't be received.
-  if (!reader.CloseArray() || unix_fds != 0 || !IsValidSignature(signature)) {
+  if (!reader.CloseArray() || !IsValidSignature(signature)) {
     return std::nullopt;
   }
 
@@ -754,6 +764,7 @@ std::optional<DBusMessage> DBusMessage::Parse(const uint8_t* data,
       return std::nullopt;
   }
 
+  message.unix_fd_count_ = unix_fds;
   size_t body_start = AlignUp(fields_end, 8);
   message.body_ = DBusWriter(
       std::vector<uint8_t>(data + body_start, data + size), signature);
@@ -803,12 +814,32 @@ std::vector<uint8_t> DBusMessage::Serialize(uint32_t serial) const {
   write_field(kFieldDestination, "s", destination_);
   write_field(kFieldSender, "s", sender_);
   write_field(kFieldSignature, "g", body_.signature());
+  if (unix_fd_count_ != 0) {
+    header.OpenStruct();
+    header.WriteByte(kFieldUnixFds);
+    header.OpenVariant("u");
+    header.WriteUInt32(unix_fd_count_);
+    header.CloseVariant();
+    header.CloseStruct();
+  }
   header.CloseArray();
   header.Align(8);
 
   std::vector<uint8_t> data = header.data();
   data.insert(data.end(), body_.data().begin(), body_.data().end());
   return data;
+}
+
+void DBusMessage::set_unix_fds(std::vector<fml::UniqueFD> fds) {
+  unix_fd_count_ = fds.size();
+  unix_fds_ = std::make_shared<std::vector<fml::UniqueFD>>(std::move(fds));
+}
+
+fml::UniqueFD DBusMessage::DupUnixFd(uint32_t index) const {
+  if (unix_fds_ == nullptr || index >= unix_fds_->size()) {
+    return {};
+  }
+  return fml::UniqueFD(fcntl((*unix_fds_)[index].get(), F_DUPFD_CLOEXEC, 0));
 }
 
 DBusReader DBusMessage::reader() const {

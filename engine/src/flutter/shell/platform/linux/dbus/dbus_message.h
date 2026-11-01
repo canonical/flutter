@@ -7,10 +7,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "flutter/fml/unique_fd.h"
 
 namespace flutter {
 
@@ -35,6 +38,8 @@ class DBusWriter {
   void WriteUInt16(uint16_t value);
   void WriteInt32(int32_t value);
   void WriteUInt32(uint32_t value);
+  // Writes the index of a file descriptor attached to the message.
+  void WriteUnixFd(uint32_t index);
   void WriteInt64(int64_t value);
   void WriteUInt64(uint64_t value);
   void WriteDouble(double value);
@@ -113,6 +118,8 @@ class DBusReader {
   bool ReadUInt16(uint16_t* value);
   bool ReadInt32(int32_t* value);
   bool ReadUInt32(uint32_t* value);
+  // Reads the index of a file descriptor attached to the message.
+  bool ReadUnixFd(uint32_t* index);
   bool ReadInt64(int64_t* value);
   bool ReadUInt64(uint64_t* value);
   bool ReadDouble(double* value);
@@ -226,6 +233,21 @@ class DBusMessage {
     return type_ == Type::kMethodCall && (flags_ & kNoReplyExpected) == 0;
   }
 
+  // The number of file descriptors attached to the message.
+  uint32_t unix_fd_count() const { return unix_fd_count_; }
+
+  // Attaches |fds|, which are referred to by index in the body. The
+  // connection sends and receives the file descriptors alongside the
+  // message.
+  void set_unix_fds(std::vector<fml::UniqueFD> fds);
+  const std::vector<fml::UniqueFD>* unix_fds() const {
+    return unix_fds_.get();
+  }
+
+  // Returns a duplicate of the attached file descriptor at |index|, or an
+  // invalid one if there is no such file descriptor.
+  fml::UniqueFD DupUnixFd(uint32_t index) const;
+
   // Writes the message body.
   DBusWriter& writer() { return body_; }
 
@@ -247,6 +269,9 @@ class DBusMessage {
   std::string destination_;
   std::string sender_;
   DBusWriter body_;
+  uint32_t unix_fd_count_ = 0;
+  // Shared so messages can be copied.
+  std::shared_ptr<std::vector<fml::UniqueFD>> unix_fds_;
 };
 
 }  // namespace flutter

@@ -149,6 +149,11 @@ source_set("flutter_linux_sources") {
     "input_method.h",
     "key_event_converter.h",
     "keyboard_manager.h",
+    "kms/kms_display.h",
+    "kms/kms_input.h",
+    "kms/kms_seat.h",
+    "kms/kms_session.h",
+    "kms/kms_window.h",
     "mouse_cursor_plugin.h",
     "platform_messenger.h",
     "platform_view_geometry.h",
@@ -203,6 +208,11 @@ source_set("flutter_linux_sources") {
     "key_mapping.g.cc",
     "key_mapping.h",
     "keyboard_manager.cc",
+    "kms/kms_display.cc",
+    "kms/kms_input.cc",
+    "kms/kms_seat.cc",
+    "kms/kms_session.cc",
+    "kms/kms_window.cc",
     "locale.cc",
     "mouse_cursor_plugin.cc",
     "platform_handler.cc",
@@ -250,7 +260,7 @@ source_set("flutter_linux_sources") {
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
 
-  # libxkbcommon-x11 is loaded at runtime if available.
+  # libxkbcommon-x11, libinput and libudev are loaded at runtime if available.
   libs = [ "dl" ]
 
   public_configs = [ ":no_x11" ]
@@ -328,6 +338,7 @@ executable("flutter_linux_unittests") {
     "flutter_linux_unittests.cc",
     "key_event_converter_unittests.cc",
     "keyboard_manager_unittests.cc",
+    "kms/kms_seat_unittests.cc",
     "locale_unittests.cc",
     "mouse_cursor_plugin_unittests.cc",
     "platform_handler_unittests.cc",

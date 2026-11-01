@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/kms/kms_display.h"
 #include "flutter/shell/platform/linux/wayland/wayland_display.h"
 #include "flutter/shell/platform/linux/x11/x11_display.h"
 
@@ -24,8 +25,11 @@ std::unique_ptr<Display> Display::Create(EventLoop* event_loop) {
     if (name == "x11") {
       return X11Display::Create(event_loop);
     }
+    if (name == "kms") {
+      return KmsDisplay::Create(event_loop);
+    }
     FML_LOG(WARNING) << "Unknown FLUTTER_LINUX_BACKEND \"" << name
-                     << "\", expected \"wayland\" or \"x11\"";
+                     << "\", expected \"wayland\", \"x11\" or \"kms\"";
   }
 
   std::unique_ptr<Display> display = WaylandDisplay::Create(event_loop);
@@ -35,7 +39,8 @@ std::unique_ptr<Display> Display::Create(EventLoop* event_loop) {
   if (getenv("DISPLAY") != nullptr) {
     return X11Display::Create(event_loop);
   }
-  return nullptr;
+  // Without a display server, show the application on the screen directly.
+  return KmsDisplay::Create(event_loop);
 }
 
 void Display::AddOutputObserver(OutputObserver* observer) {

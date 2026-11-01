@@ -62,6 +62,7 @@ typedef enum {
 typedef enum {
   FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND,
   FLUTTER_LINUX_DISPLAY_BACKEND_X11,
+  FLUTTER_LINUX_DISPLAY_BACKEND_KMS,
 } FlutterLinuxDisplayBackend;
 
 typedef enum {
@@ -69,6 +70,7 @@ typedef enum {
   FLUTTER_LINUX_BUFFER_SHARING_WL_SHM,
   FLUTTER_LINUX_BUFFER_SHARING_DRI3,
   FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM,
+  FLUTTER_LINUX_BUFFER_SHARING_KMS,
 } FlutterLinuxBufferSharing;
 
 typedef enum {
@@ -96,9 +98,10 @@ typedef struct {
 } FlutterLinuxRenderingInfo;
 
 // Connects to the display server: the Wayland compositor if available,
-// otherwise the X server. The FLUTTER_LINUX_BACKEND environment variable may
-// be set to "wayland" or "x11" to choose one. Returns NULL if no display
-// server or GPU is available.
+// otherwise the X server if DISPLAY is set, otherwise the screen is used
+// directly with kernel modesetting (KMS). The FLUTTER_LINUX_BACKEND
+// environment variable may be set to "wayland", "x11" or "kms" to choose one.
+// Returns NULL if no display or GPU is available.
 FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
 
 FLUTTER_EXPORT void flutter_linux_application_free(
@@ -116,8 +119,9 @@ FLUTTER_EXPORT void flutter_linux_application_set_application_id(
     const char* application_id);
 
 // Returns the display server the application is connected to. Wayland is
-// used if available, otherwise X11. The FLUTTER_LINUX_BACKEND environment
-// variable may be set to "wayland" or "x11" to choose one.
+// used if available, otherwise X11 if DISPLAY is set, otherwise KMS. The
+// FLUTTER_LINUX_BACKEND environment variable may be set to "wayland", "x11"
+// or "kms" to choose one.
 FLUTTER_EXPORT FlutterLinuxDisplayBackend
 flutter_linux_application_get_display_backend(
     FlutterLinuxApplication* application);

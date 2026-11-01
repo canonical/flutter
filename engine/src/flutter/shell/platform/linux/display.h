@@ -23,7 +23,7 @@ namespace flutter {
 class DecorationRenderer;
 
 // A connection to a display server, which shows windows and provides input.
-// Implemented by each display backend (Wayland or X11).
+// Implemented by each display backend (Wayland, X11 or KMS).
 //
 // Events are dispatched on the event loop thread when this is added as a
 // source to the loop.
@@ -32,6 +32,7 @@ class Display : public EventLoop::Source {
   enum class Backend {
     kWayland,
     kX11,
+    kKms,
   };
 
   // A monitor connected to the display server.
@@ -55,9 +56,10 @@ class Display : public EventLoop::Source {
   };
 
   // Connects to the display server specified by the environment. Wayland is
-  // used if available, otherwise X11. The FLUTTER_LINUX_BACKEND environment
-  // variable may be set to "wayland" or "x11" to choose one. Returns nullptr
-  // if unable to connect.
+  // used if available, otherwise X11 if DISPLAY is set, otherwise the screen
+  // is used directly with KMS. The FLUTTER_LINUX_BACKEND environment variable
+  // may be set to "wayland", "x11" or "kms" to choose one. Returns nullptr if
+  // unable to connect.
   //
   // |event_loop| is the loop the display is dispatched from, and must
   // outlive it.

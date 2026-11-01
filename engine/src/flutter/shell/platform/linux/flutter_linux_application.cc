@@ -58,7 +58,7 @@ DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {
   if (!decoration_renderer_created_) {
     decoration_renderer_created_ = true;
     if (display_->backend() != Display::Backend::kWayland) {
-      // The window manager draws decorations.
+      // The window manager draws decorations, or there are none.
       return nullptr;
     }
     decoration_renderer_ = DecorationRenderer::Create(

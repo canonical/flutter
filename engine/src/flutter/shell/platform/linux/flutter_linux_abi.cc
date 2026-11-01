@@ -187,10 +187,15 @@ void flutter_linux_application_set_application_id(
 
 FlutterLinuxDisplayBackend flutter_linux_application_get_display_backend(
     FlutterLinuxApplication* application) {
-  return ToApplication(application)->display()->backend() ==
-                 flutter::Display::Backend::kX11
-             ? FLUTTER_LINUX_DISPLAY_BACKEND_X11
-             : FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND;
+  switch (ToApplication(application)->display()->backend()) {
+    case flutter::Display::Backend::kX11:
+      return FLUTTER_LINUX_DISPLAY_BACKEND_X11;
+    case flutter::Display::Backend::kKms:
+      return FLUTTER_LINUX_DISPLAY_BACKEND_KMS;
+    case flutter::Display::Backend::kWayland:
+    default:
+      return FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND;
+  }
 }
 
 wl_display* flutter_linux_application_get_wl_display(
@@ -283,11 +288,13 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
     result.buffer_sharing = e->compositor()->uses_dmabuf()
                                 ? FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF
                                 : FLUTTER_LINUX_BUFFER_SHARING_WL_SHM;
-  } else {
+  } else if (display->backend() == flutter::Display::Backend::kX11) {
     result.buffer_sharing =
         static_cast<flutter::X11Display*>(display)->has_dri3()
             ? FLUTTER_LINUX_BUFFER_SHARING_DRI3
             : FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM;
+  } else {
+    result.buffer_sharing = FLUTTER_LINUX_BUFFER_SHARING_KMS;
   }
   result.buffer_format = flutter::DmabufBuffer::kFormat;
   result.buffer_modifier = e->compositor()->buffer_modifier();
@@ -302,7 +309,8 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
         wayland_display->viewporter() != nullptr &&
         wayland_display->fractional_scale_manager() != nullptr;
   } else {
-    // The Present extension reports when frames are shown.
+    // The Present extension and page flip events report when frames are
+    // shown.
     result.presentation_feedback = true;
   }
 

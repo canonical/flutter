@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -55,7 +56,8 @@ class FakeBus {
     return true;
   }
 
-  // Reads the authentication and replies OK.
+  // Reads the authentication and replies OK, agreeing to pass file
+  // descriptors if asked.
   std::string Authenticate() {
     const std::string kEnd = "BEGIN\r\n";
     while (true) {
@@ -64,6 +66,9 @@ class FakeBus {
       if (end != std::string::npos) {
         input_.erase(input_.begin(), input_.begin() + end + kEnd.size());
         Write("OK 1234deadbeef\r\n");
+        if (text.find("NEGOTIATE_UNIX_FD\r\n") != std::string::npos) {
+          Write("AGREE_UNIX_FD\r\n");
+        }
         return text.substr(0, end + kEnd.size());
       }
       if (!Fill(input_.size() + 1)) {
@@ -91,9 +96,29 @@ class FakeBus {
               static_cast<ssize_t>(text.size()));
   }
 
+  // Sends |message| with its attached file descriptors.
   void Send(const DBusMessage& message) {
     std::vector<uint8_t> data = message.Serialize(serial_++);
-    EXPECT_EQ(write(bus_fd_.get(), data.data(), data.size()),
+    iovec iov = {data.data(), data.size()};
+    msghdr header = {};
+    header.msg_iov = &iov;
+    header.msg_iovlen = 1;
+    std::vector<uint8_t> control;
+    const std::vector<fml::UniqueFD>* fds = message.unix_fds();
+    if (fds != nullptr && !fds->empty()) {
+      control.resize(CMSG_SPACE(sizeof(int) * fds->size()));
+      header.msg_control = control.data();
+      header.msg_controllen = control.size();
+      cmsghdr* cmsg = CMSG_FIRSTHDR(&header);
+      cmsg->cmsg_level = SOL_SOCKET;
+      cmsg->cmsg_type = SCM_RIGHTS;
+      cmsg->cmsg_len = CMSG_LEN(sizeof(int) * fds->size());
+      for (size_t i = 0; i < fds->size(); i++) {
+        int fd = (*fds)[i].get();
+        std::memcpy(CMSG_DATA(cmsg) + i * sizeof(int), &fd, sizeof(fd));
+      }
+    }
+    EXPECT_EQ(sendmsg(bus_fd_.get(), &header, 0),
               static_cast<ssize_t>(data.size()));
   }
 

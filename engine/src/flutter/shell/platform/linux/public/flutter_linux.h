@@ -77,6 +77,9 @@ enum class FlutterDesktopGraphicsApi {
 enum class FlutterDesktopDisplayBackend {
   kWayland,
   kX11,
+  // The screen is used directly with kernel modesetting, without a display
+  // server. Only one undecorated, full-screen window can be shown.
+  kKms,
 };
 
 // How rendered frames are shared with the compositor.
@@ -96,6 +99,10 @@ enum class FlutterDesktopBufferSharing {
   // X11: frames are copied from the GPU into memory shared with the X server
   // (MIT-SHM). This is used if the X server or GPU don't support DRI3.
   kMitShm,
+
+  // KMS: frames are copied on the GPU into buffers the display hardware
+  // shows directly.
+  kKms,
 };
 
 // How access to shared buffers is coordinated with the compositor.
@@ -387,9 +394,10 @@ class FlutterDesktopMessenger : public BinaryMessenger {
 class FlutterDesktopApplication {
  public:
   // Connects to the display server: the Wayland compositor if available,
-  // otherwise the X server. The FLUTTER_LINUX_BACKEND environment variable
-  // may be set to "wayland" or "x11" to choose one. Returns nullptr if no
-  // display server or GPU is available.
+  // otherwise the X server if DISPLAY is set, otherwise the screen is used
+  // directly with kernel modesetting (KMS). The FLUTTER_LINUX_BACKEND
+  // environment variable may be set to "wayland", "x11" or "kms" to choose
+  // one. Returns nullptr if no display or GPU is available.
   static std::shared_ptr<FlutterDesktopApplication> create() {
     FlutterLinuxApplication* application = flutter_linux_application_new();
     if (application == nullptr) {
@@ -423,10 +431,15 @@ class FlutterDesktopApplication {
 
   // The display server the application is connected to.
   FlutterDesktopDisplayBackend display_backend() const {
-    return flutter_linux_application_get_display_backend(application_) ==
-                   FLUTTER_LINUX_DISPLAY_BACKEND_X11
-               ? FlutterDesktopDisplayBackend::kX11
-               : FlutterDesktopDisplayBackend::kWayland;
+    switch (flutter_linux_application_get_display_backend(application_)) {
+      case FLUTTER_LINUX_DISPLAY_BACKEND_X11:
+        return FlutterDesktopDisplayBackend::kX11;
+      case FLUTTER_LINUX_DISPLAY_BACKEND_KMS:
+        return FlutterDesktopDisplayBackend::kKms;
+      case FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND:
+      default:
+        return FlutterDesktopDisplayBackend::kWayland;
+    }
   }
 
   // The connection to the Wayland compositor, or nullptr if using X11.
@@ -761,6 +774,9 @@ class FlutterDesktopEngine {
         break;
       case FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM:
         info.buffer_sharing = FlutterDesktopBufferSharing::kMitShm;
+        break;
+      case FLUTTER_LINUX_BUFFER_SHARING_KMS:
+        info.buffer_sharing = FlutterDesktopBufferSharing::kKms;
         break;
       case FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF:
       default:

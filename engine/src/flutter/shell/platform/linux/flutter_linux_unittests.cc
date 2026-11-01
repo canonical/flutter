@@ -63,5 +63,15 @@ TEST(FlutterLinuxTest, CreateApplicationWithoutX11ServerFails) {
   EXPECT_EQ(application, nullptr);
 }
 
+TEST(FlutterLinuxTest, CreateApplicationWithoutKmsDeviceFails) {
+  ScopedEnvironmentVariable backend("FLUTTER_LINUX_BACKEND", "kms");
+  ScopedEnvironmentVariable device("FLUTTER_KMS_DEVICE",
+                                   "/dev/dri/flutter-linux-test");
+
+  std::shared_ptr<FlutterDesktopApplication> application =
+      FlutterDesktopApplication::create();
+  EXPECT_EQ(application, nullptr);
+}
+
 }  // namespace testing
 }  // namespace flutter
