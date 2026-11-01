@@ -73,6 +73,12 @@ enum class FlutterDesktopGraphicsApi {
   kVulkan,
 };
 
+// The display server the application is connected to.
+enum class FlutterDesktopDisplayBackend {
+  kWayland,
+  kX11,
+};
+
 // How rendered frames are shared with the compositor.
 enum class FlutterDesktopBufferSharing {
   // GPU buffers are shared directly with the compositor without copying
@@ -82,6 +88,14 @@ enum class FlutterDesktopBufferSharing {
   // Frames are copied from the GPU into shared memory (wl_shm). This is used
   // if the compositor or GPU don't support sharing dmabufs.
   kWlShm,
+
+  // X11: frames are copied on the GPU into buffers shared with the X server
+  // (DRI3).
+  kDri3,
+
+  // X11: frames are copied from the GPU into memory shared with the X server
+  // (MIT-SHM). This is used if the X server or GPU don't support DRI3.
+  kMitShm,
 };
 
 // How access to shared buffers is coordinated with the compositor.
@@ -372,8 +386,10 @@ class FlutterDesktopMessenger : public BinaryMessenger {
 // The platform resources shared by all engines in a process.
 class FlutterDesktopApplication {
  public:
-  // Connects to the Wayland compositor. Returns nullptr if no compositor or
-  // GPU is available.
+  // Connects to the display server: the Wayland compositor if available,
+  // otherwise the X server. The FLUTTER_LINUX_BACKEND environment variable
+  // may be set to "wayland" or "x11" to choose one. Returns nullptr if no
+  // display server or GPU is available.
   static std::shared_ptr<FlutterDesktopApplication> create() {
     FlutterLinuxApplication* application = flutter_linux_application_new();
     if (application == nullptr) {
@@ -405,14 +421,28 @@ class FlutterDesktopApplication {
                                                  application_id.c_str());
   }
 
-  // The connection to the Wayland compositor. Plugins may use this to create
-  // their own Wayland objects, with their own event queue if used from other
-  // threads.
+  // The display server the application is connected to.
+  FlutterDesktopDisplayBackend display_backend() const {
+    return flutter_linux_application_get_display_backend(application_) ==
+                   FLUTTER_LINUX_DISPLAY_BACKEND_X11
+               ? FlutterDesktopDisplayBackend::kX11
+               : FlutterDesktopDisplayBackend::kWayland;
+  }
+
+  // The connection to the Wayland compositor, or nullptr if using X11.
+  // Plugins may use this to create their own Wayland objects, with their own
+  // event queue if used from other threads.
   struct wl_display* wayland_display() const {
     return flutter_linux_application_get_wl_display(application_);
   }
 
-  // The Wayland protocols in use.
+  // The connection to the X server, or nullptr if using Wayland. Events on
+  // the connection are processed by the embedder.
+  struct xcb_connection_t* xcb_connection() const {
+    return flutter_linux_application_get_xcb_connection(application_);
+  }
+
+  // The Wayland protocols in use, which is empty if using X11.
   std::vector<FlutterDesktopWaylandProtocol> wayland_protocols() const {
     size_t count =
         flutter_linux_application_get_wayland_protocol_count(application_);
@@ -658,7 +688,8 @@ class FlutterDesktopEngine {
   }
 
   // Registers |factory| to create platform views of |view_type|, replacing
-  // any existing factory.
+  // any existing factory. Platform views are only supported on Wayland; on
+  // X11 requests to create them fail.
   void register_platform_view_type(const std::string& view_type,
                                    FlutterDesktopPlatformViewFactory factory) {
     flutter_linux_engine_register_platform_view_type(
@@ -721,10 +752,21 @@ class FlutterDesktopEngine {
     info.gl_vendor = abi_info.gl_vendor;
     info.gl_renderer = abi_info.gl_renderer;
     info.gl_version = abi_info.gl_version;
-    info.buffer_sharing =
-        abi_info.buffer_sharing == FLUTTER_LINUX_BUFFER_SHARING_WL_SHM
-            ? FlutterDesktopBufferSharing::kWlShm
-            : FlutterDesktopBufferSharing::kLinuxDmabuf;
+    switch (abi_info.buffer_sharing) {
+      case FLUTTER_LINUX_BUFFER_SHARING_WL_SHM:
+        info.buffer_sharing = FlutterDesktopBufferSharing::kWlShm;
+        break;
+      case FLUTTER_LINUX_BUFFER_SHARING_DRI3:
+        info.buffer_sharing = FlutterDesktopBufferSharing::kDri3;
+        break;
+      case FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM:
+        info.buffer_sharing = FlutterDesktopBufferSharing::kMitShm;
+        break;
+      case FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF:
+      default:
+        info.buffer_sharing = FlutterDesktopBufferSharing::kLinuxDmabuf;
+        break;
+    }
     info.buffer_format = abi_info.buffer_format;
     info.buffer_modifier = abi_info.buffer_modifier;
     info.buffer_synchronization =
@@ -838,9 +880,15 @@ class FlutterDesktopView {
 
   // The surface the view's content is shown in. Its origin is the origin of
   // the content, and it is the root of the window's surface tree, so it can
-  // be used to identify the window (e.g. with xdg-foreign).
+  // be used to identify the window (e.g. with xdg-foreign). nullptr if using
+  // X11.
   struct wl_surface* wayland_surface() const {
     return flutter_linux_view_get_wl_surface(view_);
+  }
+
+  // The X11 window the view's content is shown in, or zero if using Wayland.
+  uint32_t x11_window() const {
+    return flutter_linux_view_get_x11_window(view_);
   }
 
   // The logical width of the view's content.

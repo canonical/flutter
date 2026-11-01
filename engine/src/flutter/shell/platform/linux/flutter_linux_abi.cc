@@ -28,8 +28,19 @@
 #include "flutter/shell/platform/linux/gpu_device.h"
 #include "flutter/shell/platform/linux/platform_view_manager.h"
 #include "flutter/shell/platform/linux/plugin_messenger.h"
+#include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/wayland_window.h"
+#include "flutter/shell/platform/linux/x11_display.h"
+#include "flutter/shell/platform/linux/x11_window.h"
 
 namespace {
+
+// Returns |display| if it is a Wayland display, otherwise nullptr.
+flutter::WaylandDisplay* AsWaylandDisplay(flutter::Display* display) {
+  return display->backend() == flutter::Display::Backend::kWayland
+             ? static_cast<flutter::WaylandDisplay*>(display)
+             : nullptr;
+}
 
 flutter::FlutterLinuxApplication* ToApplication(
     FlutterLinuxApplication* application) {
@@ -174,14 +185,35 @@ void flutter_linux_application_set_application_id(
   ToApplication(application)->SetApplicationId(application_id);
 }
 
+FlutterLinuxDisplayBackend flutter_linux_application_get_display_backend(
+    FlutterLinuxApplication* application) {
+  return ToApplication(application)->display()->backend() ==
+                 flutter::Display::Backend::kX11
+             ? FLUTTER_LINUX_DISPLAY_BACKEND_X11
+             : FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND;
+}
+
 wl_display* flutter_linux_application_get_wl_display(
     FlutterLinuxApplication* application) {
-  return ToApplication(application)->display()->display();
+  flutter::WaylandDisplay* display =
+      AsWaylandDisplay(ToApplication(application)->display());
+  return display != nullptr ? display->display() : nullptr;
+}
+
+xcb_connection_t* flutter_linux_application_get_xcb_connection(
+    FlutterLinuxApplication* application) {
+  flutter::Display* display = ToApplication(application)->display();
+  if (display->backend() != flutter::Display::Backend::kX11) {
+    return nullptr;
+  }
+  return static_cast<flutter::X11Display*>(display)->connection();
 }
 
 size_t flutter_linux_application_get_wayland_protocol_count(
     FlutterLinuxApplication* application) {
-  return ToApplication(application)->display()->protocols().size();
+  flutter::WaylandDisplay* display =
+      AsWaylandDisplay(ToApplication(application)->display());
+  return display != nullptr ? display->protocols().size() : 0;
 }
 
 void flutter_linux_application_get_wayland_protocol(
@@ -190,7 +222,9 @@ void flutter_linux_application_get_wayland_protocol(
     const char** name,
     uint32_t* version) {
   const flutter::WaylandDisplay::Protocol& protocol =
-      ToApplication(application)->display()->protocols().at(index);
+      AsWaylandDisplay(ToApplication(application)->display())
+          ->protocols()
+          .at(index);
   *name = protocol.name;
   *version = protocol.version;
 }
@@ -233,7 +267,8 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
                                              FlutterLinuxRenderingInfo* info) {
   flutter::FlutterLinuxEngine* e = ToEngine(engine);
   flutter::EGLManager* egl = e->egl();
-  flutter::WaylandDisplay* display = e->application()->display();
+  flutter::Display* display = e->application()->display();
+  flutter::WaylandDisplay* wayland_display = AsWaylandDisplay(display);
 
   FlutterLinuxRenderingInfo result = {};
   result.struct_size = sizeof(FlutterLinuxRenderingInfo);
@@ -244,19 +279,32 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
   result.gl_vendor = egl->gl_vendor().c_str();
   result.gl_renderer = egl->gl_renderer().c_str();
   result.gl_version = egl->gl_version().c_str();
-  result.buffer_sharing = e->compositor()->uses_dmabuf()
-                              ? FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF
-                              : FLUTTER_LINUX_BUFFER_SHARING_WL_SHM;
+  if (wayland_display != nullptr) {
+    result.buffer_sharing = e->compositor()->uses_dmabuf()
+                                ? FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF
+                                : FLUTTER_LINUX_BUFFER_SHARING_WL_SHM;
+  } else {
+    result.buffer_sharing =
+        static_cast<flutter::X11Display*>(display)->has_dri3()
+            ? FLUTTER_LINUX_BUFFER_SHARING_DRI3
+            : FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM;
+  }
   result.buffer_format = flutter::DmabufBuffer::kFormat;
   result.buffer_modifier = e->compositor()->buffer_modifier();
   result.buffer_synchronization =
       e->compositor()->explicit_sync()
           ? FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_EXPLICIT
           : FLUTTER_LINUX_BUFFER_SYNCHRONIZATION_IMPLICIT;
-  result.presentation_feedback = display->presentation() != nullptr;
-  result.fifo = display->fifo_manager() != nullptr;
-  result.fractional_scale = display->viewporter() != nullptr &&
-                            display->fractional_scale_manager() != nullptr;
+  if (wayland_display != nullptr) {
+    result.presentation_feedback = wayland_display->presentation() != nullptr;
+    result.fifo = wayland_display->fifo_manager() != nullptr;
+    result.fractional_scale =
+        wayland_display->viewporter() != nullptr &&
+        wayland_display->fractional_scale_manager() != nullptr;
+  } else {
+    // The Present extension reports when frames are shown.
+    result.presentation_feedback = true;
+  }
 
   if (info->struct_size < sizeof(info->struct_size)) {
     return;
@@ -609,13 +657,27 @@ void flutter_linux_platform_view_buffer_free(
 }
 
 wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {
-  return ToView(view)->window()->surface();
+  flutter::FlutterLinuxView* v = ToView(view);
+  if (v->engine()->application()->display()->backend() !=
+      flutter::Display::Backend::kWayland) {
+    return nullptr;
+  }
+  return static_cast<flutter::WaylandWindow*>(v->window())->surface();
+}
+
+uint32_t flutter_linux_view_get_x11_window(FlutterLinuxView* view) {
+  flutter::FlutterLinuxView* v = ToView(view);
+  if (v->engine()->application()->display()->backend() !=
+      flutter::Display::Backend::kX11) {
+    return 0;
+  }
+  return static_cast<flutter::X11Window*>(v->window())->window();
 }
 
 void flutter_linux_view_get_size(FlutterLinuxView* view,
                                  int* width,
                                  int* height) {
-  flutter::WaylandWindow* window = ToView(view)->window();
+  flutter::Window* window = ToView(view)->window();
   if (width != nullptr) {
     *width = window->width();
   }

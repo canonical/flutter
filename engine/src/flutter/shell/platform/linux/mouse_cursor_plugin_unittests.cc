@@ -6,7 +6,7 @@
 
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_method_codec.h"
 #include "flutter/shell/platform/linux/fake_platform_messenger.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
+#include "flutter/shell/platform/linux/input_handler.h"
 #include "gtest/gtest.h"
 
 namespace flutter {

@@ -20,6 +20,7 @@
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
 #include "flutter/shell/platform/linux/shm_buffer.h"
+#include "flutter/shell/platform/linux/texture_buffer.h"
 
 namespace flutter {
 
@@ -61,14 +62,19 @@ void WarnShmFallback(const char* reason) {
 }  // namespace
 
 CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
-                                   WaylandDisplay* display,
+                                   Display* display,
                                    bool depth_stencil)
     : egl_(egl),
-      display_(display),
+      display_(display->backend() == Display::Backend::kWayland
+                   ? static_cast<WaylandDisplay*>(display)
+                   : nullptr),
       depth_stencil_(depth_stencil),
       use_dmabuf_(false),
       explicit_sync_(false),
       buffer_modifier_(DRM_FORMAT_MOD_INVALID) {
+  if (display_ == nullptr) {
+    return;
+  }
   queue_ = wl_display_create_queue(display_->display());
   shm_wrapper_ = static_cast<wl_shm*>(wl_proxy_create_wrapper(display_->shm()));
   wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(shm_wrapper_), queue_);
@@ -109,8 +115,12 @@ CompositorOpenGL::~CompositorOpenGL() {
   if (dmabuf_wrapper_ != nullptr) {
     wl_proxy_wrapper_destroy(dmabuf_wrapper_);
   }
-  wl_proxy_wrapper_destroy(shm_wrapper_);
-  wl_event_queue_destroy(queue_);
+  if (shm_wrapper_ != nullptr) {
+    wl_proxy_wrapper_destroy(shm_wrapper_);
+  }
+  if (queue_ != nullptr) {
+    wl_event_queue_destroy(queue_);
+  }
 }
 
 void CompositorOpenGL::AddView(FlutterViewId view_id, FlutterLinuxView* view) {
@@ -218,7 +228,7 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
 
   // The buffers to show, the root first.
   std::vector<PoolBuffer*> buffers = {root};
-  std::vector<WaylandWindow::Layer> window_layers;
+  std::vector<Window::Layer> window_layers;
   double scale = view->window()->scale();
   for (size_t i = 1; i < layers_count; i++) {
     const FlutterLayer* layer = layers[i];
@@ -230,7 +240,7 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
       if (platform_view == nullptr) {
         continue;
       }
-      WaylandWindow::Layer window_layer;
+      Window::Layer window_layer;
       window_layer.platform_view = std::move(platform_view);
       window_layer.geometry = GetPlatformViewGeometry(*layer, scale);
       window_layers.push_back(std::move(window_layer));
@@ -246,8 +256,8 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
         buffer->height() != height) {
       continue;
     }
-    WaylandWindow::Layer window_layer;
-    window_layer.buffer = buffer->buffer();
+    Window::Layer window_layer;
+    window_layer.buffer = buffer;
     window_layer.content = content;
     window_layers.push_back(std::move(window_layer));
     buffers.push_back(pool_buffer);
@@ -263,14 +273,18 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
     // Submit the rendering commands. The compositor waits for them to
     // complete using the implicit fences on the dmabufs.
     glFlush();
-    for (PoolBuffer* pool_buffer : buffers) {
-      pool_buffer->buffer->set_busy(true);
+    // Other backends copy the buffers while presenting, so they are never
+    // held by the display server.
+    if (display_ != nullptr) {
+      for (PoolBuffer* pool_buffer : buffers) {
+        pool_buffer->buffer->set_busy(true);
+      }
     }
     view->PresentBuffer(root_buffer, nullptr, window_layers);
     return true;
   }
 
-  std::vector<WaylandWindow::SyncPoints> sync(buffers.size());
+  std::vector<Window::SyncPoints> sync(buffers.size());
   for (size_t i = 0; i < buffers.size(); i++) {
     PoolBuffer* pool_buffer = buffers[i];
     sync[i] = {
@@ -286,7 +300,7 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
     buffers[i]->release_point = sync[i].release_point;
   }
   size_t overlay = 1;
-  for (WaylandWindow::Layer& window_layer : window_layers) {
+  for (Window::Layer& window_layer : window_layers) {
     if (window_layer.buffer != nullptr) {
       window_layer.sync = sync[overlay++];
     }
@@ -326,7 +340,7 @@ PixelRect CompositorOpenGL::GetPaintBounds(const FlutterLayer* layer,
 
 bool CompositorOpenGL::SignalWhenRenderingComplete(
     const std::vector<PoolBuffer*>& buffers,
-    const std::vector<WaylandWindow::SyncPoints>& sync) {
+    const std::vector<Window::SyncPoints>& sync) {
   GpuDevice* gpu = egl_->gpu();
   const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
                                EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
@@ -421,6 +435,9 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
 
 std::unique_ptr<RenderBuffer> CompositorOpenGL::AllocateBuffer(int width,
                                                                int height) {
+  if (display_ == nullptr) {
+    return TextureBuffer::Create(egl_, width, height, depth_stencil_);
+  }
   if (use_dmabuf_) {
     std::unique_ptr<RenderBuffer> buffer = DmabufBuffer::Create(
         egl_, dmabuf_wrapper_, display_->GetModifiers(DmabufBuffer::kFormat),
@@ -547,10 +564,16 @@ bool CompositorOpenGL::WaitForReleasedBuffer(
 }
 
 void CompositorOpenGL::DispatchBufferEvents() {
+  if (queue_ == nullptr) {
+    return;
+  }
   wl_display_dispatch_queue_pending(display_->display(), queue_);
 }
 
 bool CompositorOpenGL::WaitForBufferEvents(int timeout_ms) {
+  if (queue_ == nullptr) {
+    return false;
+  }
   wl_display* display = display_->display();
   while (wl_display_prepare_read_queue(display, queue_) != 0) {
     if (wl_display_dispatch_queue_pending(display, queue_) < 0) {

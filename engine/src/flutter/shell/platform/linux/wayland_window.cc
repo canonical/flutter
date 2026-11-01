@@ -84,7 +84,7 @@ const wp_fractional_scale_v1_listener WaylandWindow::kFractionalScaleListener =
 std::unique_ptr<WaylandWindow> WaylandWindow::Create(
     WaylandDisplay* display,
     DecorationRenderer* decoration_renderer,
-    Delegate* delegate,
+    Window::Delegate* delegate,
     const Params& params) {
   std::unique_ptr<WaylandWindow> window(new WaylandWindow(display, delegate));
   if (!window->Initialize(decoration_renderer, params)) {
@@ -93,7 +93,8 @@ std::unique_ptr<WaylandWindow> WaylandWindow::Create(
   return window;
 }
 
-WaylandWindow::WaylandWindow(WaylandDisplay* display, Delegate* delegate)
+WaylandWindow::WaylandWindow(WaylandDisplay* display,
+                             Window::Delegate* delegate)
     : display_(display), delegate_(delegate) {
   display_->AddOutputObserver(this);
 }
@@ -162,7 +163,7 @@ WaylandWindow::~WaylandWindow() {
 bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
                                const Params& params) {
   role_ = params.role;
-  parent_ = params.parent;
+  parent_ = static_cast<WaylandWindow*>(params.parent);
   decoration_renderer_ = decoration_renderer;
   decorated_ = params.decorated && role_ == Role::kToplevel;
   resizable_ = params.resizable;
@@ -594,10 +595,11 @@ void WaylandWindow::ActivationTokenDone(void* data,
   self->activation_token_ = nullptr;
 }
 
-void WaylandWindow::SetParent(WaylandWindow* parent) {
+void WaylandWindow::SetParent(Window* new_parent) {
   if (toplevel_ == nullptr) {
     return;
   }
+  auto* parent = static_cast<WaylandWindow*>(new_parent);
   parent_ = parent;
 
   // Popups can't be parents of top-level windows, so use the top-level
@@ -715,11 +717,12 @@ void WaylandWindow::SetApplicationId(const std::string& application_id) {
   xdg_toplevel_set_app_id(toplevel_, application_id.c_str());
 }
 
-void WaylandWindow::Present(wl_buffer* buffer,
-                            int width,
-                            int height,
+void WaylandWindow::Present(RenderBuffer* render_buffer,
                             const SyncPoints* sync,
                             const std::vector<Layer>& layers) {
+  wl_buffer* buffer = render_buffer->buffer();
+  int width = render_buffer->width();
+  int height = render_buffer->height();
   std::unique_lock<std::mutex> surface_lock(surface_mutex_);
   if (popup_ != nullptr) {
     // The popup is placed using its logical size, matching the viewport
@@ -906,7 +909,7 @@ void WaylandWindow::PresentOverlay(Overlay* overlay,
         overlay->syncobj_surface, sync.timeline, sync.release_point >> 32,
         sync.release_point & 0xffffffff);
   }
-  wl_surface_attach(overlay->surface, layer.buffer, 0, 0);
+  wl_surface_attach(overlay->surface, layer.buffer->buffer(), 0, 0);
   wl_surface_damage_buffer(overlay->surface, 0, 0, width, height);
   wl_surface_commit(overlay->surface);
   overlay->mapped = true;
@@ -1020,6 +1023,28 @@ void WaylandWindow::FeedbackDiscarded(
     void* data,
     struct wp_presentation_feedback* feedback) {
   static_cast<WaylandWindow*>(data)->RemoveFeedback(feedback);
+}
+
+bool WaylandWindow::has_pointer_focus() const {
+  WaylandSeat* seat = display_->seat();
+  return seat != nullptr && seat->pointer_focus() == surface_;
+}
+
+bool WaylandWindow::has_keyboard_focus() const {
+  WaylandSeat* seat = display_->seat();
+  return seat != nullptr && seat->keyboard_focus() == surface_;
+}
+
+void WaylandWindow::SetInputHandlers(InputHandler* input_handler,
+                                     KeyboardHandler* keyboard_handler,
+                                     InputMethodHandler* input_method_handler) {
+  WaylandSeat* seat = display_->seat();
+  if (seat == nullptr) {
+    return;
+  }
+  seat->SetInputHandler(surface_, input_handler);
+  seat->SetKeyboardHandler(surface_, keyboard_handler);
+  seat->SetInputMethodHandler(surface_, input_method_handler);
 }
 
 uint32_t WaylandWindow::display_id() const {

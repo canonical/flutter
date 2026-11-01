@@ -6,6 +6,7 @@
 
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/wayland_display.h"
 
 namespace flutter {
 
@@ -33,7 +34,7 @@ FlutterLinuxApplication::~FlutterLinuxApplication() {
 bool FlutterLinuxApplication::Initialize() {
   event_loop_ = std::make_unique<EventLoop>();
 
-  display_ = WaylandDisplay::Create(event_loop_.get());
+  display_ = Display::Create(event_loop_.get());
   if (!display_) {
     return false;
   }
@@ -56,8 +57,12 @@ bool FlutterLinuxApplication::Initialize() {
 DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {
   if (!decoration_renderer_created_) {
     decoration_renderer_created_ = true;
-    decoration_renderer_ =
-        DecorationRenderer::Create(gpu_.get(), display_.get());
+    if (display_->backend() != Display::Backend::kWayland) {
+      // The window manager draws decorations.
+      return nullptr;
+    }
+    decoration_renderer_ = DecorationRenderer::Create(
+        gpu_.get(), static_cast<WaylandDisplay*>(display_.get()));
     if (!decoration_renderer_) {
       FML_LOG(ERROR) << "Failed to create window decoration renderer";
     }

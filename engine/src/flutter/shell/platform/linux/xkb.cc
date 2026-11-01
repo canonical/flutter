@@ -54,6 +54,46 @@ std::unique_ptr<XkbKeyboard> XkbKeyboard::Create(std::string_view keymap) {
   return keyboard;
 }
 
+std::unique_ptr<XkbKeyboard> XkbKeyboard::CreateFromNames(
+    const std::string& rules,
+    const std::string& model,
+    const std::string& layout,
+    const std::string& variant,
+    const std::string& options) {
+  std::unique_ptr<XkbKeyboard> keyboard(new XkbKeyboard());
+
+  // The names come from the display server, so ignore the XKB_DEFAULT_*
+  // environment variables.
+  keyboard->context_ = xkb_context_new(
+      static_cast<xkb_context_flags>(XKB_CONTEXT_NO_ENVIRONMENT_NAMES));
+  if (keyboard->context_ == nullptr) {
+    return nullptr;
+  }
+
+  auto name_or_null = [](const std::string& name) {
+    return name.empty() ? nullptr : name.c_str();
+  };
+  xkb_rule_names names = {
+      .rules = name_or_null(rules),
+      .model = name_or_null(model),
+      .layout = name_or_null(layout),
+      .variant = name_or_null(variant),
+      .options = name_or_null(options),
+  };
+  keyboard->keymap_ = xkb_keymap_new_from_names(keyboard->context_, &names,
+                                                XKB_KEYMAP_COMPILE_NO_FLAGS);
+  if (keyboard->keymap_ == nullptr) {
+    return nullptr;
+  }
+
+  keyboard->state_ = xkb_state_new(keyboard->keymap_);
+  if (keyboard->state_ == nullptr) {
+    return nullptr;
+  }
+
+  return keyboard;
+}
+
 XkbKeyboard::~XkbKeyboard() {
   xkb_state_unref(state_);
   xkb_keymap_unref(keymap_);
@@ -66,6 +106,10 @@ void XkbKeyboard::UpdateState(uint32_t depressed_mods,
                               uint32_t group) {
   xkb_state_update_mask(state_, depressed_mods, latched_mods, locked_mods, 0, 0,
                         group);
+}
+
+void XkbKeyboard::UpdateKey(uint32_t keycode, bool pressed) {
+  xkb_state_update_key(state_, keycode, pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
 }
 
 uint32_t XkbKeyboard::GetKeysym(uint32_t keycode) const {

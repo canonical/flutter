@@ -43,6 +43,10 @@ class PlatformViewManager {
   // one. Called on the platform thread.
   void RegisterViewType(const std::string& view_type, Factory factory);
 
+  // Sets whether the display server supports platform views. If not, requests
+  // to create them fail.
+  void set_supported(bool supported) { supported_ = supported; }
+
   // Returns the view with |id|, or nullptr. May be called from any thread.
   std::shared_ptr<LinuxPlatformView> GetView(int64_t id);
 
@@ -61,6 +65,7 @@ class PlatformViewManager {
 
   PlatformMessenger* messenger_;
   WaylandDisplay* display_;
+  bool supported_ = true;
   EventLoop* event_loop_;
 
   std::map<std::string, Factory> factories_;

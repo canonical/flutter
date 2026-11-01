@@ -9,10 +9,10 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/input_handler.h"
 #include "flutter/shell/platform/linux/key_event_converter.h"
 #include "flutter/shell/platform/linux/platform_messenger.h"
 #include "flutter/shell/platform/linux/text_input_plugin.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
 
 namespace flutter {
 

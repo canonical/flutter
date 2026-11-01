@@ -45,15 +45,6 @@ EventLoop::TimePoint ToTimePoint(uint32_t time) {
   return EventLoop::TimePoint(std::chrono::microseconds(EventTime(time)));
 }
 
-// Returns the character produced by |keysym| for deriving layouts.
-uint32_t LayoutCharacter(uint32_t keysym) {
-  if (keysym == 0) {
-    return 0;
-  }
-  uint32_t character = KeysymToUtf32(keysym);
-  return character != 0 ? character : kLayoutNotCharacter;
-}
-
 }  // namespace
 
 const wl_seat_listener WaylandSeat::kSeatListener = {
@@ -190,36 +181,7 @@ KeyboardHandler* WaylandSeat::KeyboardHandlerFor(wl_surface* surface) const {
 }
 
 KeyboardKey WaylandSeat::ResolveKey(uint32_t keycode) {
-  KeyboardKey key;
-  key.keycode = keycode;
-  key.keysym = xkb_keyboard_->GetKeysym(keycode);
-  key.character = KeysymToUtf32(key.keysym);
-  key.text = xkb_keyboard_->GetText(keycode);
-
-  const std::unordered_map<uint32_t, uint64_t>& layout_keys =
-      LayoutLogicalKeys(xkb_keyboard_->GetLayout(keycode));
-  auto it = layout_keys.find(keycode);
-  if (it != layout_keys.end()) {
-    key.logical_key = it->second;
-    key.layout_logical_key = true;
-  } else {
-    key.logical_key =
-        GetLogicalKey(key.keysym, KeysymToUtf32(KeysymToLower(key.keysym)));
-  }
-  return key;
-}
-
-const std::unordered_map<uint32_t, uint64_t>& WaylandSeat::LayoutLogicalKeys(
-    uint32_t layout) {
-  auto it = layout_keys_.find(layout);
-  if (it != layout_keys_.end()) {
-    return it->second;
-  }
-  return layout_keys_[layout] = DeriveLayoutLogicalKeys(
-             [this, layout](uint32_t keycode, uint32_t level) {
-               return LayoutCharacter(
-                   xkb_keyboard_->GetLevelKeysym(keycode, layout, level));
-             });
+  return key_resolver_.Resolve(*xkb_keyboard_, keycode);
 }
 
 void WaylandSeat::StartRepeat(uint32_t keycode,
@@ -307,7 +269,7 @@ void WaylandSeat::ReleaseKeyboard() {
   }
   keyboard_focus_ = nullptr;
   xkb_keyboard_.reset();
-  layout_keys_.clear();
+  key_resolver_.Reset();
 }
 
 void WaylandSeat::SeatCapabilities(void* data,
@@ -640,7 +602,7 @@ void WaylandSeat::KeyboardKeymap(void* data,
                                  uint32_t size) {
   auto* self = static_cast<WaylandSeat*>(data);
   self->StopRepeat();
-  self->layout_keys_.clear();
+  self->key_resolver_.Reset();
 
   if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
     close(fd);

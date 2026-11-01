@@ -11,7 +11,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/linux/wayland_seat.h"
+#include "flutter/shell/platform/linux/input_handler.h"
 
 namespace flutter {
 

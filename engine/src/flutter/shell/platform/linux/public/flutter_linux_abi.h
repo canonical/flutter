@@ -35,6 +35,9 @@ typedef struct _FlutterLinuxMessageResponse FlutterLinuxMessageResponse;
 struct wl_display;
 struct wl_surface;
 
+// The X11 connection, from libxcb.
+struct xcb_connection_t;
+
 typedef struct {
   const char* assets_path;
   const char* icu_data_path;
@@ -57,8 +60,15 @@ typedef enum {
 } FlutterLinuxGraphicsApi;
 
 typedef enum {
+  FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND,
+  FLUTTER_LINUX_DISPLAY_BACKEND_X11,
+} FlutterLinuxDisplayBackend;
+
+typedef enum {
   FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF,
   FLUTTER_LINUX_BUFFER_SHARING_WL_SHM,
+  FLUTTER_LINUX_BUFFER_SHARING_DRI3,
+  FLUTTER_LINUX_BUFFER_SHARING_MIT_SHM,
 } FlutterLinuxBufferSharing;
 
 typedef enum {
@@ -85,6 +95,10 @@ typedef struct {
   bool fractional_scale;
 } FlutterLinuxRenderingInfo;
 
+// Connects to the display server: the Wayland compositor if available,
+// otherwise the X server. The FLUTTER_LINUX_BACKEND environment variable may
+// be set to "wayland" or "x11" to choose one. Returns NULL if no display
+// server or GPU is available.
 FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
 
 FLUTTER_EXPORT void flutter_linux_application_free(
@@ -101,13 +115,28 @@ FLUTTER_EXPORT void flutter_linux_application_set_application_id(
     FlutterLinuxApplication* application,
     const char* application_id);
 
-// Returns the connection to the Wayland compositor shared by all engines.
-// Plugins may create their own event queues on it to use it from other
-// threads.
+// Returns the display server the application is connected to. Wayland is
+// used if available, otherwise X11. The FLUTTER_LINUX_BACKEND environment
+// variable may be set to "wayland" or "x11" to choose one.
+FLUTTER_EXPORT FlutterLinuxDisplayBackend
+flutter_linux_application_get_display_backend(
+    FlutterLinuxApplication* application);
+
+// Returns the connection to the Wayland compositor shared by all engines, or
+// NULL if the application is using X11. Plugins may create their own event
+// queues on it to use it from other threads.
 FLUTTER_EXPORT struct wl_display* flutter_linux_application_get_wl_display(
     FlutterLinuxApplication* application);
 
-// Returns the number of Wayland globals bound from the compositor.
+// Returns the connection to the X server shared by all engines, or NULL if
+// the application is using Wayland. Events on the connection are processed
+// by the embedder.
+FLUTTER_EXPORT struct xcb_connection_t*
+flutter_linux_application_get_xcb_connection(
+    FlutterLinuxApplication* application);
+
+// Returns the number of Wayland globals bound from the compositor, or zero if
+// the application is using X11.
 FLUTTER_EXPORT size_t flutter_linux_application_get_wayland_protocol_count(
     FlutterLinuxApplication* application);
 
@@ -403,7 +432,8 @@ typedef bool (*FlutterLinuxPlatformViewFactory)(FlutterLinuxPlatformView* view,
 
 // Registers |factory| to create views of |view_type|, replacing any existing
 // factory. |destroy|, which may be NULL, is called when the factory is
-// replaced or the engine is freed.
+// replaced or the engine is freed. Platform views are only supported on
+// Wayland; on X11 requests to create them fail.
 FLUTTER_EXPORT void flutter_linux_engine_register_platform_view_type(
     FlutterLinuxEngine* engine,
     const char* view_type,
@@ -500,8 +530,14 @@ FLUTTER_EXPORT void flutter_linux_platform_view_buffer_free(
 // The surface the view's Flutter content is shown in. Its origin is the
 // origin of the view's content, and it is the root of the window's surface
 // tree, so it can be used to identify the window (e.g. with xdg-foreign).
+// NULL if the application is using X11.
 FLUTTER_EXPORT struct wl_surface* flutter_linux_view_get_wl_surface(
     FlutterLinuxView* view);
+
+// The X11 window the view's content is shown in, or zero if the application
+// is using Wayland.
+FLUTTER_EXPORT uint32_t
+flutter_linux_view_get_x11_window(FlutterLinuxView* view);
 
 // Gets the logical size of the view's content.
 FLUTTER_EXPORT void flutter_linux_view_get_size(FlutterLinuxView* view,

@@ -161,8 +161,17 @@ bool FlutterLinuxEngine::Initialize() {
   compositor_ = std::make_unique<CompositorOpenGL>(
       egl_.get(), application_->display(), IsImpellerEnabled());
   texture_registrar_ = std::make_unique<TextureRegistrar>(this);
+  // Platform views are shown in Wayland subsurfaces, and aren't supported on
+  // other backends.
+  Display* display = application_->display();
   platform_view_manager_ = std::make_unique<PlatformViewManager>(
-      this, application_->display(), application_->event_loop());
+      this,
+      display->backend() == Display::Backend::kWayland
+          ? static_cast<WaylandDisplay*>(display)
+          : nullptr,
+      application_->event_loop());
+  platform_view_manager_->set_supported(display->backend() ==
+                                        Display::Backend::kWayland);
   compositor_->SetPlatformViewLookup(
       [manager = platform_view_manager_.get()](int64_t id) {
         return manager->GetView(id);
@@ -345,7 +354,7 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
   }
   implicit_view_created_ = true;
 
-  WaylandWindow::Params params;
+  Window::Params params;
   params.width = width;
   params.height = height;
   params.application_id = application_->application_id();
@@ -354,10 +363,10 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(int width,
 }
 
 std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(
-    const WaylandWindow::Params& params,
+    const Window::Params& params,
     FlutterLinuxView::Sizing sizing,
     const FlutterLinuxView::Constraints& constraints) {
-  WaylandWindow::Params window_params = params;
+  Window::Params window_params = params;
   if (window_params.application_id.empty()) {
     window_params.application_id = application_->application_id();
   }
@@ -395,17 +404,14 @@ void FlutterLinuxEngine::SendDisplays() {
   }
 
   std::vector<FlutterEngineDisplay> displays;
-  for (const auto& [id, output] : application_->display()->outputs()) {
-    if (!output->ready()) {
-      continue;
-    }
+  for (const Display::Output& output : application_->display()->GetOutputs()) {
     FlutterEngineDisplay display = {};
     display.struct_size = sizeof(FlutterEngineDisplay);
-    display.display_id = id;
-    display.refresh_rate = output->refresh_rate();
-    display.width = output->width();
-    display.height = output->height();
-    display.device_pixel_ratio = output->pixel_ratio();
+    display.display_id = output.id;
+    display.refresh_rate = output.refresh_rate;
+    display.width = output.width;
+    display.height = output.height;
+    display.device_pixel_ratio = output.pixel_ratio;
     displays.push_back(display);
   }
   if (displays.size() == 1) {
@@ -434,7 +440,7 @@ void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {
 }
 
 FlutterLinuxView* FlutterLinuxEngine::FindViewForWindow(
-    const WaylandWindow* window) const {
+    const Window* window) const {
   if (window == nullptr) {
     return nullptr;
   }
@@ -553,7 +559,7 @@ void FlutterLinuxEngine::UpdateLifecycleState() {
   // hidden.
   AppLifecycleState state = AppLifecycleState::kHidden;
   for (const auto& [view_id, view] : views_) {
-    const WaylandWindow* window = view->window();
+    const Window* window = view->window();
     if (window == nullptr) {
       continue;
     }
@@ -575,22 +581,14 @@ void FlutterLinuxEngine::UpdateLifecycleState() {
 }
 
 void FlutterLinuxEngine::RingBell() {
-  xdg_system_bell_v1* bell = application_->display()->system_bell();
-  if (bell == nullptr) {
-    return;
-  }
-  wl_surface* surface = nullptr;
-  WaylandSeat* seat = application_->display()->seat();
-  if (seat != nullptr) {
-    for (const auto& [view_id, view] : views_) {
-      if (view->window() != nullptr &&
-          view->window()->surface() == seat->keyboard_focus()) {
-        surface = seat->keyboard_focus();
-        break;
-      }
+  Window* window = nullptr;
+  for (const auto& [view_id, view] : views_) {
+    if (view->window() != nullptr && view->window()->has_keyboard_focus()) {
+      window = view->window();
+      break;
     }
   }
-  xdg_system_bell_v1_ring(bell, surface);
+  application_->display()->RingBell(window);
 }
 
 void FlutterLinuxEngine::OnFramePresented(uint64_t presentation_time_ns,
@@ -762,13 +760,9 @@ void FlutterLinuxEngine::SetMessageHandler(const std::string& channel,
 }
 
 void FlutterLinuxEngine::OnCursorChanged(uint32_t shape) {
-  WaylandSeat* seat = application_->display()->seat();
-  if (seat == nullptr) {
-    return;
-  }
   for (const auto& [view_id, view] : views_) {
-    if (seat->pointer_focus() == view->window()->surface()) {
-      seat->SetCursor(shape);
+    if (view->window()->has_pointer_focus()) {
+      application_->display()->SetCursor(shape);
       return;
     }
   }

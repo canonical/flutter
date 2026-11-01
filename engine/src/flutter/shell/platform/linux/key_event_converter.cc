@@ -251,4 +251,52 @@ bool KeyEventConverter::IsLogicalKeyPressed(uint64_t logical) const {
   return false;
 }
 
+namespace {
+
+// Returns the character produced by |keysym| for deriving layouts.
+uint32_t LayoutCharacter(uint32_t keysym) {
+  if (keysym == 0) {
+    return 0;
+  }
+  uint32_t character = KeysymToUtf32(keysym);
+  return character != 0 ? character : kLayoutNotCharacter;
+}
+
+}  // namespace
+
+KeyboardKey KeyResolver::Resolve(const XkbKeyboard& keyboard,
+                                 uint32_t keycode) {
+  KeyboardKey key;
+  key.keycode = keycode;
+  key.keysym = keyboard.GetKeysym(keycode);
+  key.character = KeysymToUtf32(key.keysym);
+  key.text = keyboard.GetText(keycode);
+
+  const std::unordered_map<uint32_t, uint64_t>& layout_keys =
+      LayoutLogicalKeys(keyboard, keyboard.GetLayout(keycode));
+  auto it = layout_keys.find(keycode);
+  if (it != layout_keys.end()) {
+    key.logical_key = it->second;
+    key.layout_logical_key = true;
+  } else {
+    key.logical_key =
+        GetLogicalKey(key.keysym, KeysymToUtf32(KeysymToLower(key.keysym)));
+  }
+  return key;
+}
+
+const std::unordered_map<uint32_t, uint64_t>& KeyResolver::LayoutLogicalKeys(
+    const XkbKeyboard& keyboard,
+    uint32_t layout) {
+  auto it = layout_keys_.find(layout);
+  if (it != layout_keys_.end()) {
+    return it->second;
+  }
+  return layout_keys_[layout] = DeriveLayoutLogicalKeys(
+             [&keyboard, layout](uint32_t keycode, uint32_t level) {
+               return LayoutCharacter(
+                   keyboard.GetLevelKeysym(keycode, layout, level));
+             });
+}
+
 }  // namespace flutter

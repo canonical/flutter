@@ -20,6 +20,7 @@
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
+#include "flutter/shell/platform/linux/window.h"
 #include "flutter/shell/platform/linux/window_decoration.h"
 
 namespace flutter {
@@ -37,111 +38,10 @@ namespace flutter {
 // requires them or the window can't draw its own. Decorations of a new size are
 // shown with the first content buffer of the matching size, so resizing is
 // atomic and presenting content doesn't redraw the decorations.
-class WaylandWindow : public WindowDecoration::Delegate,
+class WaylandWindow : public Window,
+                      public WindowDecoration::Delegate,
                       public WaylandDisplay::OutputObserver {
  public:
-  class Delegate {
-   public:
-    virtual ~Delegate() = default;
-
-    // Called when the window size or scale changes.
-    virtual void OnWindowConfigure() = 0;
-
-    // Called when the user requests the window be closed, or when the
-    // compositor dismisses a popup.
-    virtual void OnWindowClose() = 0;
-
-    // Called when the window is activated or deactivated, maximized,
-    // made fullscreen, or a popup is moved.
-    virtual void OnWindowStateChanged() {}
-
-    // Called when the window title changes.
-    virtual void OnWindowTitleChanged() {}
-
-    // Called when the window moves to a different output, or the outputs
-    // change.
-    virtual void OnWindowDisplayChanged() {}
-
-    // Called when a frame has been shown on the screen.
-    // |presentation_time_ns| is when it was shown, on CLOCK_MONOTONIC.
-    // |refresh_ns| is the time until the next display refresh, or zero if
-    // that is unknown.
-    virtual void OnWindowPresented(uint64_t presentation_time_ns,
-                                   uint64_t refresh_ns) = 0;
-
-    // Called when the compositor indicates it is a good time to draw a new
-    // frame, after a previously presented frame has been handled.
-    virtual void OnWindowFrameDone() = 0;
-  };
-
-  enum class Role {
-    // A top-level window, optionally attached to a parent window.
-    kToplevel,
-    // A window placed relative to its parent, such as a menu or tooltip.
-    // Popups are undecorated and are dismissed by the compositor when the
-    // user interacts with another application.
-    kPopup,
-  };
-
-  // Where a popup is placed relative to its parent, using xdg_positioner
-  // values.
-  struct Positioner {
-    // The rectangle in the parent the popup is placed relative to, in
-    // logical pixels relative to the parent's content.
-    Rect anchor_rect;
-
-    // An xdg_positioner_anchor: the point on |anchor_rect| the popup is
-    // placed at.
-    uint32_t anchor = XDG_POSITIONER_ANCHOR_NONE;
-
-    // An xdg_positioner_gravity: the direction the popup extends from the
-    // anchor point.
-    uint32_t gravity = XDG_POSITIONER_GRAVITY_NONE;
-
-    // A combination of xdg_positioner_constraint_adjustment bits, how the
-    // compositor may move the popup to keep it on screen.
-    uint32_t constraint_adjustment = 0;
-
-    // Moves the popup from the anchor point, in logical pixels.
-    int offset_x = 0;
-    int offset_y = 0;
-  };
-
-  // Limits on the size of the window content in logical pixels. A maximum of
-  // zero is unlimited.
-  struct SizeLimits {
-    int min_width = 0;
-    int min_height = 0;
-    int max_width = 0;
-    int max_height = 0;
-  };
-
-  struct Params {
-    Role role = Role::kToplevel;
-
-    // The window a top-level window is attached to, or the window a popup is
-    // placed relative to. Required for popups.
-    WaylandWindow* parent = nullptr;
-
-    // The initial logical size of the content.
-    int width = 0;
-    int height = 0;
-
-    // For top-level windows: whether the window has decorations, blocks
-    // input to its parent, and can be resized by the user.
-    bool decorated = true;
-    bool modal = false;
-    bool resizable = true;
-    SizeLimits size_limits;
-    std::string title;
-    std::string application_id;
-
-    // For popups: where the popup is placed, and whether it receives input.
-    // Popups that don't receive input pass it to the windows below.
-    Positioner positioner;
-    bool accepts_input = true;
-  };
-
   // Creates a window. This blocks until the compositor has configured the
   // window, without dispatching events for other windows. Decorations are
   // drawn with |decoration_renderer| if it is not nullptr. Returns nullptr on
@@ -149,145 +49,70 @@ class WaylandWindow : public WindowDecoration::Delegate,
   static std::unique_ptr<WaylandWindow> Create(
       WaylandDisplay* display,
       DecorationRenderer* decoration_renderer,
-      Delegate* delegate,
+      Window::Delegate* delegate,
       const Params& params);
 
   ~WaylandWindow() override;
 
-  // The logical size of the window content, excluding decorations.
-  int width() const { return width_; }
-  int height() const { return height_; }
-
   // The surface showing the window content.
   wl_surface* surface() const { return surface_; }
 
-  // The number of physical pixels per logical pixel.
-  double scale() const { return scale_; }
+  // |Window|
+  int width() const override { return width_; }
+  int height() const override { return height_; }
+  double scale() const override { return scale_; }
+  uint32_t display_id() const override;
+  int physical_width() const override;
+  int physical_height() const override;
+  Role role() const override { return role_; }
+  Window* parent() const override { return parent_; }
+  bool maximized() const override { return maximized_; }
+  bool fullscreen() const override { return fullscreen_; }
+  bool activated() const override { return activated_; }
+  bool suspended() const override { return suspended_; }
+  bool modal() const override { return modal_; }
+  bool resizable() const override { return resizable_; }
+  const std::string& title() const override { return title_; }
+  int popup_x() const override;
+  int popup_y() const override;
+  int max_suggested_width() const override;
+  int max_suggested_height() const override;
+  bool has_pointer_focus() const override;
+  bool has_keyboard_focus() const override;
+  void SetInputHandlers(InputHandler* input_handler,
+                        KeyboardHandler* keyboard_handler,
+                        InputMethodHandler* input_method_handler) override;
+  void SetTitle(const std::string& title) override;
+  void SetApplicationId(const std::string& application_id) override;
+  void SetSize(int width, int height) override;
+  void ResizeToContent(int width, int height) override;
+  void SetSizeLimits(const SizeLimits& limits) override;
+  void SetMaximized(bool maximized) override;
+  void SetMinimized() override;
+  void SetFullscreen(bool fullscreen) override;
+  void Activate() override;
+  void SetParent(Window* parent) override;
+  void SetPositioner(const Positioner& positioner) override;
+  void StopWaiting() override;
 
-  // The ID of the output the window is shown on, or the first output if the
-  // window is not shown. Zero if there are no outputs.
-  uint32_t display_id() const;
-
-  // The size of the window content in physical pixels.
-  int physical_width() const;
-  int physical_height() const;
-
-  Role role() const { return role_; }
-  WaylandWindow* parent() const { return parent_; }
-
-  // Top-level window state.
-  bool maximized() const { return maximized_; }
-  bool fullscreen() const { return fullscreen_; }
-  bool activated() const { return activated_; }
-
-  // True if the compositor has stopped showing the window, for example when
-  // it is minimized or on another workspace.
-  bool suspended() const { return suspended_; }
-  bool modal() const { return modal_; }
-  bool resizable() const { return resizable_; }
-  const std::string& title() const { return title_; }
-
-  // The position of a popup's content relative to its parent's content, in
-  // logical pixels.
-  int popup_x() const;
-  int popup_y() const;
-
-  // The largest content size the compositor suggests for a top-level window,
-  // in logical pixels, or zero if unknown.
-  int max_suggested_width() const;
-  int max_suggested_height() const;
-
-  void SetTitle(const std::string& title);
-  void SetApplicationId(const std::string& application_id);
-
-  // Changes the content size of a top-level window when it is not
-  // maximized, fullscreen or tiled.
-  void SetSize(int width, int height);
-
-  // Changes the content size to match content that has been drawn at
-  // |width| x |height| logical pixels, ignoring the size limits. Used for
-  // windows whose size is chosen by their content. The delegate's
-  // OnWindowConfigure is not called.
-  void ResizeToContent(int width, int height);
-
-  // Limits the content size of a top-level window, resizing it if it is
-  // outside the limits.
-  void SetSizeLimits(const SizeLimits& limits);
-
-  void SetMaximized(bool maximized);
-  void SetMinimized();
-  void SetFullscreen(bool fullscreen);
-
-  // Asks the compositor to focus a top-level window. Compositors may refuse
-  // if the request is not in response to user input.
-  void Activate();
-
-  // Attaches a top-level window to |parent|, or detaches it if nullptr.
-  void SetParent(WaylandWindow* parent);
-
-  // Moves a popup. Has no effect if the compositor doesn't support it.
-  void SetPositioner(const Positioner& positioner);
-
-  // Stops |Present| waiting for the compositor, so it doesn't block a thread
-  // that is removing the window.
-  void StopWaiting();
-
-  // Timeline points used to explicitly synchronize access to a buffer with
-  // the compositor.
-  struct SyncPoints {
-    wp_linux_drm_syncobj_timeline_v1* timeline;
-
-    // The point the compositor waits for before reading the buffer.
-    uint64_t acquire_point;
-
-    // The point the compositor signals when it has finished with the buffer.
-    uint64_t release_point;
-  };
-
-  // Shows |buffer| in the window. The buffer is |width| x |height| pixels
-  // and rendered with OpenGL conventions (bottom row first).
+  // |Window|
   //
-  // If |sync| is provided, the compositor uses it to synchronize access to
-  // the buffer instead of implicit synchronization. Once a buffer has been
-  // presented with |sync|, all following buffers must also provide it.
+  // May be called from any thread, but only from one thread at a time.
   //
   // Each frame is shown for at least one display refresh if the compositor
   // supports wp_fifo_v1, rather than being replaced by the next frame.
   //
-  // The delegate is informed when the compositor is ready for another frame,
-  // and if the compositor supports wp_presentation, when the frame is shown.
-  //
   // If a popup changes size, it is repositioned first and this blocks until
   // the compositor has placed it, so it moves and resizes in the same frame.
-  //
-  // A layer shown above the content, either Flutter content drawn above a
-  // platform view (an overlay) or a platform view.
-  struct Layer {
-    // The overlay's buffer, the same size as the content, or nullptr for a
-    // platform view.
-    wl_buffer* buffer = nullptr;
-
-    // Used to synchronize the overlay's buffer, as with |sync| for the
-    // content. Ignored unless |sync| is provided.
-    SyncPoints sync = {};
-
-    // The part of the overlay that has content, in physical pixels.
-    PixelRect content;
-
-    // The platform view and where it is shown.
-    std::shared_ptr<LinuxPlatformView> platform_view;
-    PlatformViewGeometry geometry;
-  };
-
-  // May be called from any thread, but only from one thread at a time.
-  //
-  // |layers| are shown above the content in the order given. Overlays and
-  // platform views not in |layers| are hidden.
-  void Present(wl_buffer* buffer,
-               int width,
-               int height,
+  void Present(RenderBuffer* buffer,
                const SyncPoints* sync,
-               const std::vector<Layer>& layers = {});
+               const std::vector<Layer>& layers = {}) override;
+
+  // |Window|
+  double ContentCornerRadius(int width, int height) override;
+
+  // |Window|
+  size_t frames_in_flight() override;
 
   // Shows the latest buffer of |view|, if it is in this window. Called on
   // the platform thread.
@@ -296,23 +121,13 @@ class WaylandWindow : public WindowDecoration::Delegate,
   // Removes |view| from this window. Called on the platform thread.
   void RemovePlatformView(LinuxPlatformView* view);
 
-  // The radius in physical pixels to round the bottom corners of a buffer
-  // of |width| x |height| pixels to, so it matches the decorations it will
-  // be shown with. Zero if the corners are square.
-  double ContentCornerRadius(int width, int height);
-
-  // The number of presented frames the compositor hasn't yet indicated it
-  // is ready to follow with another frame. These don't complete while the
-  // window is hidden.
-  size_t frames_in_flight();
-
   // |WindowDecoration::Delegate|
   void OnDecorationFrame(const DecorationFrame& frame) override;
   void OnDecorationClose() override;
   bool IsDecorationBufferPending(RenderBuffer* buffer) override;
 
  private:
-  WaylandWindow(WaylandDisplay* display, Delegate* delegate);
+  WaylandWindow(WaylandDisplay* display, Window::Delegate* delegate);
 
   bool Initialize(DecorationRenderer* decoration_renderer,
                   const Params& params);
@@ -440,7 +255,7 @@ class WaylandWindow : public WindowDecoration::Delegate,
   void RemoveFeedback(struct wp_presentation_feedback* feedback);
 
   WaylandDisplay* display_;
-  Delegate* delegate_;
+  Window::Delegate* delegate_;
   Role role_ = Role::kToplevel;
   WaylandWindow* parent_ = nullptr;
 

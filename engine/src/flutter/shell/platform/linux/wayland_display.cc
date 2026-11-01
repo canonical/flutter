@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/wayland_window.h"
 
 namespace flutter {
 
@@ -324,9 +325,7 @@ void WaylandDisplay::HandleError() {
   int error = wl_display_get_error(display_);
   FML_LOG(ERROR) << "Lost connection to Wayland compositor: "
                  << strerror(error != 0 ? error : errno);
-  if (error_callback_) {
-    error_callback_();
-  }
+  NotifyError();
 }
 
 WaylandOutput* WaylandDisplay::GetOutput(uint32_t id) const {
@@ -341,27 +340,6 @@ WaylandOutput* WaylandDisplay::FindOutput(const wl_output* output) const {
     }
   }
   return nullptr;
-}
-
-void WaylandDisplay::AddOutputObserver(OutputObserver* observer) {
-  output_observers_.push_back(observer);
-}
-
-void WaylandDisplay::RemoveOutputObserver(OutputObserver* observer) {
-  output_observers_.erase(
-      std::remove(output_observers_.begin(), output_observers_.end(), observer),
-      output_observers_.end());
-}
-
-void WaylandDisplay::NotifyOutputsChanged() {
-  // Observers may be removed while being notified.
-  std::vector<OutputObserver*> observers = output_observers_;
-  for (OutputObserver* observer : observers) {
-    if (std::find(output_observers_.begin(), output_observers_.end(),
-                  observer) != output_observers_.end()) {
-      observer->OnOutputsChanged();
-    }
-  }
 }
 
 void WaylandDisplay::AddOutput(uint32_t name, uint32_t version) {
@@ -613,5 +591,45 @@ void WaylandDisplay::FeedbackTrancheFlags(
     void* data,
     zwp_linux_dmabuf_feedback_v1* feedback,
     uint32_t flags) {}
+
+std::vector<Display::Output> WaylandDisplay::GetOutputs() const {
+  std::vector<Output> result;
+  for (const auto& [id, output] : outputs_) {
+    if (!output->ready()) {
+      continue;
+    }
+    result.push_back({
+        .id = id,
+        .width = output->width(),
+        .height = output->height(),
+        .refresh_rate = output->refresh_rate(),
+        .pixel_ratio = output->pixel_ratio(),
+    });
+  }
+  return result;
+}
+
+void WaylandDisplay::SetCursor(uint32_t shape) {
+  if (seat_ != nullptr) {
+    seat_->SetCursor(shape);
+  }
+}
+
+void WaylandDisplay::RingBell(Window* window) {
+  if (system_bell_ == nullptr) {
+    return;
+  }
+  wl_surface* surface = window != nullptr
+                            ? static_cast<WaylandWindow*>(window)->surface()
+                            : nullptr;
+  xdg_system_bell_v1_ring(system_bell_, surface);
+}
+
+std::unique_ptr<Window> WaylandDisplay::CreateWindow(
+    DecorationRenderer* decoration_renderer,
+    Window::Delegate* delegate,
+    const Window::Params& params) {
+  return WaylandWindow::Create(this, decoration_renderer, delegate, params);
+}
 
 }  // namespace flutter

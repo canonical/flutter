@@ -182,6 +182,10 @@ std::vector<uint8_t> PlatformViewManager::Create(
     return *codec.EncodeErrorEnvelope(
         kCreateError, "Unknown platform view type " + view_type);
   }
+  if (!supported_) {
+    return *codec.EncodeErrorEnvelope(
+        kCreateError, "Platform views are only supported on Wayland");
+  }
   {
     std::scoped_lock lock(views_mutex_);
     if (views_.count(*id) != 0) {

@@ -15,14 +15,14 @@
 #include "flutter/shell/platform/linux/accessible_view.h"
 #include "flutter/shell/platform/linux/pointer_event_converter.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
-#include "flutter/shell/platform/linux/wayland_window.h"
+#include "flutter/shell/platform/linux/window.h"
 
 namespace flutter {
 
 class FlutterLinuxEngine;
 
 // A Flutter view shown in a window.
-class FlutterLinuxView : public WaylandWindow::Delegate,
+class FlutterLinuxView : public Window::Delegate,
                          public PointerEventConverter::Delegate,
                          public AccessibleView::Host {
  public:
@@ -49,7 +49,7 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   static std::unique_ptr<FlutterLinuxView> Create(
       FlutterLinuxEngine* engine,
       FlutterViewId view_id,
-      const WaylandWindow::Params& params,
+      const Window::Params& params,
       Sizing sizing,
       const Constraints& constraints);
 
@@ -57,7 +57,7 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
 
   FlutterViewId view_id() const { return view_id_; }
   FlutterLinuxEngine* engine() const { return engine_; }
-  WaylandWindow* window() const { return window_.get(); }
+  Window* window() const { return window_.get(); }
 
   // The view's semantics tree, exposed to assistive technologies.
   AccessibleView* accessible() const { return accessible_.get(); }
@@ -87,30 +87,33 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
   // Shows a rendered frame, synchronized with |sync| if provided, with
   // |layers| above it. Called on the raster thread.
   void PresentBuffer(RenderBuffer* buffer,
-                     const WaylandWindow::SyncPoints* sync,
-                     const std::vector<WaylandWindow::Layer>& layers = {});
+                     const Window::SyncPoints* sync,
+                     const std::vector<Window::Layer>& layers = {});
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowConfigure() override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowClose() override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowStateChanged() override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowTitleChanged() override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowDisplayChanged() override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowPresented(uint64_t presentation_time_ns,
                          uint64_t refresh_ns) override;
 
-  // |WaylandWindow::Delegate|
+  // |Window::Delegate|
   void OnWindowFrameDone() override;
+
+  // |Window::Delegate|
+  void RunWithRenderContext(std::function<void()> task) override;
 
   // |PointerEventConverter::Delegate|
   double GetPointerScale() override;
@@ -145,7 +148,7 @@ class FlutterLinuxView : public WaylandWindow::Delegate,
 
   FlutterLinuxEngine* engine_;
   FlutterViewId view_id_;
-  std::unique_ptr<WaylandWindow> window_;
+  std::unique_ptr<Window> window_;
   std::function<void()> close_callback_;
   std::function<void()> state_callback_;
 

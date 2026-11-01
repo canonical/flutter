@@ -11,6 +11,14 @@
 
 namespace flutter {
 
+// A rectangle in logical pixels.
+struct Rect {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
 // A rectangle in physical pixels.
 struct PixelRect {
   double x = 0;

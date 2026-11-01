@@ -138,6 +138,7 @@ source_set("flutter_linux_sources") {
     "dbus_connection.h",
     "dbus_message.h",
     "decoration_renderer.h",
+    "display.h",
     "dmabuf_buffer.h",
     "drm_timeline.h",
     "egl_manager.h",
@@ -145,6 +146,8 @@ source_set("flutter_linux_sources") {
     "external_texture.h",
     "flutter_linux_engine.h",
     "flutter_linux_view.h",
+    "gl_saved_state.h",
+    "input_handler.h",
     "input_method.h",
     "key_event_converter.h",
     "keyboard_manager.h",
@@ -154,18 +157,25 @@ source_set("flutter_linux_sources") {
     "platform_view_geometry.h",
     "platform_view_manager.h",
     "plugin_messenger.h",
+    "popup_positioner.h",
     "render_buffer.h",
     "scoped_event_loop.h",
     "shm_buffer.h",
     "text_input_plugin.h",
+    "texture_blitter.h",
+    "texture_buffer.h",
     "texture_registrar.h",
     "title_renderer.h",
     "wayland_display.h",
     "wayland_seat.h",
     "wayland_text_input.h",
     "wayland_window.h",
+    "window.h",
     "window_decoration.h",
     "window_manager.h",
+    "x11_clipboard.h",
+    "x11_display.h",
+    "x11_window.h",
     "xkb.h",
   ]
 
@@ -180,6 +190,7 @@ source_set("flutter_linux_sources") {
     "dbus_message.cc",
     "decoration_renderer.cc",
     "desktop_settings.cc",
+    "display.cc",
     "dmabuf_buffer.cc",
     "drm_timeline.cc",
     "egl_manager.cc",
@@ -202,10 +213,13 @@ source_set("flutter_linux_sources") {
     "platform_view_manager.cc",
     "plugin_messenger.cc",
     "pointer_event_converter.cc",
+    "popup_positioner.cc",
     "render_buffer.cc",
     "scoped_event_loop.cc",
     "shm_buffer.cc",
     "text_input_plugin.cc",
+    "texture_blitter.cc",
+    "texture_buffer.cc",
     "texture_registrar.cc",
     "title_renderer.cc",
     "vsync_predictor.cc",
@@ -217,6 +231,9 @@ source_set("flutter_linux_sources") {
     "wayland_window.cc",
     "window_decoration.cc",
     "window_manager.cc",
+    "x11_clipboard.cc",
+    "x11_display.cc",
+    "x11_window.cc",
     "xkb.cc",
   ]
 
@@ -226,10 +243,14 @@ source_set("flutter_linux_sources") {
     "//flutter/shell/platform/linux/config:gbm",
     "//flutter/shell/platform/linux/config:glesv2",
     "//flutter/shell/platform/linux/config:libdrm",
+    "//flutter/shell/platform/linux/config:xcb",
     "//flutter/shell/platform/linux/config:xkbcommon",
   ]
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
+
+  # libxkbcommon-x11 is loaded at runtime if available.
+  libs = [ "dl" ]
 
   public_configs = [ ":no_x11" ]
 
@@ -313,6 +334,7 @@ executable("flutter_linux_unittests") {
     "platform_view_manager_unittests.cc",
     "plugin_messenger_unittests.cc",
     "pointer_event_converter_unittests.cc",
+    "popup_positioner_unittests.cc",
     "scoped_event_loop_unittests.cc",
     "text_input_plugin_unittests.cc",
     "texture_registrar_unittests.cc",

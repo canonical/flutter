@@ -43,9 +43,20 @@ class ScopedEnvironmentVariable {
 
 }  // namespace
 
-TEST(FlutterLinuxTest, CreateApplicationWithoutCompositorFails) {
-  ScopedEnvironmentVariable display("WAYLAND_DISPLAY",
-                                    "flutter-linux-test-no-such-display");
+TEST(FlutterLinuxTest, CreateApplicationWithoutDisplayServerFails) {
+  ScopedEnvironmentVariable backend("FLUTTER_LINUX_BACKEND", "");
+  ScopedEnvironmentVariable wayland_display(
+      "WAYLAND_DISPLAY", "flutter-linux-test-no-such-display");
+  ScopedEnvironmentVariable x11_display("DISPLAY", ":flutter-linux-test");
+
+  std::shared_ptr<FlutterDesktopApplication> application =
+      FlutterDesktopApplication::create();
+  EXPECT_EQ(application, nullptr);
+}
+
+TEST(FlutterLinuxTest, CreateApplicationWithoutX11ServerFails) {
+  ScopedEnvironmentVariable backend("FLUTTER_LINUX_BACKEND", "x11");
+  ScopedEnvironmentVariable x11_display("DISPLAY", ":flutter-linux-test");
 
   std::shared_ptr<FlutterDesktopApplication> application =
       FlutterDesktopApplication::create();

@@ -17,6 +17,7 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/corner_mask.h"
+#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/drm_timeline.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/linux_platform_view.h"
@@ -24,7 +25,7 @@
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
-#include "flutter/shell/platform/linux/wayland_window.h"
+#include "flutter/shell/platform/linux/window.h"
 
 namespace flutter {
 
@@ -45,14 +46,15 @@ class FlutterLinuxView;
 // finished reading a buffer before rendering into it again. Otherwise
 // implicit synchronization and wl_buffer.release are used.
 //
+// On X11, Flutter renders into GL textures that the window copies into its
+// own buffers when presenting.
+//
 // Backing stores are created, collected and presented on the raster thread.
 class CompositorOpenGL {
  public:
   // If |depth_stencil| is true, backing stores have a depth/stencil
   // attachment (required by Impeller).
-  CompositorOpenGL(EGLManager* egl,
-                   WaylandDisplay* display,
-                   bool depth_stencil);
+  CompositorOpenGL(EGLManager* egl, Display* display, bool depth_stencil);
   ~CompositorOpenGL();
 
   // Registers |view| to have frames for |view_id| presented to it. Called on
@@ -171,9 +173,8 @@ class CompositorOpenGL {
 
   // Flushes rendering and sets the acquire point in |sync| on the timeline
   // of each of |buffers| to signal when it completes.
-  bool SignalWhenRenderingComplete(
-      const std::vector<PoolBuffer*>& buffers,
-      const std::vector<WaylandWindow::SyncPoints>& sync);
+  bool SignalWhenRenderingComplete(const std::vector<PoolBuffer*>& buffers,
+                                   const std::vector<Window::SyncPoints>& sync);
 
   // Processes buffer release events from the compositor.
   void DispatchBufferEvents();
@@ -183,6 +184,7 @@ class CompositorOpenGL {
   bool WaitForBufferEvents(int timeout_ms);
 
   EGLManager* egl_;
+  // The display if it is a Wayland display, otherwise nullptr.
   WaylandDisplay* display_;
   bool depth_stencil_;
 

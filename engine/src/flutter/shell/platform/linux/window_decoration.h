@@ -14,19 +14,12 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/decoration_renderer.h"
+#include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 #include "flutter/shell/platform/linux/wayland_seat.h"
 
 namespace flutter {
-
-// A rectangle in logical pixels.
-struct Rect {
-  int x = 0;
-  int y = 0;
-  int width = 0;
-  int height = 0;
-};
 
 // How the decoration surfaces should look for a given content size. Applied
 // atomically with a content buffer of the matching size.

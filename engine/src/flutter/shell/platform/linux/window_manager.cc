@@ -79,8 +79,9 @@ uint32_t ToXdgGravity(int32_t anchor) {
   return XDG_POSITIONER_GRAVITY_NONE;
 }
 
-WaylandWindow::Positioner ToPositioner(const WindowPositionerRequest& request) {
-  WaylandWindow::Positioner positioner;
+::flutter::Window::Positioner ToPositioner(
+    const WindowPositionerRequest& request) {
+  ::flutter::Window::Positioner positioner;
   positioner.anchor_rect = {
       static_cast<int>(std::round(request.anchor_x)),
       static_cast<int>(std::round(request.anchor_y)),
@@ -123,8 +124,9 @@ int ToMaxLimit(double value) {
   return std::max(static_cast<int>(std::floor(value)), 1);
 }
 
-WaylandWindow::SizeLimits ToSizeLimits(const WindowConstraints& constraints) {
-  WaylandWindow::SizeLimits limits;
+::flutter::Window::SizeLimits ToSizeLimits(
+    const WindowConstraints& constraints) {
+  ::flutter::Window::SizeLimits limits;
   if (constraints.has_constraints) {
     limits.min_width =
         static_cast<int>(std::ceil(std::max(constraints.min_width, 0.0)));
@@ -207,18 +209,18 @@ FlutterViewId WindowManager::CreateWindow(
     return -1;
   }
 
-  WaylandWindow::Params params;
+  ::flutter::Window::Params params;
   params.parent = parent != nullptr ? parent->window() : nullptr;
   FlutterLinuxView::Constraints constraints =
       ToViewConstraints(request.constraints);
   FlutterLinuxView::Sizing sizing;
   if (IsPopup(archetype)) {
-    params.role = WaylandWindow::Role::kPopup;
+    params.role = ::flutter::Window::Role::kPopup;
     params.positioner = ToPositioner(request.positioner);
     params.accepts_input = archetype != WindowArchetype::kTooltip;
     sizing = FlutterLinuxView::Sizing::kContent;
   } else {
-    params.role = WaylandWindow::Role::kToplevel;
+    params.role = ::flutter::Window::Role::kToplevel;
     params.modal = archetype == WindowArchetype::kDialog && parent != nullptr;
     params.resizable = request.resizable;
     params.size_limits = ToSizeLimits(request.constraints);
@@ -324,16 +326,16 @@ bool WindowManager::GetWindowState(FlutterViewId view_id,
   if (window == nullptr) {
     return false;
   }
-  WaylandWindow* wayland_window = window->view->window();
+  ::flutter::Window* window_state = window->view->window();
   *state = {};
-  state->width = wayland_window->width();
-  state->height = wayland_window->height();
-  state->activated = wayland_window->activated();
-  state->maximized = wayland_window->maximized();
-  state->fullscreen = wayland_window->fullscreen();
-  if (wayland_window->role() == WaylandWindow::Role::kPopup) {
-    state->offset_x = wayland_window->popup_x();
-    state->offset_y = wayland_window->popup_y();
+  state->width = window_state->width();
+  state->height = window_state->height();
+  state->activated = window_state->activated();
+  state->maximized = window_state->maximized();
+  state->fullscreen = window_state->fullscreen();
+  if (window_state->role() == ::flutter::Window::Role::kPopup) {
+    state->offset_x = window_state->popup_x();
+    state->offset_y = window_state->popup_y();
   }
   return true;
 }

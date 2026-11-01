@@ -8,34 +8,45 @@ import("//build/config/linux/pkg_config.gni")
 _pkg_configs = [
   {
     name = "egl"
-    package = "egl"
+    packages = [ "egl" ]
   },
   {
     name = "gbm"
-    package = "gbm"
+    packages = [ "gbm" ]
   },
   {
     name = "glesv2"
-    package = "glesv2"
+    packages = [ "glesv2" ]
   },
   {
     name = "libdrm"
-    package = "libdrm"
+    packages = [ "libdrm" ]
   },
   {
     name = "wayland_client"
-    package = "wayland-client"
+    packages = [ "wayland-client" ]
+  },
+  {
+    name = "xcb"
+    packages = [
+      "xcb",
+      "xcb-dri3",
+      "xcb-present",
+      "xcb-randr",
+      "xcb-shape",
+      "xcb-shm",
+    ]
   },
   {
     name = "xkbcommon"
-    package = "xkbcommon"
+    packages = [ "xkbcommon" ]
   },
 ]
 
 foreach(pkg, _pkg_configs) {
   if (!is_minimal_linux) {
     pkg_config(pkg.name) {
-      packages = [ pkg.package ]
+      packages = pkg.packages
     }
   } else {
     config(pkg.name) {

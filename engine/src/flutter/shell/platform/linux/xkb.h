@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 
 #include "flutter/fml/macros.h"
@@ -43,6 +44,15 @@ class XkbKeyboard {
   // failure.
   static std::unique_ptr<XkbKeyboard> Create(std::string_view keymap);
 
+  // Compiles a keymap from RMLVO names, as used by X11 servers. Empty names
+  // use the system defaults. Returns nullptr on failure.
+  static std::unique_ptr<XkbKeyboard> CreateFromNames(
+      const std::string& rules,
+      const std::string& model,
+      const std::string& layout,
+      const std::string& variant,
+      const std::string& options);
+
   ~XkbKeyboard();
 
   // Sets the state of the keyboard, as sent in wl_keyboard.modifiers.
@@ -50,6 +60,9 @@ class XkbKeyboard {
                    uint32_t latched_mods,
                    uint32_t locked_mods,
                    uint32_t group);
+
+  // Updates the state for |keycode| being pressed or released.
+  void UpdateKey(uint32_t keycode, bool pressed);
 
   // Returns the keysym |keycode| produces in the current state, or 0 if it
   // produces none or more than one.

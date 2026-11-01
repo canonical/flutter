@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/protocols/alpha-modifier-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/protocols/fifo-v1-client-protocol.h"
@@ -42,7 +43,7 @@ namespace flutter {
 //
 // Events for objects on the default queue are dispatched on the event loop
 // thread when this is added as a source to the loop.
-class WaylandDisplay : public EventLoop::Source {
+class WaylandDisplay : public Display {
  public:
   // Connects to the compositor specified by the environment. Returns nullptr
   // if unable to connect or the compositor is missing required features.
@@ -52,14 +53,6 @@ class WaylandDisplay : public EventLoop::Source {
   static std::unique_ptr<WaylandDisplay> Create(EventLoop* event_loop);
 
   ~WaylandDisplay() override;
-
-  // Notified when outputs are added, removed or changed.
-  class OutputObserver {
-   public:
-    virtual ~OutputObserver() = default;
-
-    virtual void OnOutputsChanged() = 0;
-  };
 
   // A Wayland global in use.
   struct Protocol {
@@ -101,7 +94,7 @@ class WaylandDisplay : public EventLoop::Source {
 
   // The clipboard of the seat, or nullptr if the compositor doesn't support
   // one.
-  WaylandClipboard* clipboard() const { return clipboard_.get(); }
+  WaylandClipboard* clipboard() const override { return clipboard_.get(); }
 
   // The outputs connected to the compositor, by ID. Outputs that are not
   // ready have not had their properties received yet.
@@ -114,11 +107,6 @@ class WaylandDisplay : public EventLoop::Source {
   WaylandOutput* GetOutput(uint32_t id) const;
   WaylandOutput* FindOutput(const wl_output* output) const;
 
-  // Adds or removes an observer, which must be removed before it is
-  // destroyed.
-  void AddOutputObserver(OutputObserver* observer);
-  void RemoveOutputObserver(OutputObserver* observer);
-
   // Converts a timestamp from wp_presentation to nanoseconds on
   // CLOCK_MONOTONIC, the clock the engine and event loop use.
   uint64_t PresentationTimeToMonotonic(uint64_t seconds,
@@ -129,16 +117,28 @@ class WaylandDisplay : public EventLoop::Source {
 
   // The device the compositor prefers buffers to be allocated on, if it
   // reported one.
-  std::optional<dev_t> main_device() const { return main_device_; }
+  std::optional<dev_t> main_device() const override { return main_device_; }
 
   // Returns the modifiers the compositor supports for the given DRM
   // |format|. Empty if the format is not supported.
   std::vector<uint64_t> GetModifiers(uint32_t format) const;
 
-  // Sets a callback that is called if the connection to the compositor fails.
-  void SetErrorCallback(std::function<void()> callback) {
-    error_callback_ = std::move(callback);
-  }
+  // |Display|
+  Backend backend() const override { return Backend::kWayland; }
+
+  // |Display|
+  std::vector<Output> GetOutputs() const override;
+
+  // |Display|
+  void SetCursor(uint32_t shape) override;
+
+  // |Display|
+  void RingBell(Window* window) override;
+
+  // |Display|
+  std::unique_ptr<Window> CreateWindow(DecorationRenderer* decoration_renderer,
+                                       Window::Delegate* delegate,
+                                       const Window::Params& params) override;
 
   // |EventLoop::Source|
   int GetFd() const override;
@@ -161,9 +161,6 @@ class WaylandDisplay : public EventLoop::Source {
 
   // Binds the output global |name|.
   void AddOutput(uint32_t name, uint32_t version);
-
-  // Notifies observers of a change to the outputs.
-  void NotifyOutputsChanged();
 
   static void RegistryGlobal(void* data,
                              wl_registry* registry,
@@ -247,7 +244,6 @@ class WaylandDisplay : public EventLoop::Source {
   xdg_system_bell_v1* system_bell_ = nullptr;
   zxdg_output_manager_v1* xdg_output_manager_ = nullptr;
   std::map<uint32_t, std::unique_ptr<WaylandOutput>> outputs_;
-  std::vector<OutputObserver*> output_observers_;
 
   // The clock presentation timestamps are in.
   clockid_t presentation_clock_ = CLOCK_MONOTONIC;
@@ -258,7 +254,6 @@ class WaylandDisplay : public EventLoop::Source {
 
   bool read_prepared_ = false;
   bool failed_ = false;
-  std::function<void()> error_callback_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(WaylandDisplay);
 };

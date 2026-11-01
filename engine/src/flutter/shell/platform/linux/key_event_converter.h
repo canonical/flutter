@@ -80,6 +80,30 @@ std::unordered_map<uint32_t, uint64_t> DeriveLayoutLogicalKeys(
     const std::function<uint32_t(uint32_t keycode, uint32_t level)>&
         get_character);
 
+// Resolves keycodes into keys using an XKB keymap, caching the logical keys
+// derived for each layout.
+class KeyResolver {
+ public:
+  KeyResolver() = default;
+
+  // Returns the key |keycode| produces in the current state of |keyboard|.
+  KeyboardKey Resolve(const XkbKeyboard& keyboard, uint32_t keycode);
+
+  // Discards the cached logical keys. Must be called when the keymap
+  // changes.
+  void Reset() { layout_keys_.clear(); }
+
+ private:
+  // Returns the logical keys chosen to match the US layout for |layout|.
+  const std::unordered_map<uint32_t, uint64_t>& LayoutLogicalKeys(
+      const XkbKeyboard& keyboard,
+      uint32_t layout);
+
+  std::map<uint32_t, std::unordered_map<uint32_t, uint64_t>> layout_keys_;
+
+  FML_DISALLOW_COPY_AND_ASSIGN(KeyResolver);
+};
+
 // Converts key events from the keyboard into Flutter key events, keeping
 // track of the keys that Flutter has been told are pressed.
 class KeyEventConverter {

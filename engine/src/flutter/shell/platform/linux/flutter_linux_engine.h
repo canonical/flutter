@@ -44,7 +44,7 @@ constexpr FlutterViewId kImplicitViewId = 0;
 class FlutterLinuxEngine : public PlatformMessenger,
                            public AtspiApplication::Observer,
                            public DesktopSettings::Observer,
-                           public WaylandDisplay::OutputObserver,
+                           public Display::OutputObserver,
                            public TextureRegistrar::Delegate {
  public:
   struct Properties {
@@ -95,7 +95,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
 
   // Creates a view that is not the implicit view, shown in a new window.
   std::unique_ptr<FlutterLinuxView> CreateView(
-      const WaylandWindow::Params& params,
+      const Window::Params& params,
       FlutterLinuxView::Sizing sizing,
       const FlutterLinuxView::Constraints& constraints);
 
@@ -106,7 +106,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   void RemoveView(FlutterLinuxView* view);
 
   // The view shown in |window|, or nullptr.
-  FlutterLinuxView* FindViewForWindow(const WaylandWindow* window) const;
+  FlutterLinuxView* FindViewForWindow(const Window* window) const;
 
   // Informs the engine of the size of a view.
   void SendWindowMetrics(const FlutterWindowMetricsEvent& event);
@@ -163,7 +163,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |AtspiApplication::Observer|
   void OnAccessibilityEnabledChanged(bool enabled) override;
 
-  // |WaylandDisplay::OutputObserver|
+  // |Display::OutputObserver|
   void OnOutputsChanged() override;
 
   // |DesktopSettings::Observer|

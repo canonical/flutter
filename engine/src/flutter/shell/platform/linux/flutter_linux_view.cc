@@ -26,15 +26,14 @@ size_t ToPhysical(double logical, double scale) {
 std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
     FlutterLinuxEngine* engine,
     FlutterViewId view_id,
-    const WaylandWindow::Params& params,
+    const Window::Params& params,
     Sizing sizing,
     const Constraints& constraints) {
   std::unique_ptr<FlutterLinuxView> view(
       new FlutterLinuxView(engine, view_id, sizing, constraints));
   FlutterLinuxApplication* application = engine->application();
-  view->window_ = WaylandWindow::Create(application->display(),
-                                        application->decoration_renderer(),
-                                        view.get(), params);
+  view->window_ = application->display()->CreateWindow(
+      application->decoration_renderer(), view.get(), params);
   if (!view->window_) {
     return nullptr;
   }
@@ -43,17 +42,11 @@ std::unique_ptr<FlutterLinuxView> FlutterLinuxView::Create(
       view.get(), atspi, atspi->root(), atspi->NewWindowPath());
   atspi->AddWindow(view->accessible_.get());
 
-  WaylandSeat* seat = application->display()->seat();
   view->pointer_converter_ =
       std::make_unique<PointerEventConverter>(view.get(), view_id);
-  if (seat != nullptr) {
-    seat->SetInputHandler(view->window_->surface(),
-                          view->pointer_converter_.get());
-    seat->SetKeyboardHandler(view->window_->surface(),
-                             engine->keyboard_manager());
-    seat->SetInputMethodHandler(view->window_->surface(),
-                                engine->keyboard_manager()->text_input());
-  }
+  view->window_->SetInputHandlers(view->pointer_converter_.get(),
+                                  engine->keyboard_manager(),
+                                  engine->keyboard_manager()->text_input());
   return view;
 }
 
@@ -71,11 +64,10 @@ FlutterLinuxView::~FlutterLinuxView() {
     engine_->application()->atspi()->RemoveWindow(accessible_.get());
     accessible_.reset();
   }
-  WaylandSeat* seat = engine_->application()->display()->seat();
-  if (seat != nullptr && window_) {
-    seat->SetInputHandler(window_->surface(), nullptr);
-    seat->SetKeyboardHandler(window_->surface(), nullptr);
-    seat->SetInputMethodHandler(window_->surface(), nullptr);
+  if (window_) {
+    window_->SetInputHandlers(nullptr, nullptr, nullptr);
+    // Destroy the window while the view can still act as its delegate.
+    window_.reset();
   }
 }
 
@@ -128,13 +120,12 @@ void FlutterLinuxView::SendWindowMetrics() {
   engine_->SendWindowMetrics(GetWindowMetrics());
 }
 
-void FlutterLinuxView::PresentBuffer(
-    RenderBuffer* buffer,
-    const WaylandWindow::SyncPoints* sync,
-    const std::vector<WaylandWindow::Layer>& layers) {
+void FlutterLinuxView::PresentBuffer(RenderBuffer* buffer,
+                                     const Window::SyncPoints* sync,
+                                     const std::vector<Window::Layer>& layers) {
   int width = buffer->width();
   int height = buffer->height();
-  window_->Present(buffer->buffer(), width, height, sync, layers);
+  window_->Present(buffer, sync, layers);
 
   if (sizing_ != Sizing::kWindow &&
       (width != presented_width_ || height != presented_height_)) {
@@ -224,6 +215,14 @@ void FlutterLinuxView::OnWindowFrameDone() {
   engine_->OnFrameDone();
 }
 
+void FlutterLinuxView::RunWithRenderContext(std::function<void()> task) {
+  // If the engine isn't running, the raster thread isn't using the context.
+  auto shared_task = std::make_shared<std::function<void()>>(std::move(task));
+  if (!engine_->PostRasterTask([shared_task]() { (*shared_task)(); })) {
+    engine_->RunWithContext(*shared_task);
+  }
+}
+
 double FlutterLinuxView::GetPointerScale() {
   return window_->scale();
 }
@@ -234,10 +233,7 @@ void FlutterLinuxView::SendPointerEvents(const FlutterPointerEvent* events,
 }
 
 void FlutterLinuxView::OnPointerEntered() {
-  WaylandSeat* seat = engine_->application()->display()->seat();
-  if (seat != nullptr) {
-    seat->SetCursor(engine_->cursor());
-  }
+  engine_->application()->display()->SetCursor(engine_->cursor());
 }
 
 std::string FlutterLinuxView::GetAccessibleTitle() {
@@ -248,7 +244,7 @@ AtspiRole FlutterLinuxView::GetAccessibleRole() {
   if (!window_) {
     return AtspiRole::kFrame;
   }
-  if (window_->role() == WaylandWindow::Role::kPopup) {
+  if (window_->role() == Window::Role::kPopup) {
     return AtspiRole::kWindow;
   }
   return window_->parent() != nullptr ? AtspiRole::kDialog : AtspiRole::kFrame;
@@ -261,9 +257,9 @@ AtspiStateSet FlutterLinuxView::GetWindowStates() {
   }
   states.Set(AtspiState::kActive, window_->activated());
   states.Set(AtspiState::kModal, window_->modal());
-  states.Set(AtspiState::kResizable,
-             window_->role() == WaylandWindow::Role::kToplevel &&
-                 window_->resizable());
+  states.Set(
+      AtspiState::kResizable,
+      window_->role() == Window::Role::kToplevel && window_->resizable());
   return states;
 }
 
@@ -275,7 +271,7 @@ std::vector<AtspiRelation> FlutterLinuxView::GetWindowRelations() {
   if (parent == nullptr || parent->accessible() == nullptr) {
     return {};
   }
-  AtspiRelationType type = window_->role() == WaylandWindow::Role::kPopup
+  AtspiRelationType type = window_->role() == Window::Role::kPopup
                                ? AtspiRelationType::kPopupFor
                                : AtspiRelationType::kSubwindowOf;
   return {{type, {parent->accessible()}}};

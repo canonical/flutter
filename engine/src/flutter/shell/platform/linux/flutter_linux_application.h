@@ -11,14 +11,14 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/atspi_application.h"
 #include "flutter/shell/platform/linux/desktop_settings.h"
+#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
-#include "flutter/shell/platform/linux/wayland_display.h"
 
 namespace flutter {
 
 // The platform resources shared by all engines in a process: the event loop,
-// the connection to the Wayland compositor and the GPU.
+// the connection to the display server (Wayland or X11) and the GPU.
 //
 // The application must be created, run and destroyed on the same thread,
 // which becomes the platform thread for all engines. It must outlive all
@@ -27,14 +27,14 @@ class DecorationRenderer;
 
 class FlutterLinuxApplication {
  public:
-  // Connects to the Wayland compositor and opens the GPU it uses. Returns
-  // nullptr if the compositor or GPU are unavailable.
+  // Connects to the display server and opens the GPU it uses. Returns
+  // nullptr if the display server or GPU are unavailable.
   static std::unique_ptr<FlutterLinuxApplication> Create();
 
   ~FlutterLinuxApplication();
 
   EventLoop* event_loop() const { return event_loop_.get(); }
-  WaylandDisplay* display() const { return display_.get(); }
+  Display* display() const { return display_.get(); }
   GpuDevice* gpu() const { return gpu_.get(); }
 
   // Exposes the application to assistive technologies.
@@ -44,7 +44,8 @@ class FlutterLinuxApplication {
   DesktopSettings* settings() const { return settings_.get(); }
 
   // Draws window decorations, created on first use. Returns nullptr if
-  // decorations can't be drawn. Must be called on the platform thread.
+  // decorations can't be drawn, or are drawn by the display server (X11).
+  // Must be called on the platform thread.
   DecorationRenderer* decoration_renderer();
 
   // Processes events until Quit is called or the connection to the
@@ -74,7 +75,7 @@ class FlutterLinuxApplication {
   bool Initialize();
 
   std::unique_ptr<EventLoop> event_loop_;
-  std::unique_ptr<WaylandDisplay> display_;
+  std::unique_ptr<Display> display_;
   std::unique_ptr<GpuDevice> gpu_;
   std::unique_ptr<AtspiApplication> atspi_;
   std::unique_ptr<DesktopSettings> settings_;
