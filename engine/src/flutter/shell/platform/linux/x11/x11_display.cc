@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/x11_display.h"
+#include "flutter/shell/platform/linux/x11/x11_display.h"
 
 #include <dlfcn.h>
 #include <linux/input-event-codes.h>
@@ -25,8 +25,8 @@
 
 #include "flutter/fml/logging.h"
 #include "flutter/fml/unique_fd.h"
-#include "flutter/shell/platform/linux/x11_clipboard.h"
-#include "flutter/shell/platform/linux/x11_window.h"
+#include "flutter/shell/platform/linux/x11/x11_clipboard.h"
+#include "flutter/shell/platform/linux/x11/x11_window.h"
 
 namespace flutter {
 

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DBUS_CONNECTION_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_DBUS_CONNECTION_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DBUS_DBUS_CONNECTION_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_DBUS_DBUS_CONNECTION_H_
 
 #include <chrono>
 #include <cstdint>
@@ -16,7 +16,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
-#include "flutter/shell/platform/linux/dbus_message.h"
+#include "flutter/shell/platform/linux/dbus/dbus_message.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 
 namespace flutter {
@@ -129,4 +129,4 @@ class DBusConnection {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DBUS_CONNECTION_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DBUS_DBUS_CONNECTION_H_

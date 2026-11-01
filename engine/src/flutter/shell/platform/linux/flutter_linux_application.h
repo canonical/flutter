@@ -9,7 +9,7 @@
 #include <string>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/atspi_application.h"
+#include "flutter/shell/platform/linux/atspi/atspi_application.h"
 #include "flutter/shell/platform/linux/desktop_settings.h"
 #include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"

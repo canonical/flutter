@@ -30,8 +30,8 @@
 #include "flutter/shell/platform/linux/plugin_messenger.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
 #include "flutter/shell/platform/linux/wayland_window.h"
-#include "flutter/shell/platform/linux/x11_display.h"
-#include "flutter/shell/platform/linux/x11_window.h"
+#include "flutter/shell/platform/linux/x11/x11_display.h"
+#include "flutter/shell/platform/linux/x11/x11_window.h"
 
 namespace {
 

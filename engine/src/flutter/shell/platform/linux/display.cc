@@ -10,7 +10,7 @@
 
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/wayland_display.h"
-#include "flutter/shell/platform/linux/x11_display.h"
+#include "flutter/shell/platform/linux/x11/x11_display.h"
 
 namespace flutter {
 

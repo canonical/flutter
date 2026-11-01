@@ -14,7 +14,7 @@
 #include <optional>
 #include <string>
 
-#include "flutter/shell/platform/linux/fake_dbus_bus.h"
+#include "flutter/shell/platform/linux/dbus/fake_dbus_bus.h"
 #include "gtest/gtest.h"
 
 namespace flutter {

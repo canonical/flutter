@@ -15,7 +15,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/linux/atspi_accessible.h"
+#include "flutter/shell/platform/linux/atspi/atspi_accessible.h"
 
 namespace flutter {
 

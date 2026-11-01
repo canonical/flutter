@@ -10,7 +10,7 @@
 #include <set>
 
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_message_codec.h"
-#include "flutter/shell/platform/linux/atspi_text.h"
+#include "flutter/shell/platform/linux/atspi/atspi_text.h"
 
 namespace flutter {
 

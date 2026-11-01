@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_FAKE_DBUS_BUS_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_FAKE_DBUS_BUS_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DBUS_FAKE_DBUS_BUS_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_DBUS_FAKE_DBUS_BUS_H_
 
 #include <poll.h>
 #include <sys/socket.h>
@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "flutter/fml/unique_fd.h"
-#include "flutter/shell/platform/linux/dbus_message.h"
+#include "flutter/shell/platform/linux/dbus/dbus_message.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "gtest/gtest.h"
 
@@ -144,4 +144,4 @@ bool RunUntil(EventLoop& loop, Condition condition) {
 }  // namespace testing
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_FAKE_DBUS_BUS_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DBUS_FAKE_DBUS_BUS_H_

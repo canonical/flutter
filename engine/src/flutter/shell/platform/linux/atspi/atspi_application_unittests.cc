@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/atspi_application.h"
+#include "flutter/shell/platform/linux/atspi/atspi_application.h"
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "flutter/shell/platform/linux/fake_dbus_bus.h"
+#include "flutter/shell/platform/linux/dbus/fake_dbus_bus.h"
 #include "gtest/gtest.h"
 
 namespace flutter {

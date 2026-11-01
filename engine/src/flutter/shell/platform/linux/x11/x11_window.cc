@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/x11_window.h"
+#include "flutter/shell/platform/linux/x11/x11_window.h"
 
 #include <drm_fourcc.h>
 #include <gbm.h>
@@ -26,7 +26,7 @@
 #include "flutter/shell/platform/linux/popup_positioner.h"
 #include "flutter/shell/platform/linux/texture_blitter.h"
 #include "flutter/shell/platform/linux/texture_buffer.h"
-#include "flutter/shell/platform/linux/x11_display.h"
+#include "flutter/shell/platform/linux/x11/x11_display.h"
 
 namespace flutter {
 

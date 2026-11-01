@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_X11_WINDOW_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_X11_WINDOW_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_X11_X11_WINDOW_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_X11_X11_WINDOW_H_
 
 #include <xcb/xcb.h>
 
@@ -259,4 +259,4 @@ class X11Window : public Window {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_X11_WINDOW_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_X11_X11_WINDOW_H_

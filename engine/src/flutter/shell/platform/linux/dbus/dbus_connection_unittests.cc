@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/dbus_connection.h"
+#include "flutter/shell/platform/linux/dbus/dbus_connection.h"
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -11,7 +11,7 @@
 #include <cstring>
 #include <string>
 
-#include "flutter/shell/platform/linux/fake_dbus_bus.h"
+#include "flutter/shell/platform/linux/dbus/fake_dbus_bus.h"
 #include "gtest/gtest.h"
 
 namespace flutter {

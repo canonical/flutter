@@ -11,8 +11,8 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/dbus_connection.h"
-#include "flutter/shell/platform/linux/dbus_message.h"
+#include "flutter/shell/platform/linux/dbus/dbus_connection.h"
+#include "flutter/shell/platform/linux/dbus/dbus_message.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 
 namespace flutter {

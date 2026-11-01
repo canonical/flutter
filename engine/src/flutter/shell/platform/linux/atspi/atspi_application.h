@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_APPLICATION_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_APPLICATION_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_ATSPI_APPLICATION_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_ATSPI_APPLICATION_H_
 
 #include <memory>
 #include <string>
@@ -12,8 +12,8 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/accessible_view.h"
-#include "flutter/shell/platform/linux/atspi_accessible.h"
-#include "flutter/shell/platform/linux/dbus_connection.h"
+#include "flutter/shell/platform/linux/atspi/atspi_accessible.h"
+#include "flutter/shell/platform/linux/dbus/dbus_connection.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 
 namespace flutter {
@@ -153,4 +153,4 @@ class AtspiApplication : public AtspiEventSink {
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_APPLICATION_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_ATSPI_ATSPI_APPLICATION_H_
