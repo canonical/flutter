@@ -14,14 +14,10 @@
 #include "flutter/shell/platform/linux/input_handler.h"
 #include "flutter/shell/platform/linux/input_method.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
-// Provides the xdg_positioner values used to place popups on all display
-// backends.
-#include "flutter/shell/platform/linux/wayland/protocols/xdg-shell-client-protocol.h"
-
-struct wp_linux_drm_syncobj_timeline_v1;
 
 namespace flutter {
 
+class DrmTimeline;
 class LinuxPlatformView;
 class RenderBuffer;
 
@@ -80,20 +76,40 @@ class Window {
     kPopup,
   };
 
-  // Where a popup is placed relative to its parent, using xdg_positioner
-  // values.
+  // A point on a rectangle, or a direction from a point.
+  enum class Anchor {
+    kCenter,
+    kTop,
+    kBottom,
+    kLeft,
+    kRight,
+    kTopLeft,
+    kBottomLeft,
+    kTopRight,
+    kBottomRight,
+  };
+
+  // How a popup may be moved to keep it on screen. The values match the
+  // framework's and xdg_positioner's.
+  struct ConstraintAdjustment {
+    static constexpr uint32_t kSlideX = 1 << 0;
+    static constexpr uint32_t kSlideY = 1 << 1;
+    static constexpr uint32_t kFlipX = 1 << 2;
+    static constexpr uint32_t kFlipY = 1 << 3;
+    static constexpr uint32_t kResizeX = 1 << 4;
+    static constexpr uint32_t kResizeY = 1 << 5;
+  };
+
+  // Where a popup is placed relative to its parent.
   struct Positioner {
     // The rectangle in the parent the popup is placed relative to, in
     // logical pixels relative to the parent's content.
     Rect anchor_rect;
-    // An xdg_positioner_anchor: the point on |anchor_rect| the popup is
-    // placed at.
-    uint32_t anchor = XDG_POSITIONER_ANCHOR_NONE;
-    // An xdg_positioner_gravity: the direction the popup extends from the
-    // anchor point.
-    uint32_t gravity = XDG_POSITIONER_GRAVITY_NONE;
-    // A combination of xdg_positioner_constraint_adjustment bits, how the
-    // popup may be moved to keep it on screen.
+    // The point on |anchor_rect| the popup is placed at.
+    Anchor anchor = Anchor::kCenter;
+    // The direction the popup extends from the anchor point.
+    Anchor gravity = Anchor::kCenter;
+    // A combination of ConstraintAdjustment bits.
     uint32_t constraint_adjustment = 0;
     // Moves the popup from the anchor point, in logical pixels.
     int offset_x = 0;
@@ -134,7 +150,7 @@ class Window {
   // Timeline points used to explicitly synchronize access to a buffer with
   // the display server. Only used on Wayland.
   struct SyncPoints {
-    wp_linux_drm_syncobj_timeline_v1* timeline;
+    DrmTimeline* timeline;
     // The point the display server waits for before reading the buffer.
     uint64_t acquire_point;
     // The point the display server signals when it has finished with the

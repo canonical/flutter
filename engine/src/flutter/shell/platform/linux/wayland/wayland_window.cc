@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "flutter/fml/logging.h"
+#include "flutter/shell/platform/linux/wayland/drm_timeline.h"
 
 namespace flutter {
 
@@ -20,6 +21,68 @@ constexpr double kFractionalScaleDenominator = 120.0;
 // The smallest decorated window, in logical pixels.
 constexpr int kMinimumWidth = 160;
 constexpr int kMinimumContentHeight = 20;
+
+// The framework's adjustment bits are used by the protocol.
+static_assert(Window::ConstraintAdjustment::kSlideX ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X);
+static_assert(Window::ConstraintAdjustment::kSlideY ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+static_assert(Window::ConstraintAdjustment::kFlipX ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X);
+static_assert(Window::ConstraintAdjustment::kFlipY ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y);
+static_assert(Window::ConstraintAdjustment::kResizeX ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_X);
+static_assert(Window::ConstraintAdjustment::kResizeY ==
+              XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_Y);
+
+xdg_positioner_anchor ToXdgAnchor(Window::Anchor anchor) {
+  switch (anchor) {
+    case Window::Anchor::kCenter:
+      return XDG_POSITIONER_ANCHOR_NONE;
+    case Window::Anchor::kTop:
+      return XDG_POSITIONER_ANCHOR_TOP;
+    case Window::Anchor::kBottom:
+      return XDG_POSITIONER_ANCHOR_BOTTOM;
+    case Window::Anchor::kLeft:
+      return XDG_POSITIONER_ANCHOR_LEFT;
+    case Window::Anchor::kRight:
+      return XDG_POSITIONER_ANCHOR_RIGHT;
+    case Window::Anchor::kTopLeft:
+      return XDG_POSITIONER_ANCHOR_TOP_LEFT;
+    case Window::Anchor::kBottomLeft:
+      return XDG_POSITIONER_ANCHOR_BOTTOM_LEFT;
+    case Window::Anchor::kTopRight:
+      return XDG_POSITIONER_ANCHOR_TOP_RIGHT;
+    case Window::Anchor::kBottomRight:
+      return XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT;
+  }
+  return XDG_POSITIONER_ANCHOR_NONE;
+}
+
+xdg_positioner_gravity ToXdgGravity(Window::Anchor gravity) {
+  switch (gravity) {
+    case Window::Anchor::kCenter:
+      return XDG_POSITIONER_GRAVITY_NONE;
+    case Window::Anchor::kTop:
+      return XDG_POSITIONER_GRAVITY_TOP;
+    case Window::Anchor::kBottom:
+      return XDG_POSITIONER_GRAVITY_BOTTOM;
+    case Window::Anchor::kLeft:
+      return XDG_POSITIONER_GRAVITY_LEFT;
+    case Window::Anchor::kRight:
+      return XDG_POSITIONER_GRAVITY_RIGHT;
+    case Window::Anchor::kTopLeft:
+      return XDG_POSITIONER_GRAVITY_TOP_LEFT;
+    case Window::Anchor::kBottomLeft:
+      return XDG_POSITIONER_GRAVITY_BOTTOM_LEFT;
+    case Window::Anchor::kTopRight:
+      return XDG_POSITIONER_GRAVITY_TOP_RIGHT;
+    case Window::Anchor::kBottomRight:
+      return XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
+  }
+  return XDG_POSITIONER_GRAVITY_NONE;
+}
 
 // Calls |callback| with each uint32_t in |array|.
 template <typename Callback>
@@ -351,8 +414,8 @@ xdg_positioner* WaylandWindow::CreatePositioner(const Positioner& positioner,
       positioner.anchor_rect.y - parent_->geometry_y(),
       std::max(positioner.anchor_rect.width, 1),
       std::max(positioner.anchor_rect.height, 1));
-  xdg_positioner_set_anchor(result, positioner.anchor);
-  xdg_positioner_set_gravity(result, positioner.gravity);
+  xdg_positioner_set_anchor(result, ToXdgAnchor(positioner.anchor));
+  xdg_positioner_set_gravity(result, ToXdgGravity(positioner.gravity));
   xdg_positioner_set_constraint_adjustment(result,
                                            positioner.constraint_adjustment);
   xdg_positioner_set_offset(result, positioner.offset_x, positioner.offset_y);
@@ -747,10 +810,10 @@ void WaylandWindow::Present(RenderBuffer* render_buffer,
           display_->syncobj_manager(), surface_);
     }
     wp_linux_drm_syncobj_surface_v1_set_acquire_point(
-        syncobj_surface_, sync->timeline, sync->acquire_point >> 32,
+        syncobj_surface_, sync->timeline->timeline(), sync->acquire_point >> 32,
         sync->acquire_point & 0xffffffff);
     wp_linux_drm_syncobj_surface_v1_set_release_point(
-        syncobj_surface_, sync->timeline, sync->release_point >> 32,
+        syncobj_surface_, sync->timeline->timeline(), sync->release_point >> 32,
         sync->release_point & 0xffffffff);
   }
   if (window_geometry_set_ && !decoration_) {
@@ -903,11 +966,11 @@ void WaylandWindow::PresentOverlay(Overlay* overlay,
     }
     const SyncPoints& sync = layer.sync;
     wp_linux_drm_syncobj_surface_v1_set_acquire_point(
-        overlay->syncobj_surface, sync.timeline, sync.acquire_point >> 32,
-        sync.acquire_point & 0xffffffff);
+        overlay->syncobj_surface, sync.timeline->timeline(),
+        sync.acquire_point >> 32, sync.acquire_point & 0xffffffff);
     wp_linux_drm_syncobj_surface_v1_set_release_point(
-        overlay->syncobj_surface, sync.timeline, sync.release_point >> 32,
-        sync.release_point & 0xffffffff);
+        overlay->syncobj_surface, sync.timeline->timeline(),
+        sync.release_point >> 32, sync.release_point & 0xffffffff);
   }
   wl_surface_attach(overlay->surface, layer.buffer->buffer(), 0, 0);
   wl_surface_damage_buffer(overlay->surface, 0, 0, width, height);

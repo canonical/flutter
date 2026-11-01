@@ -15,8 +15,8 @@ namespace {
 Window::Positioner MenuPositioner() {
   Window::Positioner positioner;
   positioner.anchor_rect = {50, 40, 100, 20};
-  positioner.anchor = XDG_POSITIONER_ANCHOR_BOTTOM_LEFT;
-  positioner.gravity = XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
+  positioner.anchor = Window::Anchor::kBottomLeft;
+  positioner.gravity = Window::Anchor::kBottomRight;
   return positioner;
 }
 
@@ -42,8 +42,8 @@ TEST(PopupPositionerTest, Centered) {
 TEST(PopupPositionerTest, TopRightAndOffset) {
   Window::Positioner positioner;
   positioner.anchor_rect = {100, 100, 50, 50};
-  positioner.anchor = XDG_POSITIONER_ANCHOR_TOP_RIGHT;
-  positioner.gravity = XDG_POSITIONER_GRAVITY_TOP_LEFT;
+  positioner.anchor = Window::Anchor::kTopRight;
+  positioner.gravity = Window::Anchor::kTopLeft;
   positioner.offset_x = 5;
   positioner.offset_y = -5;
   int x = 0, y = 0;
@@ -62,8 +62,7 @@ TEST(PopupPositionerTest, UnconstrainedOverflows) {
 
 TEST(PopupPositionerTest, FlipY) {
   Window::Positioner positioner = MenuPositioner();
-  positioner.constraint_adjustment =
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
+  positioner.constraint_adjustment = Window::ConstraintAdjustment::kFlipY;
   int x = 0, y = 0;
   PlacePopup(positioner, 100, 30, {0, 0, 1000, 80}, &x, &y);
   EXPECT_EQ(x, 50);
@@ -73,8 +72,7 @@ TEST(PopupPositionerTest, FlipY) {
 
 TEST(PopupPositionerTest, FlipNotUsedIfItDoesNotFit) {
   Window::Positioner positioner = MenuPositioner();
-  positioner.constraint_adjustment =
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
+  positioner.constraint_adjustment = Window::ConstraintAdjustment::kFlipY;
   int x = 0, y = 0;
   PlacePopup(positioner, 100, 50, {0, 0, 1000, 80}, &x, &y);
   EXPECT_EQ(y, 60);
@@ -82,8 +80,7 @@ TEST(PopupPositionerTest, FlipNotUsedIfItDoesNotFit) {
 
 TEST(PopupPositionerTest, SlideX) {
   Window::Positioner positioner = MenuPositioner();
-  positioner.constraint_adjustment =
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+  positioner.constraint_adjustment = Window::ConstraintAdjustment::kSlideX;
   int x = 0, y = 0;
   PlacePopup(positioner, 200, 30, {0, 0, 220, 1000}, &x, &y);
   EXPECT_EQ(x, 20);
@@ -92,8 +89,7 @@ TEST(PopupPositionerTest, SlideX) {
 
 TEST(PopupPositionerTest, SlideKeepsStartVisible) {
   Window::Positioner positioner = MenuPositioner();
-  positioner.constraint_adjustment =
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+  positioner.constraint_adjustment = Window::ConstraintAdjustment::kSlideX;
   int x = 0, y = 0;
   PlacePopup(positioner, 300, 30, {10, 0, 200, 1000}, &x, &y);
   EXPECT_EQ(x, 10);
@@ -101,9 +97,8 @@ TEST(PopupPositionerTest, SlideKeepsStartVisible) {
 
 TEST(PopupPositionerTest, FlipPreferredOverSlide) {
   Window::Positioner positioner = MenuPositioner();
-  positioner.constraint_adjustment =
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y |
-      XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y;
+  positioner.constraint_adjustment = Window::ConstraintAdjustment::kFlipY |
+                                     Window::ConstraintAdjustment::kSlideY;
   int x = 0, y = 0;
   PlacePopup(positioner, 100, 30, {0, 0, 1000, 80}, &x, &y);
   EXPECT_EQ(y, 10);

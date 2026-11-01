@@ -10,33 +10,32 @@ namespace flutter {
 
 namespace {
 
-// The side of a rectangle an xdg_positioner anchor or gravity refers to on
-// one axis: -1 for the left or top, 1 for the right or bottom, and 0 for the
-// center.
-int HorizontalSide(uint32_t value) {
+// The side of a rectangle an anchor or gravity refers to on one axis: -1 for
+// the left or top, 1 for the right or bottom, and 0 for the center.
+int HorizontalSide(Window::Anchor value) {
   switch (value) {
-    case XDG_POSITIONER_ANCHOR_LEFT:
-    case XDG_POSITIONER_ANCHOR_TOP_LEFT:
-    case XDG_POSITIONER_ANCHOR_BOTTOM_LEFT:
+    case Window::Anchor::kLeft:
+    case Window::Anchor::kTopLeft:
+    case Window::Anchor::kBottomLeft:
       return -1;
-    case XDG_POSITIONER_ANCHOR_RIGHT:
-    case XDG_POSITIONER_ANCHOR_TOP_RIGHT:
-    case XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT:
+    case Window::Anchor::kRight:
+    case Window::Anchor::kTopRight:
+    case Window::Anchor::kBottomRight:
       return 1;
     default:
       return 0;
   }
 }
 
-int VerticalSide(uint32_t value) {
+int VerticalSide(Window::Anchor value) {
   switch (value) {
-    case XDG_POSITIONER_ANCHOR_TOP:
-    case XDG_POSITIONER_ANCHOR_TOP_LEFT:
-    case XDG_POSITIONER_ANCHOR_TOP_RIGHT:
+    case Window::Anchor::kTop:
+    case Window::Anchor::kTopLeft:
+    case Window::Anchor::kTopRight:
       return -1;
-    case XDG_POSITIONER_ANCHOR_BOTTOM:
-    case XDG_POSITIONER_ANCHOR_BOTTOM_LEFT:
-    case XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT:
+    case Window::Anchor::kBottom:
+    case Window::Anchor::kBottomLeft:
+    case Window::Anchor::kBottomRight:
       return 1;
     default:
       return 0;
@@ -111,18 +110,18 @@ void PlacePopup(const Window::Positioner& positioner,
                 int* x,
                 int* y) {
   uint32_t adjustment = positioner.constraint_adjustment;
-  *x = PlaceAxis(
-      HorizontalSide(positioner.anchor), HorizontalSide(positioner.gravity),
-      positioner.anchor_rect.x, positioner.anchor_rect.width,
-      positioner.offset_x, width, bounds.x, bounds.x + bounds.width,
-      (adjustment & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X) != 0,
-      (adjustment & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X) != 0);
-  *y = PlaceAxis(
-      VerticalSide(positioner.anchor), VerticalSide(positioner.gravity),
-      positioner.anchor_rect.y, positioner.anchor_rect.height,
-      positioner.offset_y, height, bounds.y, bounds.y + bounds.height,
-      (adjustment & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y) != 0,
-      (adjustment & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y) != 0);
+  *x = PlaceAxis(HorizontalSide(positioner.anchor),
+                 HorizontalSide(positioner.gravity), positioner.anchor_rect.x,
+                 positioner.anchor_rect.width, positioner.offset_x, width,
+                 bounds.x, bounds.x + bounds.width,
+                 (adjustment & Window::ConstraintAdjustment::kFlipX) != 0,
+                 (adjustment & Window::ConstraintAdjustment::kSlideX) != 0);
+  *y = PlaceAxis(VerticalSide(positioner.anchor),
+                 VerticalSide(positioner.gravity), positioner.anchor_rect.y,
+                 positioner.anchor_rect.height, positioner.offset_y, height,
+                 bounds.y, bounds.y + bounds.height,
+                 (adjustment & Window::ConstraintAdjustment::kFlipY) != 0,
+                 (adjustment & Window::ConstraintAdjustment::kSlideY) != 0);
 }
 
 }  // namespace flutter

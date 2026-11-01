@@ -19,6 +19,7 @@
 #include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
 #include "flutter/shell/platform/linux/wayland/linux_platform_view.h"
 #include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
+#include "flutter/shell/platform/linux/wayland/protocols/xdg-shell-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/wayland_display.h"
 #include "flutter/shell/platform/linux/wayland/window_decoration.h"
 #include "flutter/shell/platform/linux/window.h"

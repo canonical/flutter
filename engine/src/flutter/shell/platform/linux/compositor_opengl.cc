@@ -288,7 +288,7 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
   for (size_t i = 0; i < buffers.size(); i++) {
     PoolBuffer* pool_buffer = buffers[i];
     sync[i] = {
-        .timeline = pool_buffer->timeline->timeline(),
+        .timeline = pool_buffer->timeline.get(),
         .acquire_point = ++pool_buffer->last_point,
         .release_point = ++pool_buffer->last_point,
     };

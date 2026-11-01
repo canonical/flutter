@@ -15,68 +15,42 @@ namespace flutter {
 
 namespace {
 
-// WindowPositionerAnchor values, in the order the framework defines them.
-enum class PositionerAnchor : int32_t {
-  kCenter,
-  kTop,
-  kBottom,
-  kLeft,
-  kRight,
-  kTopLeft,
-  kBottomLeft,
-  kTopRight,
-  kBottomRight,
-};
-
-// The xdg_positioner anchor for a point on the parent's anchor rectangle.
-uint32_t ToXdgAnchor(int32_t anchor) {
-  switch (static_cast<PositionerAnchor>(anchor)) {
-    case PositionerAnchor::kCenter:
-      return XDG_POSITIONER_ANCHOR_NONE;
-    case PositionerAnchor::kTop:
-      return XDG_POSITIONER_ANCHOR_TOP;
-    case PositionerAnchor::kBottom:
-      return XDG_POSITIONER_ANCHOR_BOTTOM;
-    case PositionerAnchor::kLeft:
-      return XDG_POSITIONER_ANCHOR_LEFT;
-    case PositionerAnchor::kRight:
-      return XDG_POSITIONER_ANCHOR_RIGHT;
-    case PositionerAnchor::kTopLeft:
-      return XDG_POSITIONER_ANCHOR_TOP_LEFT;
-    case PositionerAnchor::kBottomLeft:
-      return XDG_POSITIONER_ANCHOR_BOTTOM_LEFT;
-    case PositionerAnchor::kTopRight:
-      return XDG_POSITIONER_ANCHOR_TOP_RIGHT;
-    case PositionerAnchor::kBottomRight:
-      return XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT;
+// The window anchor for a WindowPositionerAnchor, which are in the same
+// order.
+::flutter::Window::Anchor ToAnchor(int32_t anchor) {
+  using Anchor = ::flutter::Window::Anchor;
+  if (anchor < static_cast<int32_t>(Anchor::kCenter) ||
+      anchor > static_cast<int32_t>(Anchor::kBottomRight)) {
+    return Anchor::kCenter;
   }
-  return XDG_POSITIONER_ANCHOR_NONE;
+  return static_cast<Anchor>(anchor);
 }
 
-// The xdg_positioner gravity that places |anchor| of the child at the anchor
-// point. The child extends away from that point, the opposite direction.
-uint32_t ToXdgGravity(int32_t anchor) {
-  switch (static_cast<PositionerAnchor>(anchor)) {
-    case PositionerAnchor::kCenter:
-      return XDG_POSITIONER_GRAVITY_NONE;
-    case PositionerAnchor::kTop:
-      return XDG_POSITIONER_GRAVITY_BOTTOM;
-    case PositionerAnchor::kBottom:
-      return XDG_POSITIONER_GRAVITY_TOP;
-    case PositionerAnchor::kLeft:
-      return XDG_POSITIONER_GRAVITY_RIGHT;
-    case PositionerAnchor::kRight:
-      return XDG_POSITIONER_GRAVITY_LEFT;
-    case PositionerAnchor::kTopLeft:
-      return XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
-    case PositionerAnchor::kBottomLeft:
-      return XDG_POSITIONER_GRAVITY_TOP_RIGHT;
-    case PositionerAnchor::kTopRight:
-      return XDG_POSITIONER_GRAVITY_BOTTOM_LEFT;
-    case PositionerAnchor::kBottomRight:
-      return XDG_POSITIONER_GRAVITY_TOP_LEFT;
+// The direction a popup extends from the anchor point, so that |anchor| of
+// the popup is at that point.
+::flutter::Window::Anchor ToGravity(int32_t anchor) {
+  using Anchor = ::flutter::Window::Anchor;
+  switch (ToAnchor(anchor)) {
+    case Anchor::kCenter:
+      return Anchor::kCenter;
+    case Anchor::kTop:
+      return Anchor::kBottom;
+    case Anchor::kBottom:
+      return Anchor::kTop;
+    case Anchor::kLeft:
+      return Anchor::kRight;
+    case Anchor::kRight:
+      return Anchor::kLeft;
+    case Anchor::kTopLeft:
+      return Anchor::kBottomRight;
+    case Anchor::kBottomLeft:
+      return Anchor::kTopRight;
+    case Anchor::kTopRight:
+      return Anchor::kBottomLeft;
+    case Anchor::kBottomRight:
+      return Anchor::kTopLeft;
   }
-  return XDG_POSITIONER_GRAVITY_NONE;
+  return Anchor::kCenter;
 }
 
 ::flutter::Window::Positioner ToPositioner(
@@ -88,17 +62,13 @@ uint32_t ToXdgGravity(int32_t anchor) {
       static_cast<int>(std::round(request.anchor_width)),
       static_cast<int>(std::round(request.anchor_height)),
   };
-  positioner.anchor = ToXdgAnchor(request.parent_anchor);
-  positioner.gravity = ToXdgGravity(request.child_anchor);
-  // The framework's adjustment bits match xdg_positioner's.
+  positioner.anchor = ToAnchor(request.parent_anchor);
+  positioner.gravity = ToGravity(request.child_anchor);
+  using Adjustment = ::flutter::Window::ConstraintAdjustment;
   positioner.constraint_adjustment =
       request.constraint_adjustment &
-      (XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
-       XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y |
-       XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X |
-       XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y |
-       XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_X |
-       XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_Y);
+      (Adjustment::kSlideX | Adjustment::kSlideY | Adjustment::kFlipX |
+       Adjustment::kFlipY | Adjustment::kResizeX | Adjustment::kResizeY);
   positioner.offset_x = static_cast<int>(std::round(request.offset_x));
   positioner.offset_y = static_cast<int>(std::round(request.offset_y));
   return positioner;
