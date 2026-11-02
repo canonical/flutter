@@ -100,9 +100,11 @@ class GpuDevice {
   PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2D = nullptr;
   PFNEGLQUERYDMABUFMODIFIERSEXTPROC QueryDmaBufModifiers = nullptr;
 
-  // Extension functions used for explicit synchronization. Only set if
-  // supports_explicit_sync() is true. WaitSync may be nullptr if the GPU
-  // can't wait for fences, in which case they must be waited for on the CPU.
+  // Extension functions used to create and wait for native fences. They are
+  // nullptr if EGL doesn't support native fences, which
+  // supports_explicit_sync() implies it does. WaitSync may be nullptr if the
+  // GPU can't wait for fences, in which case they must be waited for on the
+  // CPU.
   PFNEGLCREATESYNCKHRPROC CreateSync = nullptr;
   PFNEGLDESTROYSYNCKHRPROC DestroySync = nullptr;
   PFNEGLDUPNATIVEFENCEFDANDROIDPROC DupNativeFenceFD = nullptr;
@@ -116,8 +118,9 @@ class GpuDevice {
   // Checks for and loads the functions used to import dmabufs.
   void InitializeDmabufImport(const char* extensions);
 
-  // Checks for and loads the functions used for explicit synchronization.
-  void InitializeExplicitSync(const char* extensions);
+  // Checks for and loads the functions used for native fences, and whether
+  // explicit synchronization is supported.
+  void InitializeFences(const char* extensions);
 
   std::string path_;
   fml::UniqueFD drm_fd_;

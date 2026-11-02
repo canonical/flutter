@@ -406,7 +406,8 @@ These are ordered by how much they affect apps:
    making it the default needs wider driver testing; GL external textures
    (`TextureRegistrar`) don't work with it, and the GL
    wait for Vulkan rendering falls back to the CPU on drivers without
-   `EGL_ANDROID_native_fence_sync`.
+   `EGL_ANDROID_native_fence_sync` and `EGL_KHR_wait_sync` (rare on current
+   Mesa and NVIDIA drivers).
 
 ## Reproducing
 

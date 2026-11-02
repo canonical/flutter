@@ -153,7 +153,7 @@ bool GpuDevice::Initialize(std::optional<dev_t> device) {
 
   InitializeDmabufImport(extensions);
   if (supports_dmabuf_import_) {
-    InitializeExplicitSync(extensions);
+    InitializeFences(extensions);
   }
 
   FML_DLOG(INFO) << "Rendering with " << path;
@@ -341,13 +341,7 @@ std::vector<uint64_t> GpuDevice::GetRenderModifiers(uint32_t format) {
   return result;
 }
 
-void GpuDevice::InitializeExplicitSync(const char* extensions) {
-  uint64_t timeline_supported = 0;
-  if (drmGetCap(drm_fd_.get(), DRM_CAP_SYNCOBJ_TIMELINE, &timeline_supported) !=
-          0 ||
-      timeline_supported == 0) {
-    return;
-  }
+void GpuDevice::InitializeFences(const char* extensions) {
   if (!HasExtension(extensions, "EGL_KHR_fence_sync") ||
       !HasExtension(extensions, "EGL_ANDROID_native_fence_sync")) {
     return;
@@ -359,12 +353,22 @@ void GpuDevice::InitializeExplicitSync(const char* extensions) {
       eglGetProcAddress("eglDestroySyncKHR"));
   DupNativeFenceFD = reinterpret_cast<PFNEGLDUPNATIVEFENCEFDANDROIDPROC>(
       eglGetProcAddress("eglDupNativeFenceFDANDROID"));
+  if (CreateSync == nullptr || DestroySync == nullptr ||
+      DupNativeFenceFD == nullptr) {
+    CreateSync = nullptr;
+    DestroySync = nullptr;
+    DupNativeFenceFD = nullptr;
+    return;
+  }
   if (HasExtension(extensions, "EGL_KHR_wait_sync")) {
     WaitSync = reinterpret_cast<PFNEGLWAITSYNCKHRPROC>(
         eglGetProcAddress("eglWaitSyncKHR"));
   }
-  supports_explicit_sync_ = CreateSync != nullptr && DestroySync != nullptr &&
-                            DupNativeFenceFD != nullptr;
+
+  uint64_t timeline_supported = 0;
+  supports_explicit_sync_ = drmGetCap(drm_fd_.get(), DRM_CAP_SYNCOBJ_TIMELINE,
+                                      &timeline_supported) == 0 &&
+                            timeline_supported != 0;
 }
 
 }  // namespace flutter

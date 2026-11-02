@@ -472,10 +472,13 @@ bool Compositor::GpuWait(int fence) {
 
 void Compositor::SetRenderFences(const std::vector<PoolBuffer*>& buffers) {
   GpuDevice* gpu = egl_->gpu();
-  const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
-                               EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
-  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
-                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  EGLSyncKHR sync = EGL_NO_SYNC_KHR;
+  if (gpu->CreateSync != nullptr) {
+    const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+                                 EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
+    sync = gpu->CreateSync(gpu->display(), EGL_SYNC_NATIVE_FENCE_ANDROID,
+                           attributes);
+  }
   glFlush();
   fml::UniqueFD fence;
   if (sync != EGL_NO_SYNC_KHR) {
