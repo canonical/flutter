@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/key_event_converter.h"
+#include "flutter/shell/platform/linux/native_display.h"
 #include "flutter/shell/platform/linux/xkb.h"
 
 namespace flutter {
@@ -26,7 +26,7 @@ class X11Clipboard;
 class X11Window;
 
 // A connection to an X11 server, using XCB.
-class X11Display : public Display {
+class X11Display : public NativeDisplay {
  public:
   // Atoms the embedder uses.
   enum class Atom {
@@ -154,25 +154,25 @@ class X11Display : public Display {
   // |EventLoop::Source|
   void Dispatch(bool readable) override;
 
-  // |Display|
+  // |NativeDisplay|
   Backend backend() const override { return Backend::kX11; }
 
-  // |Display|
+  // |NativeDisplay|
   Clipboard* clipboard() const override;
 
-  // |Display|
+  // |NativeDisplay|
   std::vector<Output> GetOutputs() const override;
 
-  // |Display|
+  // |NativeDisplay|
   std::optional<dev_t> main_device() const override { return main_device_; }
 
-  // |Display|
+  // |NativeDisplay|
   void SetCursor(uint32_t shape) override;
 
-  // |Display|
+  // |NativeDisplay|
   void RingBell(Window* window) override;
 
-  // |Display|
+  // |NativeDisplay|
   std::unique_ptr<Window> CreateWindow(DecorationRenderer* decoration_renderer,
                                        Window::Delegate* delegate,
                                        const Window::Params& params) override;

@@ -38,7 +38,7 @@ FlutterLinuxApplication::~FlutterLinuxApplication() {
 bool FlutterLinuxApplication::Initialize() {
   event_loop_ = std::make_unique<EventLoop>();
 
-  display_ = Display::Create(event_loop_.get());
+  display_ = NativeDisplay::Create(event_loop_.get());
   if (!display_) {
     return false;
   }
@@ -80,7 +80,7 @@ VulkanDevice* FlutterLinuxApplication::vulkan() {
 DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {
   if (!decoration_renderer_created_) {
     decoration_renderer_created_ = true;
-    if (display_->backend() != Display::Backend::kWayland) {
+    if (display_->backend() != NativeDisplay::Backend::kWayland) {
       // The window manager draws decorations, or there are none.
       return nullptr;
     }

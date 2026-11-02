@@ -1474,7 +1474,7 @@ Clipboard* X11Display::clipboard() const {
   return clipboard_.get();
 }
 
-std::vector<Display::Output> X11Display::GetOutputs() const {
+std::vector<NativeDisplay::Output> X11Display::GetOutputs() const {
   std::vector<Output> outputs;
   for (const Monitor& monitor : monitors_) {
     outputs.push_back(monitor.output);

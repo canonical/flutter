@@ -18,8 +18,8 @@
 #include "flutter/fml/unique_fd.h"
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/corner_mask.h"
-#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
+#include "flutter/shell/platform/linux/native_display.h"
 #include "flutter/shell/platform/linux/platform_view.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
@@ -65,7 +65,7 @@ class Compositor {
   // If |vulkan| is set, backing stores are Vulkan images, unless they can't
   // be shared with OpenGL, in which case vulkan() is nullptr.
   Compositor(EGLManager* egl,
-             Display* display,
+             NativeDisplay* display,
              bool depth_stencil,
              VulkanDevice* vulkan = nullptr);
   ~Compositor();

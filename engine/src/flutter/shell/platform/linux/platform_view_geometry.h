@@ -12,7 +12,7 @@
 namespace flutter {
 
 // A rectangle in logical pixels.
-struct Rect {
+struct LogicalRect {
   int x = 0;
   int y = 0;
   int width = 0;

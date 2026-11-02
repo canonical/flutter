@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_DISPLAY_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_DISPLAY_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_NATIVE_DISPLAY_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_NATIVE_DISPLAY_H_
 
 #include <sys/types.h>
 
@@ -28,7 +28,7 @@ class DecorationRenderer;
 //
 // Events are dispatched on the event loop thread when this is added as a
 // source to the loop.
-class Display : public EventLoop::Source {
+class NativeDisplay : public EventLoop::Source {
  public:
   enum class Backend {
     kWayland,
@@ -64,9 +64,9 @@ class Display : public EventLoop::Source {
   //
   // |event_loop| is the loop the display is dispatched from, and must
   // outlive it.
-  static std::unique_ptr<Display> Create(EventLoop* event_loop);
+  static std::unique_ptr<NativeDisplay> Create(EventLoop* event_loop);
 
-  ~Display() override = default;
+  ~NativeDisplay() override = default;
 
   virtual Backend backend() const = 0;
 
@@ -118,7 +118,7 @@ class Display : public EventLoop::Source {
   }
 
  protected:
-  Display() = default;
+  NativeDisplay() = default;
 
   // Notifies observers of a change to the outputs.
   void NotifyOutputsChanged();
@@ -130,9 +130,9 @@ class Display : public EventLoop::Source {
   std::vector<OutputObserver*> output_observers_;
   std::function<void()> error_callback_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(Display);
+  FML_DISALLOW_COPY_AND_ASSIGN(NativeDisplay);
 };
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_DISPLAY_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_NATIVE_DISPLAY_H_

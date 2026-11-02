@@ -17,7 +17,7 @@ namespace flutter {
 void PlacePopup(const Window::Positioner& positioner,
                 int width,
                 int height,
-                const Rect& bounds,
+                const LogicalRect& bounds,
                 int* x,
                 int* y);
 

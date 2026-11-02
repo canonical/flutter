@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
-#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
+#include "flutter/shell/platform/linux/native_display.h"
 #include "flutter/shell/platform/linux/wayland/protocols/alpha-modifier-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/protocols/fifo-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/protocols/fractional-scale-v1-client-protocol.h"
@@ -43,7 +43,7 @@ namespace flutter {
 //
 // Events for objects on the default queue are dispatched on the event loop
 // thread when this is added as a source to the loop.
-class WaylandDisplay : public Display {
+class WaylandDisplay : public NativeDisplay {
  public:
   // Connects to the compositor specified by the environment. Returns nullptr
   // if unable to connect or the compositor is missing required features.
@@ -123,24 +123,24 @@ class WaylandDisplay : public Display {
   // |format|. Empty if the format is not supported.
   std::vector<uint64_t> GetModifiers(uint32_t format) const;
 
-  // |Display|
+  // |NativeDisplay|
   Backend backend() const override { return Backend::kWayland; }
 
-  // |Display|
+  // |NativeDisplay|
   std::vector<Output> GetOutputs() const override;
 
-  // |Display|
+  // |NativeDisplay|
   void SetCursor(uint32_t shape) override;
 
-  // |Display|
+  // |NativeDisplay|
   void RingBell(Window* window) override;
 
-  // |Display|
+  // |NativeDisplay|
   std::unique_ptr<Window> CreateWindow(DecorationRenderer* decoration_renderer,
                                        Window::Delegate* delegate,
                                        const Window::Params& params) override;
 
-  // |Display|
+  // |NativeDisplay|
   std::shared_ptr<LinuxPlatformView> CreatePlatformView(
       int64_t id,
       std::function<void()> redraw) override;

@@ -11,9 +11,9 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux/atspi/atspi_application.h"
 #include "flutter/shell/platform/linux/desktop_settings.h"
-#include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
+#include "flutter/shell/platform/linux/native_display.h"
 #include "flutter/shell/platform/linux/vulkan_device.h"
 
 namespace flutter {
@@ -35,7 +35,7 @@ class FlutterLinuxApplication {
   ~FlutterLinuxApplication();
 
   EventLoop* event_loop() const { return event_loop_.get(); }
-  Display* display() const { return display_.get(); }
+  NativeDisplay* display() const { return display_.get(); }
   GpuDevice* gpu() const { return gpu_.get(); }
 
   // The Vulkan device engines render with, created on first use if
@@ -81,7 +81,7 @@ class FlutterLinuxApplication {
   bool Initialize();
 
   std::unique_ptr<EventLoop> event_loop_;
-  std::unique_ptr<Display> display_;
+  std::unique_ptr<NativeDisplay> display_;
   std::unique_ptr<GpuDevice> gpu_;
   std::unique_ptr<VulkanDevice> vulkan_;
   bool vulkan_created_ = false;

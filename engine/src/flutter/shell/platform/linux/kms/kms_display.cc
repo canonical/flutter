@@ -662,7 +662,7 @@ Clipboard* KmsDisplay::clipboard() const {
   return clipboard_.get();
 }
 
-std::vector<Display::Output> KmsDisplay::GetOutputs() const {
+std::vector<NativeDisplay::Output> KmsDisplay::GetOutputs() const {
   Output output;
   output.id = connector_id_;
   output.width = mode_.hdisplay;

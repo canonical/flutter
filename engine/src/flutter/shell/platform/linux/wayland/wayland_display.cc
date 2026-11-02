@@ -593,7 +593,7 @@ void WaylandDisplay::FeedbackTrancheFlags(
     zwp_linux_dmabuf_feedback_v1* feedback,
     uint32_t flags) {}
 
-std::vector<Display::Output> WaylandDisplay::GetOutputs() const {
+std::vector<NativeDisplay::Output> WaylandDisplay::GetOutputs() const {
   std::vector<Output> result;
   for (const auto& [id, output] : outputs_) {
     if (!output->ready()) {

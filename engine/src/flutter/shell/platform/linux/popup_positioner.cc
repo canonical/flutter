@@ -106,7 +106,7 @@ int PlaceAxis(int anchor_side,
 void PlacePopup(const Window::Positioner& positioner,
                 int width,
                 int height,
-                const Rect& bounds,
+                const LogicalRect& bounds,
                 int* x,
                 int* y) {
   uint32_t adjustment = positioner.constraint_adjustment;

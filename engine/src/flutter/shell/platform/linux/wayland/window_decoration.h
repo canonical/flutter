@@ -30,12 +30,12 @@ struct DecorationFrame {
     RenderBuffer* buffer = nullptr;
 
     // The position and size of the piece relative to the content surface.
-    Rect surface;
+    LogicalRect surface;
 
     // The parts of the piece that accept input, and that are opaque,
     // relative to the piece.
-    std::vector<Rect> input;
-    std::vector<Rect> opaque;
+    std::vector<LogicalRect> input;
+    std::vector<LogicalRect> opaque;
   };
 
   // The title bar along the top, the shadow along the bottom (including
@@ -47,7 +47,7 @@ struct DecorationFrame {
   bool Uses(const RenderBuffer* buffer) const;
 
   // The window geometry, relative to the content surface.
-  Rect geometry;
+  LogicalRect geometry;
 
   // The size of the content buffer this frame matches, in physical pixels.
   int content_width = 0;
@@ -176,8 +176,8 @@ class WindowDecoration : public InputHandler {
     void ClearBuffers() { buffers_.clear(); }
 
     // Where the piece is in decoration coordinates.
-    void set_rect(const Rect& rect) { rect_ = rect; }
-    const Rect& rect() const { return rect_; }
+    void set_rect(const LogicalRect& rect) { rect_ = rect; }
+    const LogicalRect& rect() const { return rect_; }
 
     // |InputHandler|
     void OnPointerEnter(uint64_t time, double x, double y) override;
@@ -201,7 +201,7 @@ class WindowDecoration : public InputHandler {
     wl_surface* surface_ = nullptr;
     wl_subsurface* subsurface_ = nullptr;
     wp_viewport* viewport_ = nullptr;
-    Rect rect_;
+    LogicalRect rect_;
     std::vector<std::unique_ptr<RenderBuffer>> buffers_;
 
     FML_DISALLOW_COPY_AND_ASSIGN(Piece);
@@ -212,7 +212,7 @@ class WindowDecoration : public InputHandler {
 
   // The window outline in decoration coordinates, which have their origin
   // at the top left of the shadow around a floating window.
-  Rect WindowRect() const;
+  LogicalRect WindowRect() const;
 
   // The buttons shown, from left to right.
   std::vector<Button> Buttons() const;

@@ -416,7 +416,8 @@ void FlutterLinuxEngine::SendDisplays() {
   }
 
   std::vector<FlutterEngineDisplay> displays;
-  for (const Display::Output& output : application_->display()->GetOutputs()) {
+  for (const NativeDisplay::Output& output :
+       application_->display()->GetOutputs()) {
     FlutterEngineDisplay display = {};
     display.struct_size = sizeof(FlutterEngineDisplay);
     display.display_id = output.id;

@@ -123,12 +123,12 @@ void WarnShmFallback(const char* reason) {
 }  // namespace
 
 Compositor::Compositor(EGLManager* egl,
-                       Display* display,
+                       NativeDisplay* display,
                        bool depth_stencil,
                        VulkanDevice* vulkan)
     : egl_(egl),
       vulkan_(vulkan),
-      display_(display->backend() == Display::Backend::kWayland
+      display_(display->backend() == NativeDisplay::Backend::kWayland
                    ? static_cast<WaylandDisplay*>(display)
                    : nullptr),
       depth_stencil_(depth_stencil),

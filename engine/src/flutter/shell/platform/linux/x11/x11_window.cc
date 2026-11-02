@@ -479,7 +479,7 @@ void X11Window::PositionPopup() {
   display_->GetWorkArea(parent_x, parent_y, parent_->physical_width_,
                         parent_->physical_height_, &area_x, &area_y,
                         &area_width, &area_height);
-  Rect bounds;
+  LogicalRect bounds;
   bounds.x = static_cast<int>(std::floor((area_x - parent_x) / scale));
   bounds.y = static_cast<int>(std::floor((area_y - parent_y) / scale));
   bounds.width = static_cast<int>(area_width / scale);

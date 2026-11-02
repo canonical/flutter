@@ -54,18 +54,19 @@ constexpr Stroke kRestoreIcon[] = {
 constexpr Stroke kCloseIcon[] = {{4, 4, 12, 12}, {12, 4, 4, 12}};
 
 wl_region* CreateRegion(wl_compositor* compositor,
-                        const std::vector<Rect>& rects) {
+                        const std::vector<LogicalRect>& rects) {
   wl_region* region = wl_compositor_create_region(compositor);
-  for (const Rect& r : rects) {
+  for (const LogicalRect& r : rects) {
     wl_region_add(region, r.x, r.y, r.width, r.height);
   }
   return region;
 }
 
 // The parts of |rects| inside |area|, relative to |area|.
-std::vector<Rect> Clip(const std::vector<Rect>& rects, const Rect& area) {
-  std::vector<Rect> result;
-  for (const Rect& r : rects) {
+std::vector<LogicalRect> Clip(const std::vector<LogicalRect>& rects,
+                              const LogicalRect& area) {
+  std::vector<LogicalRect> result;
+  for (const LogicalRect& r : rects) {
     int x0 = std::max(r.x, area.x);
     int y0 = std::max(r.y, area.y);
     int x1 = std::min(r.x + r.width, area.x + area.width);
@@ -267,7 +268,7 @@ bool WindowDecoration::floating() const {
   return !state_.maximized && !state_.fullscreen && !state_.tiled;
 }
 
-Rect WindowDecoration::WindowRect() const {
+LogicalRect WindowDecoration::WindowRect() const {
   int margin = floating() ? kShadowMargin : 0;
   return {margin, margin, state_.width, kTitleBarHeight + state_.height};
 }
@@ -294,7 +295,7 @@ void WindowDecoration::ButtonCentre(Button button, double* x, double* y) const {
 }
 
 WindowDecoration::Hit WindowDecoration::HitTest(double x, double y) const {
-  Rect window = WindowRect();
+  LogicalRect window = WindowRect();
   double wx = x - window.x;
   double wy = y - window.y;
 
@@ -482,7 +483,7 @@ void WindowDecoration::OnPointerButton(uint32_t serial,
     if (button == BTN_LEFT) {
       PressTitleBar(serial);
     } else if (button == BTN_RIGHT) {
-      Rect window = WindowRect();
+      LogicalRect window = WindowRect();
       xdg_toplevel_show_window_menu(toplevel_, display_->seat()->seat(), serial,
                                     static_cast<int>(pointer_x_) - window.x,
                                     static_cast<int>(pointer_y_) - window.y);
@@ -555,7 +556,7 @@ std::shared_ptr<const AlphaImage> WindowDecoration::GetTitleImage(
 
 DecorationScene WindowDecoration::BuildScene() {
   float s = state_.scale;
-  Rect window = WindowRect();
+  LogicalRect window = WindowRect();
 
   DecorationScene scene;
   scene.window_x = window.x * s;
@@ -663,10 +664,10 @@ void WindowDecoration::Redraw() {
                     kTitleBarHeight + state_.height};
 
   // The input and opaque areas in decoration coordinates.
-  Rect window = WindowRect();
-  std::vector<Rect> input;
-  std::vector<Rect> opaque;
-  std::array<Rect, DecorationFrame::kPieceCount> rects;
+  LogicalRect window = WindowRect();
+  std::vector<LogicalRect> input;
+  std::vector<LogicalRect> opaque;
+  std::array<LogicalRect, DecorationFrame::kPieceCount> rects;
   if (floating()) {
     frame.content_corner_radius = kCornerRadius;
     input.push_back({window.x - kResizeOutset, window.y - kResizeOutset,
@@ -697,7 +698,7 @@ void WindowDecoration::Redraw() {
   float s = state_.scale;
   std::vector<DecorationRenderer::Target> targets;
   for (size_t i = 0; i < DecorationFrame::kPieceCount; i++) {
-    const Rect& rect = rects[i];
+    const LogicalRect& rect = rects[i];
     pieces_[i]->set_rect(rect);
     int buffer_width = static_cast<int>(std::round(rect.width * s));
     int buffer_height = static_cast<int>(std::round(rect.height * s));

@@ -15,7 +15,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
-#include "flutter/shell/platform/linux/display.h"
+#include "flutter/shell/platform/linux/native_display.h"
 
 namespace flutter {
 
@@ -36,7 +36,7 @@ class KmsWindow;
 // The screen is configured with atomic modesetting. The legacy modesetting
 // calls are used if the driver doesn't support atomic modesetting, if it
 // rejects the configuration, or if FLUTTER_KMS_NO_ATOMIC is set.
-class KmsDisplay : public Display {
+class KmsDisplay : public NativeDisplay {
  public:
   // Returns nullptr if no screen can be used.
   static std::unique_ptr<KmsDisplay> Create(EventLoop* event_loop);
@@ -47,7 +47,7 @@ class KmsDisplay : public Display {
   int GetFd() const override { return drm_fd_.get(); }
   void Dispatch(bool readable) override;
 
-  // Display
+  // NativeDisplay
   Backend backend() const override { return Backend::kKms; }
   Clipboard* clipboard() const override;
   std::vector<Output> GetOutputs() const override;

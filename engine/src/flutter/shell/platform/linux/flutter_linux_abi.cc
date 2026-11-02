@@ -36,8 +36,8 @@
 namespace {
 
 // Returns |display| if it is a Wayland display, otherwise nullptr.
-flutter::WaylandDisplay* AsWaylandDisplay(flutter::Display* display) {
-  return display->backend() == flutter::Display::Backend::kWayland
+flutter::WaylandDisplay* AsWaylandDisplay(flutter::NativeDisplay* display) {
+  return display->backend() == flutter::NativeDisplay::Backend::kWayland
              ? static_cast<flutter::WaylandDisplay*>(display)
              : nullptr;
 }
@@ -188,11 +188,11 @@ void flutter_linux_application_set_application_id(
 FlutterLinuxDisplayBackend flutter_linux_application_get_display_backend(
     FlutterLinuxApplication* application) {
   switch (ToApplication(application)->display()->backend()) {
-    case flutter::Display::Backend::kX11:
+    case flutter::NativeDisplay::Backend::kX11:
       return FLUTTER_LINUX_DISPLAY_BACKEND_X11;
-    case flutter::Display::Backend::kKms:
+    case flutter::NativeDisplay::Backend::kKms:
       return FLUTTER_LINUX_DISPLAY_BACKEND_KMS;
-    case flutter::Display::Backend::kWayland:
+    case flutter::NativeDisplay::Backend::kWayland:
     default:
       return FLUTTER_LINUX_DISPLAY_BACKEND_WAYLAND;
   }
@@ -207,8 +207,8 @@ wl_display* flutter_linux_application_get_wl_display(
 
 xcb_connection_t* flutter_linux_application_get_xcb_connection(
     FlutterLinuxApplication* application) {
-  flutter::Display* display = ToApplication(application)->display();
-  if (display->backend() != flutter::Display::Backend::kX11) {
+  flutter::NativeDisplay* display = ToApplication(application)->display();
+  if (display->backend() != flutter::NativeDisplay::Backend::kX11) {
     return nullptr;
   }
   return static_cast<flutter::X11Display*>(display)->connection();
@@ -272,7 +272,7 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
                                              FlutterLinuxRenderingInfo* info) {
   flutter::FlutterLinuxEngine* e = ToEngine(engine);
   flutter::EGLManager* egl = e->egl();
-  flutter::Display* display = e->application()->display();
+  flutter::NativeDisplay* display = e->application()->display();
   flutter::WaylandDisplay* wayland_display = AsWaylandDisplay(display);
 
   FlutterLinuxRenderingInfo result = {};
@@ -288,7 +288,7 @@ void flutter_linux_engine_get_rendering_info(FlutterLinuxEngine* engine,
     result.buffer_sharing = e->compositor()->uses_dmabuf()
                                 ? FLUTTER_LINUX_BUFFER_SHARING_LINUX_DMABUF
                                 : FLUTTER_LINUX_BUFFER_SHARING_WL_SHM;
-  } else if (display->backend() == flutter::Display::Backend::kX11) {
+  } else if (display->backend() == flutter::NativeDisplay::Backend::kX11) {
     result.buffer_sharing =
         static_cast<flutter::X11Display*>(display)->has_dri3()
             ? FLUTTER_LINUX_BUFFER_SHARING_DRI3
@@ -667,7 +667,7 @@ void flutter_linux_platform_view_buffer_free(
 wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {
   flutter::FlutterLinuxView* v = ToView(view);
   if (v->engine()->application()->display()->backend() !=
-      flutter::Display::Backend::kWayland) {
+      flutter::NativeDisplay::Backend::kWayland) {
     return nullptr;
   }
   return static_cast<flutter::WaylandWindow*>(v->window())->surface();
@@ -676,7 +676,7 @@ wl_surface* flutter_linux_view_get_wl_surface(FlutterLinuxView* view) {
 uint32_t flutter_linux_view_get_x11_window(FlutterLinuxView* view) {
   flutter::FlutterLinuxView* v = ToView(view);
   if (v->engine()->application()->display()->backend() !=
-      flutter::Display::Backend::kX11) {
+      flutter::NativeDisplay::Backend::kX11) {
     return 0;
   }
   return static_cast<flutter::X11Window*>(v->window())->window();

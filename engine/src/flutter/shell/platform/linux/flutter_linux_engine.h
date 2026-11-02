@@ -44,7 +44,7 @@ constexpr FlutterViewId kImplicitViewId = 0;
 class FlutterLinuxEngine : public PlatformMessenger,
                            public AtspiApplication::Observer,
                            public DesktopSettings::Observer,
-                           public Display::OutputObserver,
+                           public NativeDisplay::OutputObserver,
                            public TextureRegistrar::Delegate {
  public:
   struct Properties {
@@ -163,7 +163,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   // |AtspiApplication::Observer|
   void OnAccessibilityEnabledChanged(bool enabled) override;
 
-  // |Display::OutputObserver|
+  // |NativeDisplay::OutputObserver|
   void OnOutputsChanged() override;
 
   // |DesktopSettings::Observer|

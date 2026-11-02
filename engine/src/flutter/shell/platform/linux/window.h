@@ -104,7 +104,7 @@ class Window {
   struct Positioner {
     // The rectangle in the parent the popup is placed relative to, in
     // logical pixels relative to the parent's content.
-    Rect anchor_rect;
+    LogicalRect anchor_rect;
     // The point on |anchor_rect| the popup is placed at.
     Anchor anchor = Anchor::kCenter;
     // The direction the popup extends from the anchor point.
