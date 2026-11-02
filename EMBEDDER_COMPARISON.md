@@ -40,6 +40,10 @@ from their source, not run.
   `Window` interfaces. X11 and KMS are simpler than Wayland: X11 has no
   platform views, KMS composites them with GL rather than putting them on
   their own surfaces, and KMS has a single undecorated fullscreen window.
+- **Renderers.** OpenGL ES is the default. Vulkan (Impeller only) is opt-in
+  with `FLUTTER_LINUX_RENDERER=vulkan` and works on every backend: it renders
+  into dmabufs that GL then presents, and falls back to GL when Vulkan isn't
+  usable.
 - **Features.** The new embedder leads on Wayland presentation, input, multiple
   windows and accessibility. It now matches the old one's platform channels
   (clipboard, settings, lifecycle, locales and the system bell), but has no
@@ -56,7 +60,7 @@ from their source, not run.
   backends chosen at run time: Wayland, DRM/KMS and headless, each with EGL or
   Vulkan, plus software. It also has platform views, external textures,
   multiple displays and multiple engines, and AccessKit-based accessibility.
-  But it is about 4× the size of the new embedder (93k lines plus 22k shared). Its
+  But it is about 3× the size of the new embedder (93k lines plus 22k shared). Its
   EGL path still uses `wl_egl_window`/`eglSwapBuffers`, and only its Vulkan path
   presents dmabufs. It has no decorations, pinch/rotate gestures, or clipboard
   (TODO). It is built around TOML configuration and shell roles such as AGL and
@@ -73,8 +77,8 @@ from their source, not run.
 | | Old (GTK) | New | Sony | ivi-homescreen | flutter-pi |
 |---|---:|---:|---:|---:|---:|
 | Language | C (GObject) | C++ | C++ | C++ | C |
-| Lines, all | 52,468 | 39,588 | ~24.0k (incl. ~8.8k copied from Flutter) | ~146k (93k `shell/` + 22k `shared/` + 31k tests) | ~39k |
-| Lines, excluding tests | 27,645 | 34,072; Wayland 7.8k, X11 3.8k, KMS 2.7k | 15,212 embedder + ~8.8k copied | ~115k; backends 48k, bundled plugins 12k, Wayland 5k | ~39k; core 27k, plugins 9k, util 3k |
+| Lines, all | 52,468 | 42,449 | ~24.0k (incl. ~8.8k copied from Flutter) | ~146k (93k `shell/` + 22k `shared/` + 31k tests) | ~39k |
+| Lines, excluding tests | 27,645 | 36,781; Wayland 7.5k, X11 3.8k, KMS 3.4k | 15,212 embedder + ~8.8k copied | ~115k; backends 48k, bundled plugins 12k, Wayland 5k | ~39k; core 27k, plugins 9k, util 3k |
 | Shared code also used | `common` (input, switches) | `common` C++ client wrapper, input, json (~3k lines, shared with Windows) | copies of `common` and the client wrapper | own C plugin ABI with C++ wrappers | none |
 | Object code (profile, `size`) | ~312 KB | ~495 KB (before X11 and KMS) | n/a | n/a | n/a |
 | `libflutter_linux*.so` (profile, stripped) | 18.30 MB | 18.48 MB (before X11 and KMS) | uses a separately built `libflutter_engine.so` | uses `libflutter_engine.so` | uses `libflutter_engine.so` |
@@ -93,14 +97,14 @@ Notes:
 
   | Area | Lines |
   |---|---:|
-  | Engine, view, public API, channels and event loop | 7.9k |
-  | Wayland (excluding decorations) | 6.2k |
+  | Engine, view, public API, channels and event loop | 8.0k |
+  | Wayland (excluding decorations) | 5.9k |
+  | Rendering (GL and Vulkan), textures and platform views | 5.8k |
   | Accessibility and D-Bus | 5.5k |
   | X11 | 3.8k |
-  | Rendering, textures and platform views | 3.7k |
+  | KMS | 3.4k |
   | Input and text | 3.0k |
-  | KMS | 3.0k |
-  | Decorations | 1.6k |
+  | Decorations | 1.7k |
 
 ## Benchmarks
 
@@ -350,7 +354,7 @@ These are from source analysis of `/tmp/ivi`.
   isn't zero-copy. It lacks desktop window behaviour: decorations, popups,
   dialogs, clipboard and settings. Adopting it would mean either taking on a
   large automotive-focused codebase or carving out its desktop parts. The new
-  embedder already covers the desktop path in about a fifth of the code. Parts
+  embedder already covers the desktop path in about a third of the code. Parts
   worth borrowing ideas from are its Vulkan backend, platform views and external
   textures.
 
