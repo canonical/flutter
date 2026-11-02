@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "flutter/shell/platform/linux/compositor_opengl.h"
+#include "flutter/shell/platform/linux/compositor.h"
 
 #include <drm_fourcc.h>
+#include <linux/dma-buf.h>
 #include <poll.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -47,6 +50,64 @@ int64_t NowNanoseconds() {
   return static_cast<int64_t>(now.tv_sec) * 1000000000 + now.tv_nsec;
 }
 
+// Waits on the CPU for |fence| to signal, up to |timeout_ms|.
+void WaitForFence(int fence, int timeout_ms) {
+  if (fence < 0) {
+    return;
+  }
+  pollfd fd = {.fd = fence, .events = POLLIN};
+  if (FML_HANDLE_EINTR(poll(&fd, 1, timeout_ms)) <= 0) {
+    FML_DLOG(WARNING) << "Timed out waiting for fence";
+  }
+}
+
+// Adds |fence| to the fences implicitly synchronizing access to |dmabuf|, so
+// readers wait for it. Returns false if the kernel doesn't support this.
+bool ImportDmabufWriteFence(int dmabuf, int fence) {
+  dma_buf_import_sync_file import = {
+      .flags = DMA_BUF_SYNC_WRITE,
+      .fd = fence,
+  };
+  return FML_HANDLE_EINTR(
+             ioctl(dmabuf, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &import)) == 0;
+}
+
+// Returns a sync file that signals when all access to |dmabuf| that is
+// implicitly synchronized completes, or an invalid fd on failure.
+fml::UniqueFD ExportDmabufFence(int dmabuf) {
+  dma_buf_export_sync_file exported = {
+      .flags = DMA_BUF_SYNC_WRITE,
+      .fd = -1,
+  };
+  if (FML_HANDLE_EINTR(
+          ioctl(dmabuf, DMA_BUF_IOCTL_EXPORT_SYNC_FILE, &exported)) != 0) {
+    return fml::UniqueFD();
+  }
+  return fml::UniqueFD(exported.fd);
+}
+
+// Makes the render context current for the lifetime of this object if it
+// isn't already. The engine makes it current while rendering with OpenGL, but
+// not when rendering with Vulkan.
+class ScopedRenderContext {
+ public:
+  explicit ScopedRenderContext(EGLManager* egl)
+      : egl_(egl),
+        made_current_(!egl->IsRenderContextCurrent() &&
+                      egl->MakeRenderContextCurrent()) {}
+  ~ScopedRenderContext() {
+    if (made_current_) {
+      egl_->ClearCurrent();
+    }
+  }
+
+  bool is_current() const { return egl_->IsRenderContextCurrent(); }
+
+ private:
+  EGLManager* egl_;
+  bool made_current_;
+};
+
 // Warns that frames are being copied into shared memory, once per process.
 void WarnShmFallback(const char* reason) {
   static std::once_flag once;
@@ -61,10 +122,12 @@ void WarnShmFallback(const char* reason) {
 
 }  // namespace
 
-CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
-                                   Display* display,
-                                   bool depth_stencil)
+Compositor::Compositor(EGLManager* egl,
+                       Display* display,
+                       bool depth_stencil,
+                       VulkanDevice* vulkan)
     : egl_(egl),
+      vulkan_(vulkan),
       display_(display->backend() == Display::Backend::kWayland
                    ? static_cast<WaylandDisplay*>(display)
                    : nullptr),
@@ -72,23 +135,35 @@ CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
       use_dmabuf_(false),
       explicit_sync_(false),
       buffer_modifier_(DRM_FORMAT_MOD_INVALID) {
-  if (display_ == nullptr) {
-    return;
-  }
-  queue_ = wl_display_create_queue(display_->display());
-  shm_wrapper_ = static_cast<wl_shm*>(wl_proxy_create_wrapper(display_->shm()));
-  wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(shm_wrapper_), queue_);
+  const char* unsupported_reason = nullptr;
+  if (display_ != nullptr) {
+    queue_ = wl_display_create_queue(display_->display());
+    shm_wrapper_ =
+        static_cast<wl_shm*>(wl_proxy_create_wrapper(display_->shm()));
+    wl_proxy_set_queue(reinterpret_cast<wl_proxy*>(shm_wrapper_), queue_);
 
-  if (display_->dmabuf() == nullptr) {
-    WarnShmFallback("the Wayland compositor does not support it");
-    return;
+    if (display_->dmabuf() == nullptr) {
+      unsupported_reason = "the Wayland compositor does not support it";
+    } else if (!egl_->gpu()->supports_dmabuf_import()) {
+      unsupported_reason = "EGL does not support EGL_EXT_image_dma_buf_import";
+    } else if (display_->GetModifiers(DmabufBuffer::kFormat).empty()) {
+      unsupported_reason = "the Wayland compositor does not support ARGB8888";
+    }
+    if (unsupported_reason != nullptr) {
+      WarnShmFallback(unsupported_reason);
+    }
   }
-  if (!egl_->gpu()->supports_dmabuf_import()) {
-    WarnShmFallback("EGL does not support EGL_EXT_image_dma_buf_import");
-    return;
+
+  // Vulkan renders into dmabufs that OpenGL presents, synchronized with sync
+  // files.
+  if (vulkan_ != nullptr && (unsupported_reason != nullptr ||
+                             !egl_->gpu()->supports_dmabuf_modifiers() ||
+                             !egl_->gpu()->supports_explicit_sync())) {
+    FML_LOG(WARNING) << "Buffers can't be shared with Vulkan, using OpenGL";
+    vulkan_ = nullptr;
   }
-  if (display_->GetModifiers(DmabufBuffer::kFormat).empty()) {
-    WarnShmFallback("the Wayland compositor does not support ARGB8888");
+
+  if (display_ == nullptr || unsupported_reason != nullptr) {
     return;
   }
   use_dmabuf_ = true;
@@ -102,7 +177,15 @@ CompositorOpenGL::CompositorOpenGL(EGLManager* egl,
                  << " synchronization";
 }
 
-CompositorOpenGL::~CompositorOpenGL() {
+void Compositor::DisableVulkan() {
+  FML_DCHECK(pools_.empty());
+  vulkan_ = nullptr;
+}
+
+Compositor::~Compositor() {
+  if (vulkan_ != nullptr) {
+    vulkan_->WaitIdle();
+  }
   // The engine has shut down, so the raster thread is no longer using the
   // render context and it can be used to free the buffers.
   bool made_current = egl_->MakeRenderContextCurrent();
@@ -123,27 +206,27 @@ CompositorOpenGL::~CompositorOpenGL() {
   }
 }
 
-void CompositorOpenGL::AddView(FlutterViewId view_id, FlutterLinuxView* view) {
+void Compositor::AddView(FlutterViewId view_id, FlutterLinuxView* view) {
   std::scoped_lock lock(views_mutex_);
   views_[view_id] = view;
 }
 
-void CompositorOpenGL::RemoveView(FlutterViewId view_id) {
+void Compositor::RemoveView(FlutterViewId view_id) {
   std::unique_lock<std::mutex> lock(views_mutex_);
   views_.erase(view_id);
   presented_condition_.wait(
       lock, [this, view_id]() { return presenting_view_ != view_id; });
 }
 
-bool CompositorOpenGL::CreateBackingStore(
-    const FlutterBackingStoreConfig& config,
-    FlutterBackingStore* result) {
+bool Compositor::CreateBackingStore(const FlutterBackingStoreConfig& config,
+                                    FlutterBackingStore* result) {
   int width = static_cast<int>(config.size.width);
   int height = static_cast<int>(config.size.height);
   if (width <= 0 || height <= 0) {
     return false;
   }
 
+  ScopedRenderContext context(egl_);
   PoolBuffer* pool_buffer = GetBuffer(config.view_id, width, height);
   if (pool_buffer == nullptr) {
     return false;
@@ -151,6 +234,20 @@ bool CompositorOpenGL::CreateBackingStore(
   pool_buffer->in_use = true;
 
   result->user_data = pool_buffer;
+  if (vulkan_ != nullptr) {
+    pool_buffer->vulkan_image = {
+        .struct_size = sizeof(FlutterVulkanImage),
+        .image = reinterpret_cast<FlutterVulkanImageHandle>(
+            pool_buffer->buffer->vulkan_image()),
+        .format = VulkanDevice::kFormat,
+    };
+    result->type = kFlutterBackingStoreTypeVulkan;
+    result->vulkan.struct_size = sizeof(FlutterVulkanBackingStore);
+    result->vulkan.image = &pool_buffer->vulkan_image;
+    result->vulkan.user_data = nullptr;
+    result->vulkan.destruction_callback = [](void* user_data) {};
+    return true;
+  }
   result->type = kFlutterBackingStoreTypeOpenGL;
   result->open_gl.type = kFlutterOpenGLTargetTypeFramebuffer;
   result->open_gl.framebuffer.target = RenderBuffer::kGLFormat;
@@ -160,15 +257,15 @@ bool CompositorOpenGL::CreateBackingStore(
   return true;
 }
 
-bool CompositorOpenGL::CollectBackingStore(const FlutterBackingStore* store) {
+bool Compositor::CollectBackingStore(const FlutterBackingStore* store) {
   // The buffer stays in the pool for reuse once the compositor releases it.
   static_cast<PoolBuffer*>(store->user_data)->in_use = false;
   return true;
 }
 
-bool CompositorOpenGL::Present(FlutterViewId view_id,
-                               const FlutterLayer** layers,
-                               size_t layers_count) {
+bool Compositor::Present(FlutterViewId view_id,
+                         const FlutterLayer** layers,
+                         size_t layers_count) {
   if (layers_count == 0) {
     return true;
   }
@@ -197,7 +294,11 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
     view = it->second;
     presenting_view_ = view_id;
   }
-  bool result = PresentToView(view, layers, layers_count);
+  bool result = false;
+  {
+    ScopedRenderContext context(egl_);
+    result = context.is_current() && PresentToView(view, layers, layers_count);
+  }
   {
     std::scoped_lock lock(views_mutex_);
     presenting_view_.reset();
@@ -206,25 +307,17 @@ bool CompositorOpenGL::Present(FlutterViewId view_id,
   return result;
 }
 
-void CompositorOpenGL::SetPlatformViewLookup(PlatformViewLookup lookup) {
+void Compositor::SetPlatformViewLookup(PlatformViewLookup lookup) {
   platform_view_lookup_ = std::move(lookup);
 }
 
-bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
-                                     const FlutterLayer** layers,
-                                     size_t layers_count) {
+bool Compositor::PresentToView(FlutterLinuxView* view,
+                               const FlutterLayer** layers,
+                               size_t layers_count) {
   auto* root = static_cast<PoolBuffer*>(layers[0]->backing_store->user_data);
   RenderBuffer* root_buffer = root->buffer.get();
   int width = root_buffer->width();
   int height = root_buffer->height();
-  double corner_radius = view->window()->ContentCornerRadius(width, height);
-  if (corner_radius > 0) {
-    if (!corner_mask_) {
-      corner_mask_ = std::make_unique<CornerMask>();
-    }
-    corner_mask_->Apply(root_buffer->framebuffer(), width, height,
-                        corner_radius);
-  }
 
   // The buffers to show, the root first.
   std::vector<PoolBuffer*> buffers = {root};
@@ -263,6 +356,19 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
     buffers.push_back(pool_buffer);
   }
 
+  if (vulkan_ != nullptr) {
+    WaitForVulkan(buffers);
+  }
+
+  double corner_radius = view->window()->ContentCornerRadius(width, height);
+  if (corner_radius > 0) {
+    if (!corner_mask_) {
+      corner_mask_ = std::make_unique<CornerMask>();
+    }
+    corner_mask_->Apply(root_buffer->framebuffer(), width, height,
+                        corner_radius, root_buffer->top_row_first());
+  }
+
   for (PoolBuffer* pool_buffer : buffers) {
     if (!pool_buffer->buffer->PrepareToPresent()) {
       return false;
@@ -281,6 +387,9 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
       }
     }
     view->PresentBuffer(root_buffer, nullptr, window_layers);
+    if (vulkan_ != nullptr) {
+      SetRenderFences(buffers);
+    }
     return true;
   }
 
@@ -306,12 +415,90 @@ bool CompositorOpenGL::PresentToView(FlutterLinuxView* view,
     }
   }
   view->PresentBuffer(root_buffer, &sync[0], window_layers);
+  if (vulkan_ != nullptr) {
+    SetRenderFences(buffers);
+  }
   return true;
 }
 
-PixelRect CompositorOpenGL::GetPaintBounds(const FlutterLayer* layer,
-                                           int width,
-                                           int height) {
+void Compositor::WaitForVulkan(const std::vector<PoolBuffer*>& buffers) {
+  std::vector<VkImage> images;
+  for (PoolBuffer* pool_buffer : buffers) {
+    images.push_back(pool_buffer->buffer->vulkan_image());
+  }
+  fml::UniqueFD fence = vulkan_->ReleaseImages(images);
+  if (!fence.is_valid()) {
+    // Rendering has completed.
+    return;
+  }
+
+  // Vulkan doesn't add its fences to the dmabufs, so they are added for
+  // compositors that synchronize implicitly.
+  if (display_ != nullptr && buffers[0]->timeline == nullptr) {
+    for (PoolBuffer* pool_buffer : buffers) {
+      if (!ImportDmabufWriteFence(pool_buffer->buffer->dmabuf_fd(),
+                                  fence.get())) {
+        WaitForFence(fence.get(), kBufferWaitTimeoutMs);
+        return;
+      }
+    }
+  }
+
+  if (!GpuWait(fence.get())) {
+    WaitForFence(fence.get(), kBufferWaitTimeoutMs);
+  }
+}
+
+bool Compositor::GpuWait(int fence) {
+  GpuDevice* gpu = egl_->gpu();
+  if (gpu->WaitSync == nullptr || fence < 0 ||
+      !egl_->IsRenderContextCurrent()) {
+    return false;
+  }
+  fml::UniqueFD fd(dup(fence));
+  const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, fd.get(),
+                               EGL_NONE};
+  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
+                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  if (sync == EGL_NO_SYNC_KHR) {
+    return false;
+  }
+  // EGL owns the fd now.
+  [[maybe_unused]] int released = fd.release();
+  bool waited = gpu->WaitSync(gpu->display(), sync, 0) == EGL_TRUE;
+  gpu->DestroySync(gpu->display(), sync);
+  return waited;
+}
+
+void Compositor::SetRenderFences(const std::vector<PoolBuffer*>& buffers) {
+  GpuDevice* gpu = egl_->gpu();
+  const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
+                               EGL_NO_NATIVE_FENCE_FD_ANDROID, EGL_NONE};
+  EGLSyncKHR sync = gpu->CreateSync(gpu->display(),
+                                    EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+  glFlush();
+  fml::UniqueFD fence;
+  if (sync != EGL_NO_SYNC_KHR) {
+    fence.reset(gpu->DupNativeFenceFD(gpu->display(), sync));
+    gpu->DestroySync(gpu->display(), sync);
+  }
+  if (!fence.is_valid()) {
+    glFinish();
+  }
+  for (PoolBuffer* pool_buffer : buffers) {
+    pool_buffer->render_fence.reset(fence.is_valid() ? dup(fence.get()) : -1);
+  }
+}
+
+void Compositor::WaitForRenderFence(PoolBuffer* pool_buffer) {
+  WaitForFence(pool_buffer->render_fence.get(),
+               kReleaseFenceTimeoutNs / 1000000);
+  pool_buffer->render_fence.reset();
+}
+
+PixelRect Compositor::GetPaintBounds(const FlutterLayer* layer,
+                                     int width,
+                                     int height) {
   PixelRect full = {0, 0, static_cast<double>(width),
                     static_cast<double>(height)};
   const FlutterBackingStorePresentInfo* info =
@@ -338,7 +525,7 @@ PixelRect CompositorOpenGL::GetPaintBounds(const FlutterLayer* layer,
   return PixelRect{left, top, right - left, bottom - top}.Intersect(full);
 }
 
-bool CompositorOpenGL::SignalWhenRenderingComplete(
+bool Compositor::SignalWhenRenderingComplete(
     const std::vector<PoolBuffer*>& buffers,
     const std::vector<Window::SyncPoints>& sync) {
   GpuDevice* gpu = egl_->gpu();
@@ -372,9 +559,9 @@ bool CompositorOpenGL::SignalWhenRenderingComplete(
   return true;
 }
 
-CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
-                                                          int width,
-                                                          int height) {
+Compositor::PoolBuffer* Compositor::GetBuffer(FlutterViewId view_id,
+                                              int width,
+                                              int height) {
   DispatchBufferEvents();
   RemoveUnusedPools();
 
@@ -433,35 +620,42 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::GetBuffer(FlutterViewId view_id,
   return pool.back().get();
 }
 
-std::unique_ptr<RenderBuffer> CompositorOpenGL::AllocateBuffer(int width,
-                                                               int height) {
+std::unique_ptr<RenderBuffer> Compositor::AllocateBuffer(int width,
+                                                         int height) {
+  // Impeller's Vulkan backend allocates its own depth and stencil buffers.
+  bool depth_stencil = depth_stencil_ && vulkan_ == nullptr;
   if (display_ == nullptr) {
-    return TextureBuffer::Create(egl_, width, height, depth_stencil_);
+    return TextureBuffer::Create(egl_, width, height, depth_stencil, vulkan_);
   }
   if (use_dmabuf_) {
-    std::unique_ptr<RenderBuffer> buffer = DmabufBuffer::Create(
-        egl_, dmabuf_wrapper_, display_->GetModifiers(DmabufBuffer::kFormat),
-        width, height, depth_stencil_);
+    std::unique_ptr<RenderBuffer> buffer =
+        DmabufBuffer::Create(egl_, vulkan_, dmabuf_wrapper_,
+                             display_->GetModifiers(DmabufBuffer::kFormat),
+                             width, height, depth_stencil);
     if (buffer) {
       dmabuf_allocated_ = true;
       return buffer;
     }
-    if (dmabuf_allocated_) {
+    // Vulkan can only render into dmabufs.
+    if (dmabuf_allocated_ || vulkan_ != nullptr) {
       return nullptr;
     }
     WarnShmFallback("a buffer could not be allocated");
     use_dmabuf_ = false;
     explicit_sync_ = false;
   }
-  return ShmBuffer::Create(egl_, shm_wrapper_, width, height, depth_stencil_);
+  return ShmBuffer::Create(egl_, shm_wrapper_, width, height, depth_stencil);
 }
 
-void CompositorOpenGL::RemoveUnusedPools() {
+void Compositor::RemoveUnusedPools() {
   std::scoped_lock lock(views_mutex_);
   for (auto it = pools_.begin(); it != pools_.end();) {
     bool in_use = std::any_of(it->second.begin(), it->second.end(),
                               [](const auto& b) { return b->in_use; });
     if (views_.count(it->first) == 0 && !in_use) {
+      for (auto& b : it->second) {
+        WaitForRenderFence(b.get());
+      }
       backing_stores_per_frame_.erase(it->first);
       it = pools_.erase(it);
     } else {
@@ -470,19 +664,23 @@ void CompositorOpenGL::RemoveUnusedPools() {
   }
 }
 
-void CompositorOpenGL::TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,
-                                int width,
-                                int height) {
+void Compositor::TrimPool(std::vector<std::unique_ptr<PoolBuffer>>& pool,
+                          int width,
+                          int height) {
   pool.erase(std::remove_if(pool.begin(), pool.end(),
                             [this, width, height](const auto& b) {
-                              return IsFree(b.get()) &&
-                                     (b->buffer->width() != width ||
-                                      b->buffer->height() != height);
+                              if (!IsFree(b.get()) ||
+                                  (b->buffer->width() == width &&
+                                   b->buffer->height() == height)) {
+                                return false;
+                              }
+                              WaitForRenderFence(b.get());
+                              return true;
                             }),
              pool.end());
 }
 
-CompositorOpenGL::PoolBuffer* CompositorOpenGL::FindFreeBuffer(
+Compositor::PoolBuffer* Compositor::FindFreeBuffer(
     std::vector<std::unique_ptr<PoolBuffer>>& pool,
     int width,
     int height) {
@@ -495,7 +693,7 @@ CompositorOpenGL::PoolBuffer* CompositorOpenGL::FindFreeBuffer(
   return nullptr;
 }
 
-bool CompositorOpenGL::IsReleased(const PoolBuffer* pool_buffer) const {
+bool Compositor::IsReleased(const PoolBuffer* pool_buffer) const {
   if (pool_buffer->timeline == nullptr) {
     return !pool_buffer->buffer->busy();
   }
@@ -503,11 +701,22 @@ bool CompositorOpenGL::IsReleased(const PoolBuffer* pool_buffer) const {
          pool_buffer->timeline->IsAvailable(pool_buffer->release_point);
 }
 
-bool CompositorOpenGL::IsFree(const PoolBuffer* pool_buffer) const {
+bool Compositor::IsFree(const PoolBuffer* pool_buffer) const {
   return !pool_buffer->in_use && IsReleased(pool_buffer);
 }
 
-void CompositorOpenGL::WaitForRelease(PoolBuffer* pool_buffer) {
+void Compositor::WaitForRelease(PoolBuffer* pool_buffer) {
+  if (vulkan_ != nullptr) {
+    // Vulkan can't be made to wait for OpenGL or the compositor, so wait on
+    // the CPU. The waits are usually complete as there are several buffers.
+    WaitForRenderFence(pool_buffer);
+    if (pool_buffer->timeline == nullptr && display_ != nullptr) {
+      fml::UniqueFD fence = ExportDmabufFence(pool_buffer->buffer->dmabuf_fd());
+      WaitForFence(fence.get(), kReleaseFenceTimeoutNs / 1000000);
+      return;
+    }
+  }
+
   if (pool_buffer->timeline == nullptr || pool_buffer->release_point == 0) {
     return;
   }
@@ -517,24 +726,9 @@ void CompositorOpenGL::WaitForRelease(PoolBuffer* pool_buffer) {
 
   // Have the GPU wait for the compositor's reads to complete before
   // rendering, so the CPU doesn't block.
-  GpuDevice* gpu = egl_->gpu();
-  if (gpu->WaitSync != nullptr && egl_->IsRenderContextCurrent()) {
-    fml::UniqueFD fence = timeline->ExportSyncFile(point);
-    if (fence.is_valid()) {
-      const EGLint attributes[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID,
-                                   fence.get(), EGL_NONE};
-      EGLSyncKHR sync = gpu->CreateSync(
-          gpu->display(), EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
-      if (sync != EGL_NO_SYNC_KHR) {
-        // EGL owns the fence now.
-        [[maybe_unused]] int fd = fence.release();
-        bool waited = gpu->WaitSync(gpu->display(), sync, 0) == EGL_TRUE;
-        gpu->DestroySync(gpu->display(), sync);
-        if (waited) {
-          return;
-        }
-      }
-    }
+  // Vulkan can't wait on OpenGL, so it waits on the CPU.
+  if (vulkan_ == nullptr && GpuWait(timeline->ExportSyncFile(point).get())) {
+    return;
   }
 
   if (!timeline->Wait(point, NowNanoseconds() + kReleaseFenceTimeoutNs)) {
@@ -543,7 +737,7 @@ void CompositorOpenGL::WaitForRelease(PoolBuffer* pool_buffer) {
   }
 }
 
-bool CompositorOpenGL::WaitForReleasedBuffer(
+bool Compositor::WaitForReleasedBuffer(
     std::vector<std::unique_ptr<PoolBuffer>>& pool,
     int timeout_ms) {
   if (!explicit_sync_) {
@@ -563,14 +757,14 @@ bool CompositorOpenGL::WaitForReleasedBuffer(
       NowNanoseconds() + static_cast<int64_t>(timeout_ms) * 1000000);
 }
 
-void CompositorOpenGL::DispatchBufferEvents() {
+void Compositor::DispatchBufferEvents() {
   if (queue_ == nullptr) {
     return;
   }
   wl_display_dispatch_queue_pending(display_->display(), queue_);
 }
 
-bool CompositorOpenGL::WaitForBufferEvents(int timeout_ms) {
+bool Compositor::WaitForBufferEvents(int timeout_ms) {
   if (queue_ == nullptr) {
     return false;
   }

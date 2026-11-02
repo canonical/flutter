@@ -11,9 +11,10 @@ namespace flutter {
 std::unique_ptr<TextureBuffer> TextureBuffer::Create(EGLManager* egl,
                                                      int width,
                                                      int height,
-                                                     bool depth_stencil) {
+                                                     bool depth_stencil,
+                                                     VulkanDevice* vulkan) {
   std::unique_ptr<TextureBuffer> buffer(new TextureBuffer(egl, width, height));
-  if (!buffer->Initialize(depth_stencil)) {
+  if (!buffer->Initialize(depth_stencil, vulkan)) {
     return nullptr;
   }
   return buffer;
@@ -29,10 +30,20 @@ TextureBuffer::~TextureBuffer() {
 }
 
 uint64_t TextureBuffer::modifier() const {
-  return DRM_FORMAT_MOD_INVALID;
+  return image_ ? image_->modifier() : DRM_FORMAT_MOD_INVALID;
 }
 
-bool TextureBuffer::Initialize(bool depth_stencil) {
+bool TextureBuffer::Initialize(bool depth_stencil, VulkanDevice* vulkan) {
+  if (vulkan != nullptr) {
+    image_ = DmabufImage::Create(
+        egl(), vulkan, egl()->gpu()->GetRenderModifiers(DmabufImage::kFormat),
+        width(), height());
+    if (!image_) {
+      return false;
+    }
+    return CreateFramebuffer(GL_TEXTURE_2D, image_->texture(), depth_stencil);
+  }
+
   glGenTextures(1, &texture_);
   glBindTexture(GL_TEXTURE_2D, texture_);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);

@@ -1169,7 +1169,8 @@ bool X11Window::CopyToBuffer(TextureBuffer* texture, Buffer* buffer) {
 
   if (buffer->framebuffer != 0) {
     if (!blitter_->Draw(texture->texture(), buffer->framebuffer, buffer->width,
-                        buffer->height, /*swap_red_blue=*/false)) {
+                        buffer->height, !texture->top_row_first(),
+                        /*swap_red_blue=*/false)) {
       return false;
     }
     // The server reads the buffer without synchronizing with this context.
@@ -1189,7 +1190,7 @@ bool X11Window::CopyToBuffer(TextureBuffer* texture, Buffer* buffer) {
   }
   bool read_bgra = texture->egl_manager()->supports_read_bgra();
   if (!blitter_->Draw(texture->texture(), staging_->framebuffer(),
-                      buffer->width, buffer->height,
+                      buffer->width, buffer->height, !texture->top_row_first(),
                       /*swap_red_blue=*/!read_bgra)) {
     return false;
   }

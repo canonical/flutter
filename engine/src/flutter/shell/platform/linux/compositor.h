@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
-#define FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
+#ifndef FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_H_
+#define FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_H_
 
 #include <atomic>
 #include <condition_variable>
@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/fml/unique_fd.h"
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/linux/corner_mask.h"
 #include "flutter/shell/platform/linux/display.h"
@@ -22,6 +23,7 @@
 #include "flutter/shell/platform/linux/platform_view.h"
 #include "flutter/shell/platform/linux/platform_view_geometry.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
+#include "flutter/shell/platform/linux/vulkan_device.h"
 #include "flutter/shell/platform/linux/wayland/drm_timeline.h"
 #include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/wayland_display.h"
@@ -31,7 +33,8 @@ namespace flutter {
 
 class FlutterLinuxView;
 
-// Implements Flutter's compositor using OpenGL.
+// Implements Flutter's compositor. Flutter renders with OpenGL or Vulkan,
+// and the compositor uses OpenGL to prepare and present the frames.
 //
 // Flutter renders each frame into a dmabuf, which is then handed directly to
 // the Wayland compositor. No copies are made.
@@ -46,16 +49,26 @@ class FlutterLinuxView;
 // finished reading a buffer before rendering into it again. Otherwise
 // implicit synchronization and wl_buffer.release are used.
 //
-// On X11, Flutter renders into GL textures that the window copies into its
-// own buffers when presenting.
+// On X11 and KMS, Flutter renders into GL textures that the window copies
+// into its own buffers when presenting.
+//
+// If Flutter renders with Vulkan, buffers are dmabufs imported into both
+// Vulkan and OpenGL. OpenGL waits for a sync file exported from Vulkan
+// before using them, and is still used to present them.
 //
 // Backing stores are created, collected and presented on the raster thread.
-class CompositorOpenGL {
+class Compositor {
  public:
   // If |depth_stencil| is true, backing stores have a depth/stencil
-  // attachment (required by Impeller).
-  CompositorOpenGL(EGLManager* egl, Display* display, bool depth_stencil);
-  ~CompositorOpenGL();
+  // attachment (required by Impeller with OpenGL).
+  //
+  // If |vulkan| is set, backing stores are Vulkan images, unless they can't
+  // be shared with OpenGL, in which case vulkan() is nullptr.
+  Compositor(EGLManager* egl,
+             Display* display,
+             bool depth_stencil,
+             VulkanDevice* vulkan = nullptr);
+  ~Compositor();
 
   // Registers |view| to have frames for |view_id| presented to it. Called on
   // the platform thread.
@@ -64,6 +77,13 @@ class CompositorOpenGL {
   // Stops presenting frames to the view with |view_id|. Called on the
   // platform thread.
   void RemoveView(FlutterViewId view_id);
+
+  // The Vulkan device Flutter renders with, or nullptr if it renders with
+  // OpenGL.
+  VulkanDevice* vulkan() const { return vulkan_; }
+
+  // Switches to OpenGL backing stores. Must be called before any are created.
+  void DisableVulkan();
 
   // True if buffers are shared with the compositor as dmabufs, false if
   // frames are copied into shared memory. May be called from any thread.
@@ -119,6 +139,13 @@ class CompositorOpenGL {
     // The point the compositor signals when it has finished with the buffer,
     // or zero if there is nothing to wait for.
     uint64_t release_point = 0;
+
+    // The image given to the engine when rendering with Vulkan.
+    FlutterVulkanImage vulkan_image = {};
+
+    // When rendering with Vulkan, a sync file signalled when OpenGL has
+    // finished with the buffer, which Vulkan doesn't wait for itself.
+    fml::UniqueFD render_fence;
   };
 
   // Returns a buffer of the given size from the pool for |view_id|,
@@ -155,6 +182,22 @@ class CompositorOpenGL {
   // finished reading from it.
   void WaitForRelease(PoolBuffer* pool_buffer);
 
+  // Waits on the CPU for the OpenGL work on |pool_buffer| to complete before
+  // Vulkan renders into it or it is freed.
+  static void WaitForRenderFence(PoolBuffer* pool_buffer);
+
+  // Has OpenGL, and the compositor if implicitly synchronized, wait for
+  // Vulkan to finish rendering into |buffers|.
+  void WaitForVulkan(const std::vector<PoolBuffer*>& buffers);
+
+  // Has OpenGL wait for |fence| without blocking the CPU. Returns false if
+  // that isn't possible.
+  bool GpuWait(int fence);
+
+  // Sets the render fence of |buffers| to signal when the OpenGL work
+  // submitted so far completes.
+  void SetRenderFences(const std::vector<PoolBuffer*>& buffers);
+
   // Waits until the compositor releases a buffer in |pool|, up to
   // |timeout_ms|. Returns false if the wait timed out or failed.
   bool WaitForReleasedBuffer(std::vector<std::unique_ptr<PoolBuffer>>& pool,
@@ -184,6 +227,7 @@ class CompositorOpenGL {
   bool WaitForBufferEvents(int timeout_ms);
 
   EGLManager* egl_;
+  VulkanDevice* vulkan_;
   // The display if it is a Wayland display, otherwise nullptr.
   WaylandDisplay* display_;
   bool depth_stencil_;
@@ -227,9 +271,9 @@ class CompositorOpenGL {
   // Rounds the corners of decorated windows. Only used on the raster thread.
   std::unique_ptr<CornerMask> corner_mask_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(CompositorOpenGL);
+  FML_DISALLOW_COPY_AND_ASSIGN(Compositor);
 };
 
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_OPENGL_H_
+#endif  // FLUTTER_SHELL_PLATFORM_LINUX_COMPOSITOR_H_

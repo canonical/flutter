@@ -5,13 +5,12 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DMABUF_BUFFER_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_WAYLAND_DMABUF_BUFFER_H_
 
-#include <gbm.h>
-
 #include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "flutter/fml/macros.h"
+#include "flutter/shell/platform/linux/dmabuf_image.h"
 #include "flutter/shell/platform/linux/render_buffer.h"
 #include "flutter/shell/platform/linux/wayland/protocols/linux-dmabuf-v1-client-protocol.h"
 #include "flutter/shell/platform/linux/wayland/protocols/wayland-client-protocol.h"
@@ -36,9 +35,12 @@ class DmabufBuffer : public RenderBuffer {
   // If |depth_stencil| is true a depth/stencil attachment is added to the
   // framebuffer.
   //
+  // If |vulkan| is set, the buffer is also imported into Vulkan.
+  //
   // Must be called with the render context current.
   static std::unique_ptr<DmabufBuffer> Create(
       EGLManager* egl,
+      VulkanDevice* vulkan,
       zwp_linux_dmabuf_v1* dmabuf,
       const std::vector<uint64_t>& modifiers,
       int width,
@@ -49,7 +51,13 @@ class DmabufBuffer : public RenderBuffer {
 
   // |RenderBuffer|
   // DRM_FORMAT_MOD_INVALID if the driver chose the layout implicitly.
-  uint64_t modifier() const override { return modifier_; }
+  uint64_t modifier() const override { return image_->modifier(); }
+
+  // |RenderBuffer|
+  VkImage vulkan_image() const override { return image_->vulkan_image(); }
+
+  // |RenderBuffer|
+  int dmabuf_fd() const override { return image_->fd(); }
 
   // |RenderBuffer|
   bool PrepareToPresent() override { return true; }
@@ -60,14 +68,12 @@ class DmabufBuffer : public RenderBuffer {
  private:
   DmabufBuffer(EGLManager* egl, int width, int height);
 
-  bool Initialize(zwp_linux_dmabuf_v1* dmabuf,
+  bool Initialize(VulkanDevice* vulkan,
+                  zwp_linux_dmabuf_v1* dmabuf,
                   const std::vector<uint64_t>& modifiers,
                   bool depth_stencil);
 
-  gbm_bo* bo_ = nullptr;
-  uint64_t modifier_ = 0;
-  EGLImageKHR image_ = EGL_NO_IMAGE_KHR;
-  GLuint texture_ = 0;
+  std::unique_ptr<DmabufImage> image_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(DmabufBuffer);
 };

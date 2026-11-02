@@ -25,10 +25,10 @@ class TextureBlitter {
   ~TextureBlitter();
 
   // Replaces the contents of |framebuffer|, which is |width| x |height|
-  // pixels, with |texture|, flipping it vertically so a texture rendered with
-  // OpenGL conventions (bottom row first) has its top row first. If
-  // |swap_red_blue| is true the red and blue channels are exchanged, so
-  // reading the result as RGBA gives BGRA.
+  // pixels, with |texture|. If |flip| is true it is flipped vertically, so a
+  // texture rendered with OpenGL conventions (bottom row first) has its top
+  // row first. If |swap_red_blue| is true the red and blue channels are
+  // exchanged, so reading the result as RGBA gives BGRA.
   //
   // The OpenGL state is restored afterwards. Must be called with the render
   // context current.
@@ -36,6 +36,7 @@ class TextureBlitter {
             GLuint framebuffer,
             int width,
             int height,
+            bool flip,
             bool swap_red_blue);
 
   // Blends |texture| over the contents of |framebuffer|, which is |width| x
@@ -79,6 +80,7 @@ class TextureBlitter {
   GLint position_location_ = -1;
   GLint texture_location_ = -1;
   GLint swap_location_ = -1;
+  GLint flip_location_ = -1;
 
   // Programs for GL_TEXTURE_2D and GL_TEXTURE_EXTERNAL_OES layers.
   std::array<LayerProgram, 2> layer_programs_;

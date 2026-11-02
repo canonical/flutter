@@ -4,6 +4,9 @@
 
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 
+#include <cstdlib>
+#include <cstring>
+
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/linux/wayland/decoration_renderer.h"
 #include "flutter/shell/platform/linux/wayland/wayland_display.h"
@@ -23,6 +26,7 @@ FlutterLinuxApplication::~FlutterLinuxApplication() {
   decoration_renderer_.reset();
   settings_.reset();
   atspi_.reset();
+  vulkan_.reset();
   gpu_.reset();
   if (display_) {
     event_loop_->RemoveSource(display_.get());
@@ -52,6 +56,25 @@ bool FlutterLinuxApplication::Initialize() {
   settings_ = std::make_unique<DesktopSettings>(event_loop_.get());
   settings_->Start();
   return true;
+}
+
+VulkanDevice* FlutterLinuxApplication::vulkan() {
+  if (!vulkan_created_) {
+    vulkan_created_ = true;
+    const char* renderer = getenv("FLUTTER_LINUX_RENDERER");
+    if (renderer != nullptr && strcmp(renderer, "vulkan") != 0 &&
+        strcmp(renderer, "opengl") != 0) {
+      FML_LOG(WARNING) << "Unknown FLUTTER_LINUX_RENDERER '" << renderer
+                       << "', expected 'opengl' or 'vulkan'";
+    }
+    if (renderer != nullptr && strcmp(renderer, "vulkan") == 0) {
+      vulkan_ = VulkanDevice::Create(gpu_.get());
+      if (!vulkan_) {
+        FML_LOG(WARNING) << "Vulkan is unavailable, rendering with OpenGL";
+      }
+    }
+  }
+  return vulkan_.get();
 }
 
 DecorationRenderer* FlutterLinuxApplication::decoration_renderer() {

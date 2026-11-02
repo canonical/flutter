@@ -194,7 +194,7 @@ void KmsWindow::Present(RenderBuffer* buffer,
   }
   // The frame is scaled to the screen if it was drawn at a different size.
   if (!blitter_->Draw(source->texture(), target->framebuffer, physical_width(),
-                      physical_height(),
+                      physical_height(), !source->top_row_first(),
                       /*swap_red_blue=*/false)) {
     return;
   }
@@ -268,7 +268,7 @@ std::vector<KmsWindow::ViewUse> KmsWindow::DrawLayers(
     auto* overlay = static_cast<TextureBuffer*>(layer.buffer);
     blitter_->DrawLayer(GL_TEXTURE_2D, overlay->texture(), target->framebuffer,
                         width, height, screen, to_screen(layer.content),
-                        /*opacity=*/1.0, /*flip=*/true);
+                        /*opacity=*/1.0, !overlay->top_row_first());
   }
   return uses;
 }

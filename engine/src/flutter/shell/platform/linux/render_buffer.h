@@ -5,6 +5,8 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_RENDER_BUFFER_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_RENDER_BUFFER_H_
 
+#include <vulkan/vulkan.h>
+
 #include <atomic>
 #include <cstdint>
 
@@ -14,8 +16,10 @@
 
 namespace flutter {
 
-// A buffer that Flutter renders into with OpenGL and that is attached to a
-// Wayland surface.
+// A buffer that Flutter renders into and that is shown in a window.
+//
+// Flutter renders into the buffer's GL framebuffer, or its Vulkan image if
+// rendering with Vulkan.
 class RenderBuffer {
  public:
   // GL objects are only deleted if the render context is current, otherwise
@@ -27,6 +31,17 @@ class RenderBuffer {
 
   // The GL framebuffer to render into.
   uint32_t framebuffer() const { return framebuffer_; }
+
+  // The Vulkan image to render into, or VK_NULL_HANDLE if Flutter renders
+  // with OpenGL.
+  virtual VkImage vulkan_image() const { return VK_NULL_HANDLE; }
+
+  // True if the buffer's first row is the top of the image, as rendered by
+  // Vulkan. OpenGL renders the bottom row first.
+  bool top_row_first() const { return vulkan_image() != VK_NULL_HANDLE; }
+
+  // The dmabuf holding the buffer, or -1 if it isn't in a dmabuf.
+  virtual int dmabuf_fd() const { return -1; }
 
   // The DRM format modifier describing the buffer layout, or
   // DRM_FORMAT_MOD_INVALID if the layout is not known.

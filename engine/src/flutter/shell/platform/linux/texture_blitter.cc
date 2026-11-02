@@ -16,12 +16,16 @@ namespace flutter {
 
 namespace {
 
-// Maps the bottom of the framebuffer to the top of the texture.
+// Maps the bottom of the framebuffer to the top of the texture, unless the
+// texture isn't flipped.
 constexpr char kVertexShader[] = R"(
 attribute vec2 a_position;
+uniform bool u_flip;
 varying vec2 v_texcoord;
 void main() {
-  v_texcoord = vec2(a_position.x + 1.0, 1.0 - a_position.y) * 0.5;
+  v_texcoord =
+      vec2(a_position.x + 1.0, u_flip ? 1.0 - a_position.y : 1.0 + a_position.y) *
+      0.5;
   gl_Position = vec4(a_position, 0.0, 1.0);
 }
 )";
@@ -158,6 +162,7 @@ bool TextureBlitter::Initialize() {
   position_location_ = glGetAttribLocation(program_, "a_position");
   texture_location_ = glGetUniformLocation(program_, "u_texture");
   swap_location_ = glGetUniformLocation(program_, "u_swap_red_blue");
+  flip_location_ = glGetUniformLocation(program_, "u_flip");
 
   // A triangle covering the viewport.
   static constexpr GLfloat kVertices[] = {-1, -1, 3, -1, -1, 3};
@@ -174,6 +179,7 @@ bool TextureBlitter::Draw(GLuint texture,
                           GLuint framebuffer,
                           int width,
                           int height,
+                          bool flip,
                           bool swap_red_blue) {
   if (!initialized_) {
     initialized_ = true;
@@ -192,6 +198,7 @@ bool TextureBlitter::Draw(GLuint texture,
   glUseProgram(program_);
   glUniform1i(texture_location_, 0);
   glUniform1i(swap_location_, swap_red_blue ? 1 : 0);
+  glUniform1i(flip_location_, flip ? 1 : 0);
   glBindTexture(GL_TEXTURE_2D, texture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

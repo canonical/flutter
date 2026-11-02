@@ -18,7 +18,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/path_utils.h"
-#include "flutter/shell/platform/linux/compositor_opengl.h"
+#include "flutter/shell/platform/linux/compositor.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/external_texture.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"

@@ -29,9 +29,13 @@ precision highp float;
 
 uniform vec2 u_size;
 uniform float u_radius;
+uniform bool u_top_row_first;
 
 void main() {
   vec2 p = gl_FragCoord.xy;
+  if (u_top_row_first) {
+    p.y = u_size.y - p.y;
+  }
   vec2 c = vec2(clamp(p.x, u_radius, u_size.x - u_radius), u_radius);
   float d = length(p - c) - u_radius;
   gl_FragColor = vec4(clamp(0.5 - d, 0.0, 1.0));
@@ -92,6 +96,7 @@ bool CornerMask::Initialize() {
   position_location_ = glGetAttribLocation(program_, "a_position");
   size_location_ = glGetUniformLocation(program_, "u_size");
   radius_location_ = glGetUniformLocation(program_, "u_radius");
+  top_row_first_location_ = glGetUniformLocation(program_, "u_top_row_first");
 
   // A triangle covering the viewport, clipped to each corner with scissors.
   static constexpr GLfloat kVertices[] = {-1, -1, 3, -1, -1, 3};
@@ -107,7 +112,8 @@ bool CornerMask::Initialize() {
 bool CornerMask::Apply(GLuint framebuffer,
                        int width,
                        int height,
-                       float radius) {
+                       float radius,
+                       bool top_row_first) {
   if (!initialized_) {
     initialized_ = true;
     if (!Initialize()) {
@@ -130,6 +136,7 @@ bool CornerMask::Apply(GLuint framebuffer,
   glUseProgram(program_);
   glUniform2f(size_location_, width, height);
   glUniform1f(radius_location_, radius);
+  glUniform1i(top_row_first_location_, top_row_first ? 1 : 0);
   glEnable(GL_BLEND);
   glBlendFunc(GL_ZERO, GL_SRC_ALPHA);
   glBlendEquation(GL_FUNC_ADD);
@@ -142,10 +149,11 @@ bool CornerMask::Apply(GLuint framebuffer,
   glEnableVertexAttribArray(position_location_);
   glVertexAttribPointer(position_location_, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-  // The bottom row is first, so the bottom corners are at the start.
-  glScissor(0, 0, size, size);
+  // The bottom corners are at the start unless the top row is first.
+  int y = top_row_first ? height - size : 0;
+  glScissor(0, y, size, size);
   glDrawArrays(GL_TRIANGLES, 0, 3);
-  glScissor(width - size, 0, size, size);
+  glScissor(width - size, y, size, size);
   glDrawArrays(GL_TRIANGLES, 0, 3);
   return true;
 }

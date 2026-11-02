@@ -104,6 +104,13 @@ extern const intptr_t kPlatformStrongDillSize;
 #ifdef SHELL_ENABLE_VULKAN
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkTypes.h"
+#ifdef IMPELLER_SUPPORTS_RENDERING
+#include "flutter/shell/platform/embedder/embedder_render_target_impeller.h"  // nogncheck
+#include "impeller/renderer/backend/vulkan/formats_vk.h"          // nogncheck
+#include "impeller/renderer/backend/vulkan/texture_vk.h"          // nogncheck
+#include "impeller/renderer/backend/vulkan/texture_wrapper_vk.h"  // nogncheck
+#include "impeller/renderer/render_target.h"                      // nogncheck
+#endif  // IMPELLER_SUPPORTS_RENDERING
 #endif  // SHELL_ENABLE_VULKAN
 
 const int32_t kFlutterSemanticsNodeIdBatchEnd = -1;
@@ -1311,6 +1318,76 @@ MakeRenderTargetFromBackingStoreImpeller(
 #endif
 }
 
+static std::unique_ptr<flutter::EmbedderRenderTarget>
+MakeRenderTargetFromBackingStoreImpeller(
+    FlutterBackingStore backing_store,
+    const fml::closure& on_release,
+    const std::shared_ptr<impeller::AiksContext>& aiks_context,
+    const FlutterBackingStoreConfig& config,
+    const FlutterVulkanBackingStore* vulkan) {
+#if defined(SHELL_ENABLE_VULKAN) && defined(IMPELLER_SUPPORTS_RENDERING)
+  if (!vulkan->image || !vulkan->image->image) {
+    FML_LOG(ERROR) << "Embedder supplied null Vulkan image.";
+    return nullptr;
+  }
+
+  auto format = impeller::VkFormatToImpellerFormat(
+      static_cast<impeller::vk::Format>(vulkan->image->format));
+  if (!format.has_value()) {
+    FML_LOG(ERROR) << "Unsupported Vulkan image format "
+                   << vulkan->image->format;
+    return nullptr;
+  }
+
+  const auto& context = aiks_context->GetContext();
+
+  impeller::TextureDescriptor color0_desc;
+  color0_desc.type = impeller::TextureType::kTexture2D;
+  color0_desc.sample_count = impeller::SampleCount::kCount1;
+  color0_desc.storage_mode = impeller::StorageMode::kDevicePrivate;
+  color0_desc.format = format.value();
+  color0_desc.size = impeller::ISize(config.size.width, config.size.height);
+  color0_desc.usage = impeller::TextureUsage::kRenderTarget |
+                      impeller::TextureUsage::kShaderRead;
+
+  auto source = impeller::WrapTextureSourceVK(
+      context, color0_desc,
+      impeller::vk::Image(reinterpret_cast<VkImage>(vulkan->image->image)));
+  if (!source) {
+    FML_LOG(ERROR) << "Could not wrap embedder supplied Vulkan image.";
+    return nullptr;
+  }
+
+  context->UpdateOffscreenLayerPixelFormat(color0_desc.format);
+
+  std::shared_ptr<impeller::Texture> color0_tex =
+      std::make_shared<impeller::TextureVK>(context, std::move(source));
+  color0_tex->SetLabel("ImpellerBackingStore");
+
+  impeller::ColorAttachment color0;
+  color0.texture = color0_tex;
+  color0.clear_color = impeller::Color::DarkSlateGray();
+  color0.load_action = impeller::LoadAction::kClear;
+  color0.store_action = impeller::StoreAction::kStore;
+
+  impeller::RenderTarget render_target_desc;
+  render_target_desc.SetColorAttachment(color0, 0u);
+
+  fml::closure image_destruct;
+  if (vulkan->destruction_callback) {
+    image_destruct = [callback = vulkan->destruction_callback,
+                      user_data = vulkan->user_data]() { callback(user_data); };
+  }
+
+  return std::make_unique<flutter::EmbedderRenderTargetImpeller>(
+      backing_store, aiks_context,
+      std::make_unique<impeller::RenderTarget>(std::move(render_target_desc)),
+      on_release, image_destruct);
+#else
+  return nullptr;
+#endif
+}
+
 static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
     GrDirectContext* context,
     const FlutterBackingStoreConfig& config,
@@ -1523,7 +1600,9 @@ CreateEmbedderRenderTarget(
     }
     case kFlutterBackingStoreTypeVulkan: {
       if (enable_impeller) {
-        FML_LOG(ERROR) << "Unimplemented";
+        render_target = MakeRenderTargetFromBackingStoreImpeller(
+            backing_store, collect_callback.Release(), aiks_context, config,
+            &backing_store.vulkan);
         break;
       } else {
         auto skia_surface = MakeSkSurfaceFromBackingStore(

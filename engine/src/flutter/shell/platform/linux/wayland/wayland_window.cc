@@ -15,6 +15,14 @@ namespace flutter {
 
 namespace {
 
+// OpenGL renders the bottom row first, so the compositor is asked to flip
+// those buffers vertically rather than doing an extra copy.
+void SetBufferTransform(wl_surface* surface, const RenderBuffer* buffer) {
+  wl_surface_set_buffer_transform(
+      surface, buffer->top_row_first() ? WL_OUTPUT_TRANSFORM_NORMAL
+                                       : WL_OUTPUT_TRANSFORM_FLIPPED_180);
+}
+
 // The fractional scale protocol expresses scales in 120ths.
 constexpr double kFractionalScaleDenominator = 120.0;
 
@@ -266,10 +274,6 @@ bool WaylandWindow::Initialize(DecorationRenderer* decoration_renderer,
   surface_ = wl_compositor_create_surface(compositor);
   wl_proxy_wrapper_destroy(compositor);
   wl_surface_add_listener(surface_, &kSurfaceListener, this);
-
-  // OpenGL renders the bottom row first, so have the compositor flip the
-  // buffers vertically rather than doing an extra copy.
-  wl_surface_set_buffer_transform(surface_, WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
   // Fractional scaling works by rendering at the scaled size and having the
   // viewport scale back to the logical size.
@@ -823,6 +827,7 @@ void WaylandWindow::Present(RenderBuffer* render_buffer,
         std::max(static_cast<int>(std::round(width / scale)), 1),
         std::max(static_cast<int>(std::round(height / scale)), 1));
   }
+  SetBufferTransform(surface_, render_buffer);
   wl_surface_attach(surface_, buffer, 0, 0);
   wl_surface_damage_buffer(surface_, 0, 0, width, height);
   if (viewport_ != nullptr) {
@@ -975,6 +980,7 @@ void WaylandWindow::PresentOverlay(Overlay* overlay,
         overlay->syncobj_surface, sync.timeline->timeline(),
         sync.release_point >> 32, sync.release_point & 0xffffffff);
   }
+  SetBufferTransform(overlay->surface, layer.buffer);
   wl_surface_attach(overlay->surface, layer.buffer->buffer(), 0, 0);
   wl_surface_damage_buffer(overlay->surface, 0, 0, width, height);
   wl_surface_commit(overlay->surface);
@@ -1009,7 +1015,6 @@ WaylandWindow::Overlay::Overlay(WaylandDisplay* display, wl_surface* parent)
                                                surface, parent);
   // Changes are applied with the content, so frames are atomic.
   wl_subsurface_set_sync(subsurface);
-  wl_surface_set_buffer_transform(surface, WL_OUTPUT_TRANSFORM_FLIPPED_180);
   if (display->viewporter() != nullptr) {
     viewport = wp_viewporter_get_viewport(display->viewporter(), surface);
   }

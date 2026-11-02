@@ -18,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
@@ -82,6 +83,10 @@ class GpuDevice {
   // only be sampled as GL_TEXTURE_EXTERNAL_OES, e.g. YUV formats. May be
   // called from any thread.
   bool IsExternalOnly(uint32_t format, uint64_t modifier);
+
+  // Returns the modifiers with which dmabufs of |format| can be rendered
+  // into with EGL. Empty if modifiers aren't supported.
+  std::vector<uint64_t> GetRenderModifiers(uint32_t format);
 
   // True if the GPU can produce and consume fences for explicit
   // synchronization with the compositor, using DRM timeline syncobjs and EGL

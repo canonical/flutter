@@ -29,7 +29,8 @@ from their source, not run.
   drawing. The old one keeps rendering at 60 fps; see the note under Benchmarks.
 - **Dependencies.** The new embedder links 22 shared libraries (including the
   XCB ones for X11), compared with 68 for GTK. libxkbcommon-x11, libinput and
-  libudev are only loaded when the X11 or KMS backend needs them. The engine
+  libudev are only loaded when the X11 or KMS backend needs them, and libvulkan
+  only when the Vulkan renderer is chosen. The engine
   library is a similar size; the new one was 0.2 MB larger before the X11 and
   KMS backends, because it includes AT-SPI/D-Bus and title text layout.
 - **Backends.** One binary picks Wayland, X11 or DRM/KMS at run time
@@ -77,7 +78,7 @@ from their source, not run.
 | Shared code also used | `common` (input, switches) | `common` C++ client wrapper, input, json (~3k lines, shared with Windows) | copies of `common` and the client wrapper | own C plugin ABI with C++ wrappers | none |
 | Object code (profile, `size`) | ~312 KB | ~495 KB (before X11 and KMS) | n/a | n/a | n/a |
 | `libflutter_linux*.so` (profile, stripped) | 18.30 MB | 18.48 MB (before X11 and KMS) | uses a separately built `libflutter_engine.so` | uses `libflutter_engine.so` | uses `libflutter_engine.so` |
-| Shared libraries loaded by the embedder | 68 (GTK, GLib, Pango, Cairo, ATK, X11…) | 22 linked (wayland-client, xcb and its extensions, xkbcommon, EGL, GLES, gbm, drm, libc…); xkbcommon-x11, libinput and libudev loaded on demand | EGL, GLES, xkbcommon, plus wayland-client/cursor/egl, or X11, or drm/gbm/libinput/udev/systemd | wayland, EGL/GLES, Vulkan, drm/gbm, libinput/udev/libseat, xkbcommon, AccessKit (optional), pugixml, fmt, toml++ | drm, gbm, libinput, udev, systemd, xkbcommon; EGL/GLES, Vulkan, GStreamer optional |
+| Shared libraries loaded by the embedder | 68 (GTK, GLib, Pango, Cairo, ATK, X11…) | 22 linked (wayland-client, xcb and its extensions, xkbcommon, EGL, GLES, gbm, drm, libc…); xkbcommon-x11, libinput, libudev and libvulkan loaded on demand | EGL, GLES, xkbcommon, plus wayland-client/cursor/egl, or X11, or drm/gbm/libinput/udev/systemd | wayland, EGL/GLES, Vulkan, drm/gbm, libinput/udev/libseat, xkbcommon, AccessKit (optional), pugixml, fmt, toml++ | drm, gbm, libinput, udev, systemd, xkbcommon; EGL/GLES, Vulkan, GStreamer optional |
 | App template, lines | 403 (`main.cc` plus a GTK `MyApplication` class) | 294 (a single `main.cc`) | provided by the `flutter-elinux` tool | none; app bundles plus `config.toml` | provided by `flutterpi_tool` |
 
 Notes:
@@ -230,7 +231,7 @@ In the excluded screen-off run:
 | Vsync driven by the compositor | ❌ timer fallback, renders while hidden | ✅ frame callbacks + presentation times (X11: Present complete events; KMS: page-flip events) | ⚠️ off by default (`ENABLE_VSYNC=OFF`) | ✅ presentation feedback, or page flip on DRM | ✅ page-flip events (no engine `vsync_callback`) |
 | Software rendering fallback | ✅ (`fl_compositor_software`) | ⚠️ GL rendering copied to `wl_shm` when there is no dmabuf | ❌ | ✅ software, fbdev and dumb buffers | ✅ |
 | Impeller | ✅ default (GLES, SDF) | ✅ default (GLES, SDF) | ⚠️ accepts the switch, GL only | ✅ (partial repaint disabled with Impeller) | ❌ no specific support |
-| Vulkan | ❌ | ❌ | ❌ | ✅ | ⚠️ optional, off by default |
+| Vulkan | ❌ | ⚠️ Impeller only, opt-in (`FLUTTER_LINUX_RENDERER=vulkan`): renders into GBM dmabufs shared with GL, synchronized with sync files; falls back to GL. GL external textures aren't supported | ❌ | ✅ | ⚠️ optional, off by default |
 | External textures | ✅ GL and pixel buffer | ✅ pixel buffer and dmabuf (zero-copy, incl. YUV) | ✅ GL, EGLImage and pixel buffer | ✅ | ✅ |
 | Platform views | ❌ | ⚠️ Wayland and KMS: on Wayland zero-copy plugin dmabufs in subsurfaces, Flutter overlays in subsurfaces above them; on KMS dmabufs composited with GL; not on X11 | ⚠️ partial | ✅ | ✅ dmabuf composition and GStreamer video |
 
@@ -397,7 +398,11 @@ These are ordered by how much they affect apps:
 5. **KMS follow-ups**: hardware planes for platform views and overlays
    (they are currently composited with GL), multiple outputs and hotplug, a system clipboard. flutter-pi's
    plane-based design is the best reference.
-6. **Vulkan / Impeller-Vulkan.**
+6. **Vulkan follow-ups**: Vulkan is opt-in and still presents through GL, so
+   making it the default needs wider driver testing; GL external textures
+   (`TextureRegistrar`) don't work with it, and the GL
+   wait for Vulkan rendering falls back to the CPU on drivers without
+   `EGL_ANDROID_native_fence_sync`.
 
 ## Reproducing
 

@@ -16,7 +16,7 @@
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/common/app_lifecycle_state.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "flutter/shell/platform/linux/compositor_opengl.h"
+#include "flutter/shell/platform/linux/compositor.h"
 #include "flutter/shell/platform/linux/egl_manager.h"
 #include "flutter/shell/platform/linux/flutter_linux_application.h"
 #include "flutter/shell/platform/linux/flutter_linux_view.h"
@@ -87,7 +87,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   EGLManager* egl() const { return egl_.get(); }
 
   // Presents the frames the engine renders.
-  CompositorOpenGL* compositor() const { return compositor_.get(); }
+  Compositor* compositor() const { return compositor_.get(); }
 
   // Creates a view shown in a new top-level window of the given logical
   // size. The first view created is the implicit view.
@@ -264,7 +264,7 @@ class FlutterLinuxEngine : public PlatformMessenger,
   FlutterEngineAOTData aot_data_ = nullptr;
 
   std::unique_ptr<EGLManager> egl_;
-  std::unique_ptr<CompositorOpenGL> compositor_;
+  std::unique_ptr<Compositor> compositor_;
   std::unique_ptr<TextureRegistrar> texture_registrar_;
   std::unique_ptr<PlatformViewManager> platform_view_manager_;
 

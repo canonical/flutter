@@ -283,7 +283,7 @@ std::unique_ptr<RenderBuffer> DecorationRenderer::CreateBuffer(int width,
   }
   if (use_dmabuf_) {
     std::unique_ptr<RenderBuffer> buffer = DmabufBuffer::Create(
-        egl_.get(), display_->dmabuf(),
+        egl_.get(), nullptr, display_->dmabuf(),
         display_->GetModifiers(DmabufBuffer::kFormat), width, height, false);
     if (buffer) {
       return buffer;

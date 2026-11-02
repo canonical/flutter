@@ -128,17 +128,26 @@ config("no_x11") {
   defines = [ "EGL_NO_X11" ]
 }
 
+# The Vulkan headers without the window system types, which are unused and
+# would bring in Xlib's macros.
+config("vulkan_headers") {
+  include_dirs =
+      [ "//flutter/third_party/vulkan-deps/vulkan-headers/src/include" ]
+  defines = [ "VK_NO_PROTOTYPES" ]
+}
+
 source_set("flutter_linux_sources") {
   public = [
     "accessible_view.h",
     "atspi/atspi_accessible.h",
     "atspi/atspi_application.h",
     "atspi/atspi_text.h",
-    "compositor_opengl.h",
+    "compositor.h",
     "corner_mask.h",
     "dbus/dbus_connection.h",
     "dbus/dbus_message.h",
     "display.h",
+    "dmabuf_image.h",
     "egl_manager.h",
     "event_loop.h",
     "external_texture.h",
@@ -168,6 +177,7 @@ source_set("flutter_linux_sources") {
     "texture_blitter.h",
     "texture_buffer.h",
     "texture_registrar.h",
+    "vulkan_device.h",
     "wayland/decoration_renderer.h",
     "wayland/dmabuf_buffer.h",
     "wayland/drm_timeline.h",
@@ -192,12 +202,13 @@ source_set("flutter_linux_sources") {
     "atspi/atspi_accessible.cc",
     "atspi/atspi_application.cc",
     "atspi/atspi_text.cc",
-    "compositor_opengl.cc",
+    "compositor.cc",
     "corner_mask.cc",
     "dbus/dbus_connection.cc",
     "dbus/dbus_message.cc",
     "desktop_settings.cc",
     "display.cc",
+    "dmabuf_image.cc",
     "egl_manager.cc",
     "event_loop.cc",
     "external_texture.cc",
@@ -232,6 +243,7 @@ source_set("flutter_linux_sources") {
     "texture_buffer.cc",
     "texture_registrar.cc",
     "vsync_predictor.cc",
+    "vulkan_device.cc",
     "wayland/decoration_renderer.cc",
     "wayland/dmabuf_buffer.cc",
     "wayland/drm_timeline.cc",
@@ -264,10 +276,14 @@ source_set("flutter_linux_sources") {
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
 
-  # libxkbcommon-x11, libinput and libudev are loaded at runtime if available.
+  # libxkbcommon-x11, libinput, libudev and libvulkan are loaded at runtime if
+  # available.
   libs = [ "dl" ]
 
-  public_configs = [ ":no_x11" ]
+  public_configs = [
+    ":no_x11",
+    ":vulkan_headers",
+  ]
 
   public_deps = [
     ":flutter_linux_headers",

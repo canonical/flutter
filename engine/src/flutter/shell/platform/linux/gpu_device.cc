@@ -316,6 +316,31 @@ bool GpuDevice::IsExternalOnly(uint32_t format, uint64_t modifier) {
   return external_only;
 }
 
+std::vector<uint64_t> GpuDevice::GetRenderModifiers(uint32_t format) {
+  if (QueryDmaBufModifiers == nullptr) {
+    return {};
+  }
+  EGLint count = 0;
+  if (!QueryDmaBufModifiers(display_, static_cast<EGLint>(format), 0, nullptr,
+                            nullptr, &count) ||
+      count <= 0) {
+    return {};
+  }
+  std::vector<EGLuint64KHR> modifiers(count);
+  std::vector<EGLBoolean> external(count);
+  if (!QueryDmaBufModifiers(display_, static_cast<EGLint>(format), count,
+                            modifiers.data(), external.data(), &count)) {
+    return {};
+  }
+  std::vector<uint64_t> result;
+  for (EGLint i = 0; i < count; i++) {
+    if (external[i] != EGL_TRUE) {
+      result.push_back(modifiers[i]);
+    }
+  }
+  return result;
+}
+
 void GpuDevice::InitializeExplicitSync(const char* extensions) {
   uint64_t timeline_supported = 0;
   if (drmGetCap(drm_fd_.get(), DRM_CAP_SYNCOBJ_TIMELINE, &timeline_supported) !=

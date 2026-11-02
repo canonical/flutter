@@ -14,6 +14,7 @@
 #include "flutter/shell/platform/linux/display.h"
 #include "flutter/shell/platform/linux/event_loop.h"
 #include "flutter/shell/platform/linux/gpu_device.h"
+#include "flutter/shell/platform/linux/vulkan_device.h"
 
 namespace flutter {
 
@@ -36,6 +37,11 @@ class FlutterLinuxApplication {
   EventLoop* event_loop() const { return event_loop_.get(); }
   Display* display() const { return display_.get(); }
   GpuDevice* gpu() const { return gpu_.get(); }
+
+  // The Vulkan device engines render with, created on first use if
+  // FLUTTER_LINUX_RENDERER=vulkan. Returns nullptr if engines render with
+  // OpenGL. Must be called on the platform thread.
+  VulkanDevice* vulkan();
 
   // Exposes the application to assistive technologies.
   AtspiApplication* atspi() const { return atspi_.get(); }
@@ -77,6 +83,8 @@ class FlutterLinuxApplication {
   std::unique_ptr<EventLoop> event_loop_;
   std::unique_ptr<Display> display_;
   std::unique_ptr<GpuDevice> gpu_;
+  std::unique_ptr<VulkanDevice> vulkan_;
+  bool vulkan_created_ = false;
   std::unique_ptr<AtspiApplication> atspi_;
   std::unique_ptr<DesktopSettings> settings_;
   std::unique_ptr<DecorationRenderer> decoration_renderer_;

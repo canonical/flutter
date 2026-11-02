@@ -4,6 +4,8 @@
 
 #include "flutter/shell/platform/linux/flutter_linux_engine.h"
 
+#include <GLES2/gl2.h>
+
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -162,8 +164,11 @@ bool FlutterLinuxEngine::Initialize() {
     return false;
   }
 
-  compositor_ = std::make_unique<CompositorOpenGL>(
-      egl_.get(), application_->display(), IsImpellerEnabled());
+  // Only Impeller can render with Vulkan.
+  bool impeller = IsImpellerEnabled();
+  compositor_ = std::make_unique<Compositor>(
+      egl_.get(), application_->display(), impeller,
+      impeller ? application_->vulkan() : nullptr);
   texture_registrar_ = std::make_unique<TextureRegistrar>(this);
   platform_view_manager_ =
       std::make_unique<PlatformViewManager>(this, [this](int64_t id) {
@@ -246,17 +251,17 @@ bool FlutterLinuxEngine::Run() {
   compositor.create_backing_store_callback =
       [](const FlutterBackingStoreConfig* config,
          FlutterBackingStore* backing_store_out, void* user_data) -> bool {
-    return static_cast<CompositorOpenGL*>(user_data)->CreateBackingStore(
+    return static_cast<Compositor*>(user_data)->CreateBackingStore(
         *config, backing_store_out);
   };
   compositor.collect_backing_store_callback =
       [](const FlutterBackingStore* backing_store, void* user_data) -> bool {
-    return static_cast<CompositorOpenGL*>(user_data)->CollectBackingStore(
+    return static_cast<Compositor*>(user_data)->CollectBackingStore(
         backing_store);
   };
   compositor.present_view_callback =
       [](const FlutterPresentViewInfo* info) -> bool {
-    return static_cast<CompositorOpenGL*>(info->user_data)
+    return static_cast<Compositor*>(info->user_data)
         ->Present(info->view_id, info->layers, info->layers_count);
   };
   // Buffers are pooled by the compositor, which knows when the display
@@ -302,6 +307,15 @@ bool FlutterLinuxEngine::Run() {
   FlutterRendererConfig renderer_config = GetRendererConfig();
   FlutterEngineResult result = embedder_api_.Run(
       FLUTTER_ENGINE_VERSION, &renderer_config, &args, this, &engine_);
+  if ((result != kSuccess || engine_ == nullptr) &&
+      compositor_->vulkan() != nullptr) {
+    FML_LOG(WARNING) << "Failed to start Flutter engine with Vulkan, using "
+                        "OpenGL";
+    compositor_->DisableVulkan();
+    renderer_config = GetRendererConfig();
+    result = embedder_api_.Run(FLUTTER_ENGINE_VERSION, &renderer_config, &args,
+                               this, &engine_);
+  }
   if (result != kSuccess || engine_ == nullptr) {
     FML_LOG(ERROR) << "Failed to start Flutter engine: error " << result;
     engine_ = nullptr;
@@ -961,6 +975,52 @@ void FlutterLinuxEngine::RunWithContext(const std::function<void()>& task) {
 
 FlutterRendererConfig FlutterLinuxEngine::GetRendererConfig() {
   FlutterRendererConfig config = {};
+  VulkanDevice* vulkan = compositor_->vulkan();
+  if (vulkan != nullptr) {
+    FML_LOG(INFO) << "Rendering with Vulkan on " << vulkan->name();
+    config.type = kVulkan;
+    FlutterVulkanRendererConfig& vk = config.vulkan;
+    vk.struct_size = sizeof(FlutterVulkanRendererConfig);
+    vk.version = vulkan->api_version();
+    vk.instance = vulkan->instance();
+    vk.physical_device = vulkan->physical_device();
+    vk.device = vulkan->device();
+    vk.queue_family_index = vulkan->queue_family_index();
+    vk.queue = vulkan->queue();
+    vk.enabled_instance_extension_count = vulkan->instance_extensions().size();
+    vk.enabled_instance_extensions =
+        const_cast<const char**>(vulkan->instance_extensions().data());
+    vk.enabled_device_extension_count = vulkan->device_extensions().size();
+    vk.enabled_device_extensions =
+        const_cast<const char**>(vulkan->device_extensions().data());
+    vk.get_instance_proc_address_callback =
+        [](void* user_data, FlutterVulkanInstanceHandle instance,
+           const char* name) -> void* {
+      return reinterpret_cast<void*>(VulkanDevice::GetInstanceProcAddress(
+          static_cast<VkInstance>(instance), name));
+    };
+    // Frames are presented by the compositor, so these are never used.
+    vk.get_next_image_callback =
+        [](void* user_data,
+           const FlutterFrameInfo* frame_info) -> FlutterVulkanImage {
+      return {.struct_size = sizeof(FlutterVulkanImage)};
+    };
+    vk.present_image_callback = [](void* user_data,
+                                   const FlutterVulkanImage* image) -> bool {
+      return true;
+    };
+    return config;
+  }
+
+  bool made_current = egl_->MakeRenderContextCurrent();
+  const char* gl_renderer =
+      made_current ? reinterpret_cast<const char*>(glGetString(GL_RENDERER))
+                   : nullptr;
+  FML_LOG(INFO) << "Rendering with OpenGL ES on "
+                << (gl_renderer != nullptr ? gl_renderer : "unknown GPU");
+  if (made_current) {
+    egl_->ClearCurrent();
+  }
   config.type = kOpenGL;
   config.open_gl.struct_size = sizeof(FlutterOpenGLRendererConfig);
   config.open_gl.make_current = [](void* user_data) -> bool {

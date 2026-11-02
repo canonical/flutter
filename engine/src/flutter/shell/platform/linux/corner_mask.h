@@ -26,8 +26,13 @@ class CornerMask {
   ~CornerMask();
 
   // Masks the bottom corners of |framebuffer|, which is |width| x |height|
-  // pixels with the bottom row first, using |radius| in pixels.
-  bool Apply(GLuint framebuffer, int width, int height, float radius);
+  // pixels with the bottom row first unless |top_row_first|, using |radius|
+  // in pixels.
+  bool Apply(GLuint framebuffer,
+             int width,
+             int height,
+             float radius,
+             bool top_row_first);
 
  private:
   bool Initialize();
@@ -38,6 +43,7 @@ class CornerMask {
   GLint position_location_ = -1;
   GLint size_location_ = -1;
   GLint radius_location_ = -1;
+  GLint top_row_first_location_ = -1;
 
   FML_DISALLOW_COPY_AND_ASSIGN(CornerMask);
 };
