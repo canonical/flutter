@@ -2,8 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Shows an animated galaxy along with the resource usage of the app and the
+// Shows an animated scene along with the resource usage of the app and the
 // compositor, to compare Linux embedders.
+//
+// The scene is either a galaxy, which stresses rendering, or a typical app
+// made of common widgets. It can be changed with the buttons, the G and A keys,
+// or with --scene=galaxy|app.
 //
 // The workload can be changed with the buttons, the 1, 2 and 3 keys, or with
 // --mode=idle|light|heavy.
@@ -16,6 +20,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'app_scene.dart';
 import 'galaxy.dart';
 import 'resource_sampler.dart';
 
@@ -31,27 +36,45 @@ enum Workload {
   final int particles;
 }
 
+enum Scene {
+  galaxy('Galaxy'),
+  app('App');
+
+  const Scene(this.label);
+
+  final String label;
+}
+
 const int _kHistoryLength = 60;
+const Color _kBackgroundColor = Color(0xFF05040F);
 const Color _kPanelColor = Color(0xD0101020);
 const Color _kTextColor = Color(0xFFE8E8F0);
 const Color _kDimTextColor = Color(0xFF9A9AB0);
 
 void main(List<String> args) {
-  final String? modeArg = args
-      .where((String a) => a.startsWith('--mode='))
-      .map((String a) => a.substring(7))
-      .firstOrNull;
-  final String mode = modeArg ?? Platform.environment['DEMO_MODE'] ?? 'light';
+  String? option(String name, String environment) =>
+      args
+          .where((String a) => a.startsWith('--$name='))
+          .map((String a) => a.substring(name.length + 3))
+          .firstOrNull ??
+      Platform.environment[environment];
+  final String? mode = option('mode', 'DEMO_MODE');
   final Workload workload = Workload.values.firstWhere(
     (Workload w) => w.name == mode,
     orElse: () => Workload.light,
   );
-  runApp(EmbedderDemo(initialWorkload: workload));
+  final String? sceneName = option('scene', 'DEMO_SCENE');
+  final Scene scene = Scene.values.firstWhere(
+    (Scene s) => s.name == sceneName,
+    orElse: () => Scene.galaxy,
+  );
+  runApp(EmbedderDemo(initialScene: scene, initialWorkload: workload));
 }
 
 class EmbedderDemo extends StatefulWidget {
-  const EmbedderDemo({super.key, required this.initialWorkload});
+  const EmbedderDemo({super.key, required this.initialScene, required this.initialWorkload});
 
+  final Scene initialScene;
   final Workload initialWorkload;
 
   @override
@@ -59,6 +82,7 @@ class EmbedderDemo extends StatefulWidget {
 }
 
 class _EmbedderDemoState extends State<EmbedderDemo> with SingleTickerProviderStateMixin {
+  late Scene _scene = widget.initialScene;
   late Workload _workload = widget.initialWorkload;
   late final Ticker _ticker = createTicker(_onTick);
   final ValueNotifier<double> _time = ValueNotifier<double>(0);
@@ -77,7 +101,7 @@ class _EmbedderDemoState extends State<EmbedderDemo> with SingleTickerProviderSt
   }
 
   void _updateTicker() {
-    if (_workload == Workload.idle) {
+    if (_scene != Scene.galaxy || _workload == Workload.idle) {
       if (_ticker.isActive) {
         _timeOffset += _lastElapsed;
         _lastElapsed = Duration.zero;
@@ -91,6 +115,13 @@ class _EmbedderDemoState extends State<EmbedderDemo> with SingleTickerProviderSt
   void _setWorkload(Workload workload) {
     setState(() {
       _workload = workload;
+      _updateTicker();
+    });
+  }
+
+  void _setScene(Scene scene) {
+    setState(() {
+      _scene = scene;
       _updateTicker();
     });
   }
@@ -113,29 +144,70 @@ class _EmbedderDemoState extends State<EmbedderDemo> with SingleTickerProviderSt
             const SingleActivator(LogicalKeyboardKey.digit1): () => _setWorkload(Workload.idle),
             const SingleActivator(LogicalKeyboardKey.digit2): () => _setWorkload(Workload.light),
             const SingleActivator(LogicalKeyboardKey.digit3): () => _setWorkload(Workload.heavy),
+            const SingleActivator(LogicalKeyboardKey.keyG): () => _setScene(Scene.galaxy),
+            const SingleActivator(LogicalKeyboardKey.keyA): () => _setScene(Scene.app),
           },
           child: Focus(
             autofocus: true,
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-                RepaintBoundary(
-                  child: CustomPaint(
-                    painter: GalaxyPainter(
-                      time: _time,
-                      particleCount: _workload.particles,
-                      maxParticles: Workload.heavy.particles,
+                if (_scene == Scene.galaxy) ...<Widget>[
+                  RepaintBoundary(
+                    child: CustomPaint(
+                      painter: GalaxyPainter(
+                        time: _time,
+                        particleCount: _workload.particles,
+                        maxParticles: Workload.heavy.particles,
+                      ),
                     ),
                   ),
-                ),
-                const Positioned(left: 24, top: 20, child: _Title()),
+                  const Positioned(left: 24, top: 20, child: _Title()),
+                ] else ...<Widget>[
+                  const ColoredBox(color: _kBackgroundColor),
+                  // Beside the stats panel and above the selectors.
+                  Positioned(
+                    left: 20,
+                    top: 20,
+                    right: 380,
+                    bottom: 84,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: AppScene(
+                        updates: _workload != Workload.idle,
+                        scrolling: _workload == Workload.heavy,
+                      ),
+                    ),
+                  ),
+                ],
                 const Positioned(right: 20, top: 20, child: RepaintBoundary(child: StatsPanel())),
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 24,
                   child: Center(
-                    child: _WorkloadSelector(selected: _workload, onSelected: _setWorkload),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _Selector<Scene>(
+                          values: Scene.values,
+                          selected: _scene,
+                          onSelected: _setScene,
+                          width: 100,
+                          label: (Scene scene) => '${scene.label[0]}  ${scene.label}',
+                          detail: (Scene scene) => scene == Scene.galaxy ? 'rendering' : 'widgets',
+                        ),
+                        const SizedBox(width: 12),
+                        _Selector<Workload>(
+                          values: Workload.values,
+                          selected: _workload,
+                          onSelected: _setWorkload,
+                          width: 150,
+                          label: (Workload workload) => '${workload.key + 1}  ${workload.label}',
+                          detail: (Workload workload) => _workloadDetail(_scene, workload),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -198,11 +270,38 @@ class _Title extends StatelessWidget {
   }
 }
 
-class _WorkloadSelector extends StatelessWidget {
-  const _WorkloadSelector({required this.selected, required this.onSelected});
+String _workloadDetail(Scene scene, Workload workload) {
+  switch (scene) {
+    case Scene.galaxy:
+      return workload == Workload.idle ? 'paused' : '${_formatCount(workload.particles)} stars';
+    case Scene.app:
+      switch (workload) {
+        case Workload.idle:
+          return 'static';
+        case Workload.light:
+          return 'small updates';
+        case Workload.heavy:
+          return 'scrolling, pages';
+      }
+  }
+}
 
-  final Workload selected;
-  final ValueChanged<Workload> onSelected;
+class _Selector<T> extends StatelessWidget {
+  const _Selector({
+    required this.values,
+    required this.selected,
+    required this.onSelected,
+    required this.width,
+    required this.label,
+    required this.detail,
+  });
+
+  final List<T> values;
+  final T selected;
+  final ValueChanged<T> onSelected;
+  final double width;
+  final String Function(T) label;
+  final String Function(T) detail;
 
   @override
   Widget build(BuildContext context) {
@@ -217,32 +316,30 @@ class _WorkloadSelector extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final Workload workload in Workload.values)
+          for (final T value in values)
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-                onTap: () => onSelected(workload),
+                onTap: () => onSelected(value),
                 child: Container(
-                  width: 150,
+                  width: width,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: workload == selected ? accent.withValues(alpha: 0.25) : null,
+                    color: value == selected ? accent.withValues(alpha: 0.25) : null,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
                     children: <Widget>[
                       Text(
-                        '${workload.key + 1}  ${workload.label}',
+                        label(value),
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight: workload == selected ? FontWeight.w600 : FontWeight.normal,
-                          color: workload == selected ? accent : _kTextColor,
+                          fontWeight: value == selected ? FontWeight.w600 : FontWeight.normal,
+                          color: value == selected ? accent : _kTextColor,
                         ),
                       ),
                       Text(
-                        workload == Workload.idle
-                            ? 'paused'
-                            : '${_formatCount(workload.particles)} stars',
+                        detail(value),
                         style: const TextStyle(fontSize: 11, color: _kDimTextColor),
                       ),
                     ],
