@@ -11,6 +11,8 @@
 //
 // The workload can be changed with the buttons, the 1, 2 and 3 keys, or with
 // --mode=idle|light|heavy.
+//
+// Q quits.
 
 import 'dart:async';
 import 'dart:io';
@@ -146,6 +148,8 @@ class _EmbedderDemoState extends State<EmbedderDemo> with SingleTickerProviderSt
             const SingleActivator(LogicalKeyboardKey.digit3): () => _setWorkload(Workload.heavy),
             const SingleActivator(LogicalKeyboardKey.keyG): () => _setScene(Scene.galaxy),
             const SingleActivator(LogicalKeyboardKey.keyA): () => _setScene(Scene.app),
+            const SingleActivator(LogicalKeyboardKey.keyQ): () =>
+                ServicesBinding.instance.exitApplication(ui.AppExitType.required),
           },
           child: Focus(
             autofocus: true,

@@ -34,6 +34,8 @@ keys, or by passing `--mode=idle|light|heavy`:
 The scene and workload can also be set with the `DEMO_SCENE` and `DEMO_MODE`
 environment variables.
 
+Press `Q` to quit, which is useful when running with KMS.
+
 ## Building
 
 The profile engine needs to be configured once, in `engine/src`:
