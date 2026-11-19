@@ -84,6 +84,15 @@ Future<void> buildLinux(
   final Map<String, String> environmentConfig = buildInfo.toEnvironmentConfig();
   environmentConfig['FLUTTER_TARGET'] = target;
   final LocalEngineInfo? localEngineInfo = artifacts.localEngineInfo;
+  if (linuxProject.isLinuxNext) {
+    if (localEngineInfo == null) {
+      throwToolExit(
+        'The next Linux embedder is only available in a locally built engine. '
+        'Use --local-engine and --local-engine-host to select one.',
+      );
+    }
+    environmentConfig['LINUX_NEXT'] = 'true';
+  }
   if (localEngineInfo != null) {
     final String targetOutPath = localEngineInfo.targetOutPath;
     // $ENGINE/src/out/foo_bar_baz -> $ENGINE/src
@@ -100,7 +109,12 @@ Future<void> buildLinux(
   final Directory platformBuildDirectory = fs
       .directory(linuxProject.parent.directory.path)
       .childDirectory(
-        getLinuxBuildDirectory(targetPlatform, flavor: buildInfo.flavor, toolContext: toolContext),
+        getLinuxBuildDirectory(
+          targetPlatform,
+          flavor: buildInfo.flavor,
+          toolContext: toolContext,
+          projectDirectoryName: linuxProject.directoryName,
+        ),
       );
   final Directory buildDirectory = platformBuildDirectory.childDirectory(buildModeName);
   try {
@@ -154,6 +168,7 @@ Future<void> buildLinux(
             targetPlatform,
             flavor: buildInfo.flavor,
             toolContext: toolContext,
+            projectDirectoryName: linuxProject.directoryName,
           ),
           'release',
           'bundle',

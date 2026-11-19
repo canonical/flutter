@@ -71,6 +71,39 @@ void main() {
     },
   );
 
+  testWithoutContext('Copies next embedder files to the linux_next directory', () async {
+    final FileSystem fileSystem = MemoryFileSystem.test();
+    final artifacts = Artifacts.test();
+    setUpCacheDirectory(fileSystem, artifacts);
+    final String desktopPath = artifacts.getArtifactPath(
+      Artifact.linuxDesktopPath,
+      platform: TargetPlatform.linux_x64,
+      mode: BuildMode.debug,
+    );
+    fileSystem.file('$desktopPath/libflutter_linux.so').createSync();
+    fileSystem
+        .file('$desktopPath/linux_next/flutter_linux/flutter_linux.h')
+        .createSync(recursive: true);
+
+    final testEnvironment = Environment.test(
+      fileSystem.currentDirectory,
+      defines: <String, String>{kBuildMode: 'debug', kLinuxNext: 'true'},
+      artifacts: artifacts,
+      featureFlags: TestFeatureFlags(),
+      processManager: FakeProcessManager.any(),
+      fileSystem: fileSystem,
+      logger: BufferLogger.test(),
+    );
+    testEnvironment.buildDir.createSync(recursive: true);
+
+    await const UnpackLinux(TargetPlatform.linux_x64).build(testEnvironment);
+
+    expect(fileSystem.file('linux_next/flutter/ephemeral/libflutter_linux.so'), exists);
+    expect(fileSystem.file('linux_next/flutter/ephemeral/flutter_linux/flutter_linux.h'), exists);
+    expect(fileSystem.file('linux_next/flutter/ephemeral/libflutter_linux_gtk.so'), isNot(exists));
+    expect(fileSystem.directory('linux'), isNot(exists));
+  });
+
   // This test is basically the same logic as the above test.
   // The difference is the target CPU architecture.
   testWithoutContext(

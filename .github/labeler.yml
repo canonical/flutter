@@ -177,6 +177,7 @@ platform-linux:
   - changed-files:
     - any-glob-to-any-file:
       - engine/src/flutter/shell/platform/linux/**/*
+      - engine/src/flutter/shell/platform/linux_next/**/*
       - packages/flutter_tools/lib/src/linux/**/*
 
 platform-macos:
@@ -270,6 +271,7 @@ team-linux:
   - changed-files:
     - any-glob-to-any-file:
       - engine/src/flutter/shell/platform/linux/**/*
+      - engine/src/flutter/shell/platform/linux_next/**/*
       - packages/flutter_tools/**/linux/*
       - packages/flutter_tools/**/*linux*
 

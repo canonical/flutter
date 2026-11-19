@@ -205,6 +205,26 @@ void main() {
   );
 
   testUsingContext(
+    'Linux Next build requires a local engine',
+    () async {
+      final BuildCommand command = createBuildCommand();
+      setUpMockCoreProjectFiles();
+      fileSystem.file(fileSystem.path.join('linux_next', 'CMakeLists.txt'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('set(BINARY_NAME "test_app")');
+
+      expect(
+        createTestCommandRunner(command).run(const <String>['build', 'linux-next', '--no-pub']),
+        throwsToolExit(message: 'only available in a locally built engine'),
+      );
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => fileSystem,
+      ProcessManager: () => processManager,
+    },
+  );
+
+  testUsingContext(
     'Linux build fails on non-linux platform',
     () async {
       final BuildCommand command = createBuildCommand(platform: notLinuxPlatform);

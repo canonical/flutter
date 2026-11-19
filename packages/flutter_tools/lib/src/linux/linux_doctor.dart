@@ -117,12 +117,23 @@ class _DriverInformation {
 }
 
 /// A validator that checks for Clang and Make build dependencies.
+///
+/// If [linuxNext] is true, validates the dependencies of the next Linux
+/// embedder instead.
 class LinuxDoctorValidator extends DoctorValidator {
-  LinuxDoctorValidator({required this._processManager, required this._userMessages})
-    : super('Linux toolchain - develop for Linux desktop');
+  LinuxDoctorValidator({
+    required this._processManager,
+    required this._userMessages,
+    this.linuxNext = false,
+  }) : super(
+         linuxNext
+             ? 'Linux Next toolchain - develop for Linux Next desktop'
+             : 'Linux toolchain - develop for Linux desktop',
+       );
 
   final ProcessManager _processManager;
   final UserMessages _userMessages;
+  final bool linuxNext;
 
   static const kClangBinary = 'clang++';
   static const kCmakeBinary = 'cmake';
@@ -231,7 +242,7 @@ class LinuxDoctorValidator extends DoctorValidator {
     }
 
     // Messages for libraries.
-    {
+    if (!linuxNext) {
       var libraryMissing = false;
       for (final String library in _requiredGtkLibraries) {
         if (!await _libraryIsPresent(library)) {

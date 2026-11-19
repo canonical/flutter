@@ -1,0 +1,131 @@
+# Copyright 2013 The Flutter Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_linux)
+
+import("//flutter/build/zip_bundle.gni")
+import("//flutter/testing/symbols/check_forbidden_native_symbols.gni")
+import("//flutter/testing/testing.gni")
+
+group("linux_next") {
+  deps = [
+    ":check_native_symbols",
+    ":flutter_linux",
+    ":publish_headers_linux",
+  ]
+}
+
+_public_headers = [
+  "public/flutter_linux.h",
+  "public/flutter_linux_abi.h",
+]
+
+source_set("flutter_linux_sources") {
+  public = _public_headers + [ "event_loop.h" ]
+
+  sources = [
+    "event_loop.cc",
+    "flutter_linux_abi.cc",
+    "flutter_linux_application.cc",
+    "flutter_linux_application.h",
+    "flutter_linux_engine.cc",
+    "flutter_linux_engine.h",
+  ]
+
+  configs +=
+      [ "//flutter/shell/platform/common:desktop_library_implementation" ]
+
+  public_configs =
+      [ "//flutter/shell/platform/common:relative_flutter_library_headers" ]
+
+  defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
+
+  public_deps = [ "//flutter/shell/platform/common:common_cpp_library_headers" ]
+
+  deps = [
+    "//flutter/fml",
+    "//flutter/shell/platform/common:common_cpp_switches",
+    "//flutter/shell/platform/embedder:embedder_headers",
+  ]
+}
+
+shared_library("flutter_linux") {
+  deps = [
+    ":flutter_linux_sources",
+    "//flutter/shell/platform/embedder:embedder_as_internal_library",
+  ]
+
+  ldflags = [ "-Wl,-rpath,\$ORIGIN" ]
+
+  public_configs = [ "//flutter:config" ]
+}
+
+test_fixtures("flutter_linux_next_fixtures") {
+  fixtures = []
+}
+
+executable("flutter_linux_next_unittests") {
+  testonly = true
+
+  sources = [
+    "event_loop_unittests.cc",
+    "flutter_linux_unittests.cc",
+  ]
+
+  public_configs = [ "//flutter:config" ]
+
+  deps = [
+    ":flutter_linux_next_fixtures",
+    ":flutter_linux_sources",
+    "//flutter/shell/platform/embedder:embedder_as_internal_library",
+    "//flutter/testing",
+  ]
+}
+
+check_forbidden_native_symbols("check_native_symbols") {
+  deps = [ ":flutter_linux" ]
+  _out_dir = get_label_info(":flutter_linux", "root_out_dir")
+  _lib_name = get_label_info(":flutter_linux", "name")
+  library = "$_out_dir/lib$_lib_name.so"
+}
+
+# The headers are published to a separate directory to the other Linux
+# embedder, which uses the same names.
+copy("publish_headers_linux") {
+  sources = _public_headers +
+            [ "//flutter/shell/platform/common/public/flutter_export.h" ]
+  outputs = [ "$root_out_dir/linux_next/flutter_linux/{{source_file_part}}" ]
+}
+
+# The archive of the embedder that the flutter tool downloads.
+zip_bundle("flutter_linux_archive") {
+  prefix = "$full_target_platform_name-$flutter_runtime_mode/"
+  output = "${prefix}${full_target_platform_name}-flutter.zip"
+  deps = [
+    ":check_native_symbols",
+    ":flutter_linux",
+    ":publish_headers_linux",
+    "$dart_src/runtime/bin:gen_snapshot",
+  ]
+  tmp_files = []
+  foreach(source, get_target_outputs(":publish_headers_linux")) {
+    tmp_files += [
+      {
+        source = source
+        destination = rebase_path(source, "$root_build_dir")
+      },
+    ]
+  }
+  tmp_files += [
+    {
+      source = "$root_build_dir/libflutter_linux.so"
+      destination = "libflutter_linux.so"
+    },
+    {
+      source = "$root_build_dir/gen_snapshot"
+      destination = "gen_snapshot"
+    },
+  ]
+  files = tmp_files
+}

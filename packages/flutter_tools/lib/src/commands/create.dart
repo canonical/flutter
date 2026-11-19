@@ -153,6 +153,8 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
     };
     platformsAllowedHelp['darwin'] =
         'A shared platform for iOS and macOS. (only supported for plugins)';
+    platformsAllowedHelp['linux_next'] =
+        'The next iteration of the Linux embedder. (experimental, only supported for apps)';
     addPlatformsOptions(
       parser: parser,
       customHelp: kPlatformHelp,
@@ -522,6 +524,7 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
     final bool includeAndroid;
     final bool includeWeb;
     final bool includeLinux;
+    final bool includeLinuxNext;
     final bool includeMacos;
     final bool includeWindows;
     if (template == FlutterTemplateType.module) {
@@ -530,6 +533,7 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
       includeAndroid = true;
       includeWeb = false;
       includeLinux = false;
+      includeLinuxNext = false;
       includeMacos = false;
       includeWindows = false;
       includeDarwin = false;
@@ -540,6 +544,7 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
       includeAndroid = false;
       includeWeb = false;
       includeLinux = false;
+      includeLinuxNext = false;
       includeMacos = false;
       includeWindows = false;
       includeDarwin = false;
@@ -568,6 +573,10 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
       includeAndroid = featureFlags.isAndroidEnabled && platforms.contains('android');
       includeWeb = featureFlags.isWebEnabled && platforms.contains('web');
       includeLinux = featureFlags.isLinuxEnabled && platforms.contains('linux');
+      includeLinuxNext =
+          template == FlutterTemplateType.app &&
+          featureFlags.isLinuxEnabled &&
+          platforms.contains('linux_next');
       includeWindows = featureFlags.isWindowsEnabled && platforms.contains('windows');
     }
 
@@ -608,6 +617,7 @@ class CreateCommand extends FlutterCommand with CreateBase, ExtensionArgParserMi
       darwin: includeDarwin,
       web: includeWeb,
       linux: includeLinux,
+      linuxNext: includeLinuxNext,
       macos: includeMacos,
       windows: includeWindows,
       dartSdkVersionBounds: '^$dartSdk',
@@ -1444,6 +1454,7 @@ List<String> _getPlatformWarningList(
     if (requestedPlatforms.contains('macos') && !featureFlags.isMacOSEnabled) 'macos',
     if (requestedPlatforms.contains('windows') && !featureFlags.isWindowsEnabled) 'windows',
     if (requestedPlatforms.contains('linux') && !featureFlags.isLinuxEnabled) 'linux',
+    if (requestedPlatforms.contains('linux_next') && !featureFlags.isLinuxEnabled) 'linux_next',
     if (requestedPlatforms.contains('darwin') &&
         !featureFlags.isMacOSEnabled &&
         !featureFlags.isIOSEnabled)
@@ -1462,7 +1473,7 @@ void _printWarningDisabledPlatform(List<String> platforms, {required Logger logg
     switch (platform) {
       case 'web':
         web.add(platform);
-      case 'macos' || 'windows' || 'linux':
+      case 'macos' || 'windows' || 'linux' || 'linux_next':
         desktop.add(platform);
       case 'darwin':
         darwin.add(platform);

@@ -18,11 +18,22 @@ import 'linux_workflow.dart';
 
 /// A device that represents a desktop Linux target.
 class LinuxDevice extends DesktopDevice {
-  LinuxDevice({required this._analytics, required this._featureFlags, required super.toolContext})
-    : super('linux', platformType: PlatformType.linux, ephemeral: false);
+  LinuxDevice({
+    required this._analytics,
+    required this._featureFlags,
+    required super.toolContext,
+    this.linuxNext = false,
+  }) : super(
+         linuxNext ? 'linux-next' : 'linux',
+         platformType: PlatformType.linux,
+         ephemeral: false,
+       );
 
   final Analytics _analytics;
   final FeatureFlags _featureFlags;
+
+  /// Whether this runs the `linux_next` project with the next Linux embedder.
+  final bool linuxNext;
 
   @override
   Future<bool> isSupported() async => true;
@@ -31,7 +42,7 @@ class LinuxDevice extends DesktopDevice {
   bool get supportsFlavors => true;
 
   @override
-  String get name => 'Linux';
+  String get name => linuxNext ? 'Linux Next' : 'Linux';
 
   @override
   late final Future<TargetPlatform> targetPlatform = () async {
@@ -49,8 +60,11 @@ class LinuxDevice extends DesktopDevice {
 
   @override
   bool isSupportedForProject(FlutterProject flutterProject) {
-    return flutterProject.linux.existsSync();
+    return _linuxProject(flutterProject).existsSync();
   }
+
+  LinuxProject _linuxProject(FlutterProject flutterProject) =>
+      linuxNext ? flutterProject.linuxNext : flutterProject.linux;
 
   @override
   Future<void> buildForDevice({
@@ -60,7 +74,7 @@ class LinuxDevice extends DesktopDevice {
   }) async {
     final ToolContext(:FileSystem fs, :FlutterProjectFactory projectFactory) = toolContext;
     await buildLinux(
-      projectFactory.fromDirectory(fs.currentDirectory).linux,
+      _linuxProject(projectFactory.fromDirectory(fs.currentDirectory)),
       buildInfo,
       analytics: _analytics,
       featureFlags: _featureFlags,
@@ -72,6 +86,14 @@ class LinuxDevice extends DesktopDevice {
 
   @override
   String executablePathForDevice(covariant LinuxApp package, BuildInfo buildInfo) {
+    // The package is created from the linux project, so use the same app built
+    // from the linux_next project instead.
+    if (linuxNext && package is BuildableLinuxApp) {
+      package = BuildableLinuxApp(
+        project: package.project.parent.linuxNext,
+        toolContext: toolContext,
+      );
+    }
     return package.executable(buildInfo.mode, buildInfo.flavor);
   }
 }
@@ -104,6 +126,12 @@ class LinuxDevices extends PollingDeviceDiscovery {
     }
     return <Device>[
       LinuxDevice(analytics: _analytics, featureFlags: _featureFlags, toolContext: toolContext),
+      LinuxDevice(
+        analytics: _analytics,
+        featureFlags: _featureFlags,
+        toolContext: toolContext,
+        linuxNext: true,
+      ),
     ];
   }
 
@@ -111,5 +139,5 @@ class LinuxDevices extends PollingDeviceDiscovery {
   Future<List<String>> getDiagnostics() async => const <String>[];
 
   @override
-  List<String> get wellKnownIds => const <String>['linux'];
+  List<String> get wellKnownIds => const <String>['linux', 'linux-next'];
 }
