@@ -25,6 +25,7 @@ class BuildLinuxCommand extends BuildSubCommand {
     required super.toolContext,
     required super.verboseHelp,
     required this._featureFlags,
+    this.linuxNext = false,
   }) : super(logger: toolContext.logger, outputPreferences: toolContext.outputPreferences) {
     final OperatingSystemUtils os = toolContext.os;
     final TargetPlatform defaultTargetPlatform = switch (os.hostPlatform) {
@@ -65,14 +66,18 @@ class BuildLinuxCommand extends BuildSubCommand {
   final BuildSystem buildSystem;
   final FeatureFlags _featureFlags;
 
+  /// Whether to build the `linux_next` project with the next Linux embedder.
+  final bool linuxNext;
+
   @visibleForTesting
   FeatureFlags get featureFlags => _featureFlags;
 
   @override
-  final name = 'linux';
+  String get name => linuxNext ? 'linux-next' : 'linux';
 
+  // The next Linux embedder is experimental.
   @override
-  bool get hidden => !_featureFlags.isLinuxEnabled || !toolContext.platform.isLinux;
+  bool get hidden => linuxNext || !_featureFlags.isLinuxEnabled || !toolContext.platform.isLinux;
 
   @override
   Future<Set<DevelopmentArtifact>> get requiredArtifacts async => <DevelopmentArtifact>{
@@ -80,7 +85,9 @@ class BuildLinuxCommand extends BuildSubCommand {
   };
 
   @override
-  String get description => 'Build a Linux desktop application.';
+  String get description => linuxNext
+      ? 'Build a Linux desktop application with the next Linux embedder.'
+      : 'Build a Linux desktop application.';
 
   bool get configOnly => getValue(DesktopBuildOptionsBundle.configOnly);
 
@@ -99,11 +106,11 @@ class BuildLinuxCommand extends BuildSubCommand {
 
     if (!_featureFlags.isLinuxEnabled) {
       throwToolExit(
-        '"build linux" is not currently supported. To enable, run "flutter config --enable-linux-desktop".',
+        '"build $name" is not currently supported. To enable, run "flutter config --enable-linux-desktop".',
       );
     }
     if (!platform.isLinux) {
-      throwToolExit('"build linux" only supported on Linux hosts.');
+      throwToolExit('"build $name" only supported on Linux hosts.');
     }
     // Cross-building is only supported on x64 hosts
     if (os.hostPlatform != HostPlatform.linux_x64 && needCrossBuild) {
@@ -124,7 +131,7 @@ class BuildLinuxCommand extends BuildSubCommand {
       );
     }
     await buildLinux(
-      project.linux,
+      linuxNext ? project.linuxNext : project.linux,
       buildInfo,
       analytics: analytics,
       featureFlags: _featureFlags,

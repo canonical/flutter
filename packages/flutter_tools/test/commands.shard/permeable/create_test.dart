@@ -1056,6 +1056,33 @@ void main() {
     expect(logger.errorText, isNot(contains(_kNoPlatformsMessage)));
   }, overrides: overridesLinux);
 
+  testUsingContext('app supports linux_next if requested', () async {
+    final CreateCommand command = createCreateCommand();
+    final CommandRunner<void> runner = createTestCommandRunner(command);
+
+    await runner.run(<String>[
+      'create',
+      '--no-pub',
+      '--platform=linux',
+      '--platform=linux_next',
+      projectDir.path,
+    ]);
+
+    expect(projectDir.childDirectory('linux').childFile('CMakeLists.txt'), exists);
+    expect(projectDir.childDirectory('linux_next').childFile('CMakeLists.txt'), exists);
+    expect(projectDir.childDirectory('linux_next').childDirectory('runner'), exists);
+  }, overrides: overridesLinux);
+
+  testUsingContext('app does not include linux_next unless requested', () async {
+    final CreateCommand command = createCreateCommand();
+    final CommandRunner<void> runner = createTestCommandRunner(command);
+
+    await runner.run(<String>['create', '--no-pub', projectDir.path]);
+
+    expect(projectDir.childDirectory('linux'), exists);
+    expect(projectDir.childDirectory('linux_next'), isNot(exists));
+  }, overrides: overridesLinux);
+
   const descPluginLinux = 'plugin supports Linux if requested';
   testUsingContext(descPluginLinux, () async {
     final CreateCommand command = createCreateCommand();

@@ -513,6 +513,9 @@ class FlutterProject {
   /// The Linux sub project of this project.
   late final linux = LinuxProject.fromFlutter(this);
 
+  /// The Linux sub project that uses the next Linux embedder.
+  late final linuxNext = LinuxProject.fromFlutter(this, directoryName: 'linux_next');
+
   /// The Windows sub project of this project.
   late final windows = WindowsProject.fromFlutter(this);
 

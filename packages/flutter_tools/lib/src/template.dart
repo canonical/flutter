@@ -276,6 +276,10 @@ class Template {
       if (relativeDestinationPath.startsWith('linux.tmpl') && !linux) {
         return null;
       }
+      final bool linuxNext = (context['linuxNext'] as bool?) ?? false;
+      if (relativeDestinationPath.startsWith('linux_next.tmpl') && !linuxNext) {
+        return null;
+      }
       // Only build a macOS project if explicitly asked.
       final bool macOS = (context['macos'] as bool?) ?? false;
       if (relativeDestinationPath.startsWith('macos.tmpl') && !macOS) {

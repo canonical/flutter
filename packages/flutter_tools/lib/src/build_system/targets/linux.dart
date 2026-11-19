@@ -22,6 +22,9 @@ import 'native_assets.dart';
 /// The only files/subdirectories we care out.
 const _kLinuxArtifacts = <String>['libflutter_linux_gtk.so'];
 
+/// The files used by the next Linux embedder.
+const _kLinuxNextArtifacts = <String>['libflutter_linux.so'];
+
 const _kLinuxDepfile = 'linux_engine_sources.d';
 
 /// Copies the Linux desktop embedding files to the copy directory.
@@ -54,20 +57,25 @@ class UnpackLinux extends Target {
       throw MissingDefineException(kBuildMode, name);
     }
     final buildMode = BuildMode.fromCliName(buildModeEnvironment);
+    final linuxNext = environment.defines[kLinuxNext] == 'true';
     final String engineSourcePath = environment.artifacts.getArtifactPath(
       Artifact.linuxDesktopPath,
       mode: buildMode,
       platform: targetPlatform,
     );
-    final String headersPath = environment.artifacts.getArtifactPath(
-      Artifact.linuxHeaders,
-      mode: buildMode,
-      platform: targetPlatform,
-    );
+    // The next Linux embedder publishes headers with the same names, so they
+    // are in a separate directory.
+    final String headersPath = linuxNext
+        ? environment.fileSystem.path.join(engineSourcePath, 'linux_next', 'flutter_linux')
+        : environment.artifacts.getArtifactPath(
+            Artifact.linuxHeaders,
+            mode: buildMode,
+            platform: targetPlatform,
+          );
     final Directory outputDirectory = environment.fileSystem.directory(
       environment.fileSystem.path.join(
         environment.projectDir.path,
-        'linux',
+        linuxNext ? 'linux_next' : 'linux',
         'flutter',
         'ephemeral',
       ),
@@ -76,7 +84,7 @@ class UnpackLinux extends Target {
       fileSystem: environment.fileSystem,
       engineSourcePath: engineSourcePath,
       outputDirectory: outputDirectory,
-      artifacts: _kLinuxArtifacts,
+      artifacts: linuxNext ? _kLinuxNextArtifacts : _kLinuxArtifacts,
       clientSourcePaths: <String>[headersPath],
       icuDataPath: environment.artifacts.getArtifactPath(
         Artifact.icuData,

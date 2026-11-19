@@ -912,6 +912,7 @@ String getLinuxBuildDirectory(
   TargetPlatform? targetPlatform, {
   required ToolContext toolContext,
   String? flavor,
+  String projectDirectoryName = 'linux',
 }) {
   final ToolContext(
     :Config config,
@@ -926,7 +927,7 @@ String getLinuxBuildDirectory(
         platform: platform,
       ).cpuArch;
   final String subDirs = fileSystem.path.joinAll(<String>[
-    'linux',
+    projectDirectoryName,
     cpuArch.name,
     if (flavor != null && flavor.isNotEmpty) flavor,
   ]);
@@ -1058,6 +1059,10 @@ const kBuildName = 'BuildName';
 
 /// The app flavor to build.
 const kFlavor = 'Flavor';
+
+/// Whether to build with the next Linux embedder, from the `linux_next`
+/// project directory.
+const kLinuxNext = 'LinuxNext';
 
 /// Environment variable of the flavor to be set in dartDefines to be accessed
 /// by the `appFlavor` service.

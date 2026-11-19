@@ -12,7 +12,10 @@ group("platform") {
   } else if (is_linux) {
     deps = []
     if (enable_desktop_embeddings) {
-      deps += [ "linux" ]
+      deps += [
+        "linux",
+        "linux_next",
+      ]
     }
   } else if (is_win) {
     deps = []

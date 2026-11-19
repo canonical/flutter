@@ -185,6 +185,15 @@ class BuildCommand extends FlutterCommand {
       ),
     );
     _addSubcommand(
+      BuildLinuxCommand(
+        buildSystem: buildSystem,
+        featureFlags: featureFlags,
+        toolContext: toolContext,
+        verboseHelp: verboseHelp,
+        linuxNext: true,
+      ),
+    );
+    _addSubcommand(
       BuildWindowsCommand(
         buildSystem: buildSystem,
         featureFlags: featureFlags,

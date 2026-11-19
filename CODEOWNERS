@@ -50,6 +50,7 @@
 
 # Linux team - keep this synced with .github/labeler.yml's team-linux section.
 /engine/src/flutter/shell/platform/linux/**/* @flutter/linux-reviewers
+/engine/src/flutter/shell/platform/linux_next/**/* @flutter/linux-reviewers
 /packages/flutter_tools/**/linux/* @flutter/linux-reviewers
 /packages/flutter_tools/**/*linux* @flutter/linux-reviewers
 

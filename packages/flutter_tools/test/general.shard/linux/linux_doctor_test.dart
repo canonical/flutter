@@ -681,6 +681,26 @@ void main() {
     ]);
   });
 
+  testWithoutContext('Linux Next validation does not require GTK libraries', () async {
+    final processManager = FakeProcessManager.list(<FakeCommand>[
+      _clangPresentCommand('4.0.1'),
+      _cmakePresentCommand('3.16.3'),
+      _ninjaPresentCommand('1.10.0'),
+      _pkgConfigPresentCommand('0.29'),
+      _eglinfoPresentCommand(),
+    ]);
+    final DoctorValidator linuxDoctorValidator = LinuxDoctorValidator(
+      processManager: processManager,
+      userMessages: UserMessages(),
+      linuxNext: true,
+    );
+    final ValidationResult result = await linuxDoctorValidator.validate();
+
+    expect(linuxDoctorValidator.title, 'Linux Next toolchain - develop for Linux Next desktop');
+    expect(result.type, ValidationType.success);
+    expect(processManager, hasNoRemainingExpectations);
+  });
+
   testWithoutContext('Missing validation when multiple dependencies are not available', () async {
     final ProcessManager processManager = FakeProcessManager.list(<FakeCommand>[
       _missingBinaryCommand('clang++'),

@@ -230,6 +230,12 @@ class _DefaultDoctorValidatorsProvider implements DoctorValidatorsProvider {
         ),
       if (linuxWorkflow.appliesToHostPlatform)
         LinuxDoctorValidator(processManager: processManager, userMessages: userMessages),
+      if (linuxWorkflow.appliesToHostPlatform)
+        LinuxDoctorValidator(
+          processManager: processManager,
+          userMessages: userMessages,
+          linuxNext: true,
+        ),
       if (extensionManager case final ExtensionManager manager)
         for (final DiagnosticsExtension extension in manager.diagnosticsExtensions)
           ExtensionDoctorValidator(extension: extension, logger: logger),

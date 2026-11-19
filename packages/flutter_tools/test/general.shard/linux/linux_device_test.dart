@@ -114,11 +114,11 @@ void main() {
           processManager: FakeProcessManager.any(),
         ),
       ).devices(),
-      hasLength(1),
+      hasLength(2),
     );
   });
 
-  testWithoutContext('LinuxDevice has well known id "linux"', () async {
+  testWithoutContext('LinuxDevice has well known ids "linux" and "linux-next"', () async {
     expect(
       LinuxDevices(
         analytics: const NoOpAnalytics(),
@@ -131,7 +131,7 @@ void main() {
           processManager: FakeProcessManager.any(),
         ),
       ).wellKnownIds,
-      <String>['linux'],
+      <String>['linux', 'linux-next'],
     );
   });
 
@@ -148,7 +148,7 @@ void main() {
         processManager: FakeProcessManager.any(),
       ),
     ).discoverDevices(timeout: const Duration(seconds: 10));
-    expect(devices, hasLength(1));
+    expect(devices, hasLength(2));
   });
 
   testWithoutContext('LinuxDevice.isSupportedForProject is true with editable host app', () async {
@@ -190,6 +190,30 @@ void main() {
       ).isSupportedForProject(flutterProject),
       false,
     );
+  });
+
+  testWithoutContext('Linux Next device is only supported with a linux_next host app', () async {
+    final FileSystem fileSystem = MemoryFileSystem.test();
+    fileSystem.file('pubspec.yaml').createSync();
+    fileSystem.directory('linux').createSync();
+    final FlutterProject flutterProject = setUpFlutterProject(fileSystem.currentDirectory);
+    final device = LinuxDevice(
+      analytics: const NoOpAnalytics(),
+      featureFlags: TestFeatureFlags(isLinuxEnabled: true),
+      toolContext: FakeToolContext(
+        fs: fileSystem,
+        logger: BufferLogger.test(),
+        os: FakeOperatingSystemUtils(),
+        processManager: FakeProcessManager.any(),
+      ),
+      linuxNext: true,
+    );
+
+    expect(device.id, 'linux-next');
+    expect(device.isSupportedForProject(flutterProject), false);
+
+    fileSystem.directory('linux_next').createSync();
+    expect(device.isSupportedForProject(flutterProject), true);
   });
 
   testWithoutContext(

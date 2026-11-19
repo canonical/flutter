@@ -56,7 +56,12 @@ class BuildableLinuxApp extends LinuxApp {
     final String? binaryName = getCmakeExecutableName(project);
     final FileSystem fileSystem = project.cmakeFile.fileSystem;
     return fileSystem.path.join(
-      getLinuxBuildDirectory(null, flavor: flavor, toolContext: _toolContext),
+      getLinuxBuildDirectory(
+        null,
+        flavor: flavor,
+        toolContext: _toolContext,
+        projectDirectoryName: project.directoryName,
+      ),
       buildMode.cliName,
       'bundle',
       binaryName,
