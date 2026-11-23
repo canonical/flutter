@@ -9,6 +9,7 @@
 #include "flutter/fml/paths.h"
 #include "flutter/shell/platform/linux_next/flutter_linux_application.h"
 #include "flutter/shell/platform/linux_next/flutter_linux_engine.h"
+#include "flutter/shell/platform/linux_next/flutter_linux_view.h"
 
 namespace {
 
@@ -19,6 +20,10 @@ flutter::FlutterLinuxApplication* ToApplication(
 
 flutter::FlutterLinuxEngine* ToEngine(FlutterLinuxEngine* engine) {
   return reinterpret_cast<flutter::FlutterLinuxEngine*>(engine);
+}
+
+flutter::FlutterLinuxView* ToView(FlutterLinuxView* view) {
+  return reinterpret_cast<flutter::FlutterLinuxView*>(view);
 }
 
 // Resolves |path| relative to the executable's directory.
@@ -38,9 +43,12 @@ std::filesystem::path ResolvePath(const char* path) {
 
 }  // namespace
 
-FlutterLinuxApplication* flutter_linux_application_new(void) {
-  return reinterpret_cast<FlutterLinuxApplication*>(
-      new flutter::FlutterLinuxApplication());
+FlutterLinuxResult flutter_linux_application_new(
+    FlutterLinuxApplication** application) {
+  FlutterLinuxResult result;
+  *application = reinterpret_cast<FlutterLinuxApplication*>(
+      flutter::FlutterLinuxApplication::Create(&result).release());
+  return result;
 }
 
 void flutter_linux_application_free(FlutterLinuxApplication* application) {
@@ -85,10 +93,46 @@ void flutter_linux_engine_free(FlutterLinuxEngine* engine) {
   delete ToEngine(engine);
 }
 
-bool flutter_linux_engine_run(FlutterLinuxEngine* engine) {
+FlutterLinuxResult flutter_linux_engine_run(FlutterLinuxEngine* engine) {
   return ToEngine(engine)->Run();
 }
 
 bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine) {
   return ToEngine(engine)->running();
+}
+
+FlutterLinuxResult flutter_linux_view_new_implicit(FlutterLinuxEngine* engine,
+                                                   int width,
+                                                   int height,
+                                                   FlutterLinuxView** view) {
+  FlutterLinuxResult result;
+  *view = reinterpret_cast<FlutterLinuxView*>(
+      ToEngine(engine)->CreateImplicitView(width, height, &result).release());
+  return result;
+}
+
+FlutterLinuxResult flutter_linux_view_new(FlutterLinuxEngine* engine,
+                                          int width,
+                                          int height,
+                                          FlutterLinuxView** view) {
+  FlutterLinuxResult result;
+  *view = reinterpret_cast<FlutterLinuxView*>(
+      ToEngine(engine)->CreateView(width, height, &result).release());
+  return result;
+}
+
+void flutter_linux_view_free(FlutterLinuxView* view_handle) {
+  flutter::FlutterLinuxView* view = ToView(view_handle);
+  // Ensure the raster thread is no longer presenting to the view before it is
+  // destroyed.
+  view->engine()->RemoveView(view);
+  delete view;
+}
+
+int64_t flutter_linux_view_get_id(FlutterLinuxView* view) {
+  return ToView(view)->view_id();
+}
+
+void flutter_linux_view_set_title(FlutterLinuxView* view, const char* title) {
+  ToView(view)->window()->SetTitle(title);
 }

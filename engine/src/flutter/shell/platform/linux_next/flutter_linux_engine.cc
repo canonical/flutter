@@ -8,6 +8,8 @@
 
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/common/engine_switches.h"
+#include "flutter/shell/platform/linux_next/flutter_linux_view.h"
+#include "flutter/shell/platform/linux_next/software_compositor.h"
 
 namespace flutter {
 
@@ -28,7 +30,9 @@ EventLoop::TimePoint ToEventLoopTime(uint64_t target_time_nanos,
 
 FlutterLinuxEngine::FlutterLinuxEngine(FlutterLinuxApplication* application,
                                        Properties properties)
-    : application_(application), properties_(std::move(properties)) {
+    : application_(application),
+      properties_(std::move(properties)),
+      compositor_(std::make_unique<SoftwareCompositor>()) {
   embedder_api_.struct_size = sizeof(FlutterEngineProcTable);
   FlutterEngineGetProcAddresses(&embedder_api_);
 }
@@ -43,10 +47,10 @@ FlutterLinuxEngine::~FlutterLinuxEngine() {
   }
 }
 
-bool FlutterLinuxEngine::Run() {
+FlutterLinuxResult FlutterLinuxEngine::Run() {
   if (running()) {
     FML_LOG(ERROR) << "Engine is already running";
-    return false;
+    return kFlutterLinuxResultInvalidState;
   }
 
   if (embedder_api_.RunsAOTCompiledDartCode() && aot_data_ == nullptr) {
@@ -56,7 +60,7 @@ bool FlutterLinuxEngine::Run() {
     source.elf_path = elf_path.c_str();
     if (embedder_api_.CreateAOTData(&source, &aot_data_) != kSuccess) {
       FML_LOG(ERROR) << "Unable to load AOT data from " << elf_path;
-      return false;
+      return kFlutterLinuxResultFailed;
     }
   }
 
@@ -118,23 +122,137 @@ bool FlutterLinuxEngine::Run() {
   args.custom_task_runners = &custom_task_runners;
   args.aot_data = aot_data_;
 
-  // There are no views to draw to yet, so frames are discarded.
-  FlutterRendererConfig renderer_config = {};
-  renderer_config.type = kSoftware;
-  renderer_config.software.struct_size = sizeof(FlutterSoftwareRendererConfig);
-  renderer_config.software.surface_present_callback =
-      [](void* user_data, const void* allocation, size_t row_bytes,
-         size_t height) { return true; };
+  FlutterRendererConfig renderer_config = compositor_->GetRendererConfig();
+
+  FlutterCompositor compositor = {};
+  compositor_->GetFlutterCompositor(&compositor);
+  args.compositor = &compositor;
 
   FlutterEngineResult result = embedder_api_.Run(
       FLUTTER_ENGINE_VERSION, &renderer_config, &args, this, &engine_);
   if (result != kSuccess || engine_ == nullptr) {
     FML_LOG(ERROR) << "Failed to start Flutter engine: error " << result;
     engine_ = nullptr;
-    return false;
+    return kFlutterLinuxResultFailed;
   }
 
-  return true;
+  for (const auto& [view_id, view] : views_) {
+    if (view_id == kImplicitViewId) {
+      view->SendWindowMetrics();
+    } else {
+      AddViewToEngine(view);
+    }
+  }
+
+  return kFlutterLinuxResultSuccess;
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateImplicitView(
+    int width,
+    int height,
+    FlutterLinuxResult* result) {
+  if (running()) {
+    FML_LOG(ERROR)
+        << "The implicit view must be created before the engine runs";
+    *result = kFlutterLinuxResultInvalidState;
+    return nullptr;
+  }
+  if (implicit_view_created_) {
+    FML_LOG(ERROR) << "The implicit view has already been created";
+    *result = kFlutterLinuxResultInvalidState;
+    return nullptr;
+  }
+  implicit_view_created_ = true;
+  return CreateView(kImplicitViewId, width, height, result);
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(
+    int width,
+    int height,
+    FlutterLinuxResult* result) {
+  return CreateView(next_view_id_++, width, height, result);
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::CreateView(
+    FlutterViewId view_id,
+    int width,
+    int height,
+    FlutterLinuxResult* result) {
+  Window::Params params;
+  params.width = width;
+  params.height = height;
+  params.application_id = application_->application_id();
+  std::unique_ptr<FlutterLinuxView> view =
+      FlutterLinuxView::Create(this, view_id, params);
+  if (!view) {
+    FML_LOG(ERROR) << "Failed to create window for view " << view_id;
+    *result = kFlutterLinuxResultFailed;
+    return nullptr;
+  }
+  *result = kFlutterLinuxResultSuccess;
+  return AddView(std::move(view));
+}
+
+std::unique_ptr<FlutterLinuxView> FlutterLinuxEngine::AddView(
+    std::unique_ptr<FlutterLinuxView> view) {
+  views_[view->view_id()] = view.get();
+  compositor_->AddView(view->view_id(), view.get());
+
+  if (running()) {
+    if (view->view_id() == kImplicitViewId) {
+      view->SendWindowMetrics();
+    } else {
+      AddViewToEngine(view.get());
+    }
+  }
+  return view;
+}
+
+void FlutterLinuxEngine::AddViewToEngine(FlutterLinuxView* view) {
+  FlutterWindowMetricsEvent metrics = view->GetWindowMetrics();
+  FlutterAddViewInfo info = {};
+  info.struct_size = sizeof(FlutterAddViewInfo);
+  info.view_id = view->view_id();
+  info.view_metrics = &metrics;
+  info.add_view_callback = [](const FlutterAddViewResult* result) {
+    if (!result->added) {
+      FML_LOG(ERROR) << "Failed to add view to engine";
+    }
+  };
+  if (embedder_api_.AddView(engine_, &info) != kSuccess) {
+    FML_LOG(ERROR) << "Failed to add view " << view->view_id();
+  }
+}
+
+void FlutterLinuxEngine::RemoveView(FlutterLinuxView* view) {
+  // Once removed from the compositor no frames are shown in the view, so
+  // there is no need to wait for the engine to finish with it.
+  compositor_->RemoveView(view->view_id());
+  if (running() && view->view_id() != kImplicitViewId) {
+    FlutterRemoveViewInfo info = {};
+    info.struct_size = sizeof(FlutterRemoveViewInfo);
+    info.view_id = view->view_id();
+    info.remove_view_callback = [](const FlutterRemoveViewResult* result) {};
+    if (embedder_api_.RemoveView(engine_, &info) != kSuccess) {
+      FML_LOG(ERROR) << "Failed to remove view " << view->view_id();
+    }
+  }
+  views_.erase(view->view_id());
+}
+
+void FlutterLinuxEngine::SendWindowMetrics(
+    const FlutterWindowMetricsEvent& event) {
+  if (engine_ == nullptr) {
+    return;
+  }
+  embedder_api_.SendWindowMetricsEvent(engine_, &event);
+}
+
+void FlutterLinuxEngine::OnViewClose(FlutterLinuxView* view) {
+  // Closing the implicit view ends the application.
+  if (view->view_id() == kImplicitViewId) {
+    application_->Quit();
+  }
 }
 
 void FlutterLinuxEngine::PostFlutterTask(FlutterTask task,

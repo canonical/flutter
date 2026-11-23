@@ -6,6 +6,23 @@
 
 namespace flutter {
 
+std::unique_ptr<FlutterLinuxApplication> FlutterLinuxApplication::Create(
+    FlutterLinuxResult* result) {
+  std::unique_ptr<FlutterLinuxApplication> application(
+      new FlutterLinuxApplication());
+  application->display_ =
+      WaylandDisplay::Create(&application->event_loop_, result);
+  if (application->display_ == nullptr) {
+    return nullptr;
+  }
+
+  // Nothing can be shown without the display server.
+  application->display_->SetErrorCallback(
+      [application = application.get()]() { application->Quit(); });
+
+  return application;
+}
+
 FlutterLinuxApplication::FlutterLinuxApplication() = default;
 
 FlutterLinuxApplication::~FlutterLinuxApplication() = default;

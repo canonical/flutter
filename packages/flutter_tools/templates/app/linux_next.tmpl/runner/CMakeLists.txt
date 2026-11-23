@@ -14,8 +14,9 @@ add_executable(${BINARY_NAME}
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
 
-# Add preprocessor definitions for the application ID.
+# Add preprocessor definitions for the application ID and window title.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
+add_definitions(-DWINDOW_TITLE="${BINARY_NAME}")
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)

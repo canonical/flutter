@@ -10,6 +10,7 @@
 
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/linux_next/event_loop.h"
+#include "flutter/shell/platform/linux_next/wayland/wayland_display.h"
 
 namespace flutter {
 
@@ -20,10 +21,16 @@ namespace flutter {
 // engines.
 class FlutterLinuxApplication {
  public:
-  FlutterLinuxApplication();
+  // Creates an application connected to the display server. Returns nullptr
+  // on failure. Sets |result| to the result.
+  static std::unique_ptr<FlutterLinuxApplication> Create(
+      FlutterLinuxResult* result);
+
   ~FlutterLinuxApplication();
 
   EventLoop* event_loop() { return &event_loop_; }
+
+  WaylandDisplay* display() { return display_.get(); }
 
   // Processes events until Quit is called.
   void Run();
@@ -38,7 +45,13 @@ class FlutterLinuxApplication {
   }
 
  private:
+  FlutterLinuxApplication();
+
   EventLoop event_loop_;
+
+  // Must be destroyed before |event_loop_|.
+  std::unique_ptr<WaylandDisplay> display_;
+
   std::string application_id_;
 
   FML_DISALLOW_COPY_AND_ASSIGN(FlutterLinuxApplication);
