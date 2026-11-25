@@ -16,8 +16,10 @@
 // standard library.
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "flutter_export.h"
+#include "flutter_linux_result.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -25,6 +27,7 @@ extern "C" {
 
 typedef struct _FlutterLinuxApplication FlutterLinuxApplication;
 typedef struct _FlutterLinuxEngine FlutterLinuxEngine;
+typedef struct _FlutterLinuxView FlutterLinuxView;
 
 typedef struct {
   const char* assets_path;
@@ -35,7 +38,9 @@ typedef struct {
   const char* const* dart_entrypoint_argv;
 } FlutterLinuxEngineProperties;
 
-FLUTTER_EXPORT FlutterLinuxApplication* flutter_linux_application_new(void);
+// On success, sets |application| to the new application.
+FLUTTER_EXPORT FlutterLinuxResult
+flutter_linux_application_new(FlutterLinuxApplication** application);
 
 FLUTTER_EXPORT void flutter_linux_application_free(
     FlutterLinuxApplication* application);
@@ -56,9 +61,33 @@ FLUTTER_EXPORT FlutterLinuxEngine* flutter_linux_engine_new(
 
 FLUTTER_EXPORT void flutter_linux_engine_free(FlutterLinuxEngine* engine);
 
-FLUTTER_EXPORT bool flutter_linux_engine_run(FlutterLinuxEngine* engine);
+FLUTTER_EXPORT FlutterLinuxResult
+flutter_linux_engine_run(FlutterLinuxEngine* engine);
 
 FLUTTER_EXPORT bool flutter_linux_engine_is_running(FlutterLinuxEngine* engine);
+
+// Creates the implicit view. Must be called before the engine runs, and only
+// once per engine. On success, sets |view| to the new view.
+FLUTTER_EXPORT FlutterLinuxResult
+flutter_linux_view_new_implicit(FlutterLinuxEngine* engine,
+                                int width,
+                                int height,
+                                FlutterLinuxView** view);
+
+// Creates a view other than the implicit view. On success, sets |view| to the
+// new view.
+FLUTTER_EXPORT FlutterLinuxResult
+flutter_linux_view_new(FlutterLinuxEngine* engine,
+                       int width,
+                       int height,
+                       FlutterLinuxView** view);
+
+FLUTTER_EXPORT void flutter_linux_view_free(FlutterLinuxView* view);
+
+FLUTTER_EXPORT int64_t flutter_linux_view_get_id(FlutterLinuxView* view);
+
+FLUTTER_EXPORT void flutter_linux_view_set_title(FlutterLinuxView* view,
+                                                 const char* title);
 
 #if defined(__cplusplus)
 }  // extern "C"

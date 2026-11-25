@@ -19,18 +19,32 @@ group("linux_next") {
 _public_headers = [
   "public/flutter_linux.h",
   "public/flutter_linux_abi.h",
+  "public/flutter_linux_result.h",
 ]
 
 source_set("flutter_linux_sources") {
   public = _public_headers + [ "event_loop.h" ]
 
   sources = [
+    "compositor.cc",
+    "compositor.h",
     "event_loop.cc",
     "flutter_linux_abi.cc",
     "flutter_linux_application.cc",
     "flutter_linux_application.h",
     "flutter_linux_engine.cc",
     "flutter_linux_engine.h",
+    "flutter_linux_view.cc",
+    "flutter_linux_view.h",
+    "software_compositor.cc",
+    "software_compositor.h",
+    "wayland/shm_buffer.cc",
+    "wayland/shm_buffer.h",
+    "wayland/wayland_display.cc",
+    "wayland/wayland_display.h",
+    "wayland/wayland_window.cc",
+    "wayland/wayland_window.h",
+    "window.h",
   ]
 
   configs +=
@@ -41,7 +55,10 @@ source_set("flutter_linux_sources") {
 
   defines = [ "FLUTTER_ENGINE_NO_PROTOTYPES" ]
 
-  public_deps = [ "//flutter/shell/platform/common:common_cpp_library_headers" ]
+  public_deps = [
+    "//flutter/shell/platform/common:common_cpp_library_headers",
+    "//flutter/third_party/wayland_protocols",
+  ]
 
   deps = [
     "//flutter/fml",

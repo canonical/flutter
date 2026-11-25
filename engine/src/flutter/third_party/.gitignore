@@ -19,5 +19,6 @@
 !test_shaders/
 !tonic/
 !txt/
+!wayland_protocols/
 !web_locale_keymap/
 !web_test_fonts/

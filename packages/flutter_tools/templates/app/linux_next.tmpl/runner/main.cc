@@ -3,9 +3,11 @@
 #include <cstdio>
 
 int main(int argc, char** argv) {
-  auto application = flutter::FlutterDesktopApplication::create();
+  flutter::FlutterDesktopResult result;
+  auto application = flutter::FlutterDesktopApplication::create(&result);
   if (!application) {
-    fprintf(stderr, "Failed to create Flutter application\n");
+    fprintf(stderr, "Failed to create Flutter application: %s\n",
+            flutter::to_string(result));
     return 1;
   }
   application->set_application_id(APPLICATION_ID);
@@ -23,8 +25,18 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (!engine->run()) {
-    fprintf(stderr, "Failed to run Flutter engine\n");
+  auto view =
+      flutter::FlutterDesktopView::create_implicit(engine, 1280, 720, &result);
+  if (!view) {
+    fprintf(stderr, "Failed to create Flutter view: %s\n",
+            flutter::to_string(result));
+    return 1;
+  }
+  view->set_title(WINDOW_TITLE);
+
+  if (!engine->run(&result)) {
+    fprintf(stderr, "Failed to run Flutter engine: %s\n",
+            flutter::to_string(result));
     return 1;
   }
 

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <map>
 #include <vector>
 
 #include "flutter/fml/eintr_wrapper.h"
@@ -20,6 +21,8 @@
 namespace flutter {
 
 namespace {
+
+constexpr int kMaxEvents = 16;
 
 // Reads and discards the counter from an eventfd or timerfd.
 void DrainFd(int fd) {
@@ -40,10 +43,10 @@ EventLoop::EventLoop()
 
   epoll_event event = {};
   event.events = EPOLLIN;
-  event.data.fd = wake_fd_.get();
+  event.data.u64 = kWakeId;
   FML_CHECK(epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, wake_fd_.get(), &event) ==
             0);
-  event.data.fd = timer_fd_.get();
+  event.data.u64 = kTimerId;
   FML_CHECK(
       epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, timer_fd_.get(), &event) == 0);
 }
@@ -69,6 +72,31 @@ void EventLoop::PostTask(Task task, TimePoint target_time) {
   }
 }
 
+void EventLoop::AddSource(Source* source) {
+  FML_DCHECK(RunsTasksOnCurrentThread());
+  uint64_t id = next_id_++;
+  epoll_event event = {};
+  event.events = EPOLLIN;
+  event.data.u64 = id;
+  if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, source->GetFd(), &event) != 0) {
+    FML_LOG(ERROR) << "Failed to add event loop source: " << strerror(errno);
+    return;
+  }
+  sources_.emplace_back(id, source);
+}
+
+void EventLoop::RemoveSource(Source* source) {
+  FML_DCHECK(RunsTasksOnCurrentThread());
+  auto it =
+      std::find_if(sources_.begin(), sources_.end(),
+                   [source](const auto& s) { return s.second == source; });
+  if (it == sources_.end()) {
+    return;
+  }
+  sources_.erase(it);
+  epoll_ctl(epoll_fd_.get(), EPOLL_CTL_DEL, source->GetFd(), nullptr);
+}
+
 void EventLoop::Run() {
   FML_DCHECK(RunsTasksOnCurrentThread());
   while (!quit_) {
@@ -84,6 +112,12 @@ void EventLoop::Quit() {
 
 void EventLoop::Iterate(bool may_block) {
   FML_DCHECK(RunsTasksOnCurrentThread());
+
+  // Copy the sources so they can be removed while dispatching.
+  std::vector<std::pair<uint64_t, Source*>> sources = sources_;
+  for (const auto& [id, source] : sources) {
+    source->Prepare();
+  }
 
   int timeout = 0;
   if (may_block && !quit_) {
@@ -101,7 +135,6 @@ void EventLoop::Iterate(bool may_block) {
     }
   }
 
-  constexpr int kMaxEvents = 2;
   epoll_event events[kMaxEvents];
   int n_events = FML_HANDLE_EINTR(
       epoll_wait(epoll_fd_.get(), events, kMaxEvents, timeout));
@@ -109,8 +142,26 @@ void EventLoop::Iterate(bool may_block) {
     FML_LOG(ERROR) << "Failed to wait for events: " << strerror(errno);
     n_events = 0;
   }
+
+  std::map<uint64_t, uint32_t> ready;
   for (int i = 0; i < n_events; i++) {
-    DrainFd(events[i].data.fd);
+    uint64_t id = events[i].data.u64;
+    if (id == kWakeId) {
+      DrainFd(wake_fd_.get());
+    } else if (id == kTimerId) {
+      DrainFd(timer_fd_.get());
+    } else {
+      ready[id] = events[i].events;
+    }
+  }
+
+  for (const auto& [id, source] : sources) {
+    // Skip any source removed while dispatching an earlier source.
+    if (std::find(sources_.begin(), sources_.end(),
+                  std::make_pair(id, source)) == sources_.end()) {
+      continue;
+    }
+    source->Dispatch(ready.count(id) != 0);
   }
 
   RunExpiredTasks();

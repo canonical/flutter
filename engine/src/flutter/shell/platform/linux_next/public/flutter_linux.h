@@ -11,6 +11,7 @@
 // library, and uses the C interface in flutter_linux_abi.h to call into
 // libflutter_linux.so.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,13 +21,78 @@
 
 namespace flutter {
 
+// The result of a function that can fail. Details of failures are logged.
+enum class FlutterDesktopResult {
+  kSuccess,
+  // No display server is available.
+  kNoDisplay,
+  // The display server doesn't support features that are required.
+  kUnsupportedDisplay,
+  // The function can't be called in the current state, such as creating the
+  // implicit view after the engine has started running.
+  kInvalidState,
+  // Any other failure.
+  kFailed,
+};
+
+// Returns a description of |result| suitable for showing to the user.
+inline const char* to_string(FlutterDesktopResult result) {
+  switch (result) {
+    case FlutterDesktopResult::kSuccess:
+      return "Success";
+    case FlutterDesktopResult::kNoDisplay:
+      return "No display server available";
+    case FlutterDesktopResult::kUnsupportedDisplay:
+      return "Display server not supported";
+    case FlutterDesktopResult::kInvalidState:
+      return "Invalid state";
+    case FlutterDesktopResult::kFailed:
+      break;
+  }
+  return "Failed";
+}
+
+namespace internal {
+
+// Converts |result| from the binary interface, and sets |out| to it if not
+// nullptr. Returns true if |result| is success.
+inline bool set_result(FlutterLinuxResult result, FlutterDesktopResult* out) {
+  FlutterDesktopResult value;
+  switch (result) {
+    case kFlutterLinuxResultSuccess:
+      value = FlutterDesktopResult::kSuccess;
+      break;
+    case kFlutterLinuxResultNoDisplay:
+      value = FlutterDesktopResult::kNoDisplay;
+      break;
+    case kFlutterLinuxResultUnsupportedDisplay:
+      value = FlutterDesktopResult::kUnsupportedDisplay;
+      break;
+    case kFlutterLinuxResultInvalidState:
+      value = FlutterDesktopResult::kInvalidState;
+      break;
+    default:
+      value = FlutterDesktopResult::kFailed;
+      break;
+  }
+  if (out != nullptr) {
+    *out = value;
+  }
+  return value == FlutterDesktopResult::kSuccess;
+}
+
+}  // namespace internal
+
 // The platform resources shared by all engines in a process.
 class FlutterDesktopApplication {
  public:
-  // Creates an application. Returns nullptr on failure.
-  static std::shared_ptr<FlutterDesktopApplication> create() {
-    FlutterLinuxApplication* application = flutter_linux_application_new();
-    if (application == nullptr) {
+  // Creates an application. Returns nullptr on failure. If |result| is not
+  // nullptr, it is set to the result.
+  static std::shared_ptr<FlutterDesktopApplication> create(
+      FlutterDesktopResult* result = nullptr) {
+    FlutterLinuxApplication* application = nullptr;
+    if (!internal::set_result(flutter_linux_application_new(&application),
+                              result)) {
       return nullptr;
     }
     return std::shared_ptr<FlutterDesktopApplication>(
@@ -119,8 +185,11 @@ class FlutterDesktopEngine {
   FlutterDesktopEngine(const FlutterDesktopEngine&) = delete;
   FlutterDesktopEngine& operator=(const FlutterDesktopEngine&) = delete;
 
-  // Starts running Dart code. Returns false on failure.
-  bool run() { return flutter_linux_engine_run(engine_); }
+  // Starts running Dart code. Returns false on failure. If |result| is not
+  // nullptr, it is set to the result.
+  bool run(FlutterDesktopResult* result = nullptr) {
+    return internal::set_result(flutter_linux_engine_run(engine_), result);
+  }
 
   // Returns true if the engine is running.
   bool is_running() const { return flutter_linux_engine_is_running(engine_); }
@@ -131,6 +200,8 @@ class FlutterDesktopEngine {
   }
 
  private:
+  friend class FlutterDesktopView;
+
   FlutterDesktopEngine(std::shared_ptr<FlutterDesktopApplication> application,
                        FlutterLinuxEngine* engine)
       : application_(std::move(application)), engine_(engine) {}
@@ -138,6 +209,74 @@ class FlutterDesktopEngine {
   // Keeps the application alive while the engine exists.
   std::shared_ptr<FlutterDesktopApplication> application_;
   FlutterLinuxEngine* engine_;
+};
+
+// A window that shows the output of an engine.
+class FlutterDesktopView {
+ public:
+  // Creates the implicit view of |engine|, which most apps show their
+  // content in, in a window of |width| x |height| logical pixels. Must be
+  // called before the engine runs, and only once per engine. Returns nullptr
+  // on failure. If |result| is not nullptr, it is set to the result.
+  static std::shared_ptr<FlutterDesktopView> create_implicit(
+      std::shared_ptr<FlutterDesktopEngine> engine,
+      int width,
+      int height,
+      FlutterDesktopResult* result = nullptr) {
+    FlutterLinuxView* view = nullptr;
+    if (!internal::set_result(flutter_linux_view_new_implicit(
+                                  engine->engine_, width, height, &view),
+                              result)) {
+      return nullptr;
+    }
+    return std::shared_ptr<FlutterDesktopView>(
+        new FlutterDesktopView(std::move(engine), view));
+  }
+
+  // Creates a view of |engine| other than the implicit view, in a window of
+  // |width| x |height| logical pixels. Returns nullptr on failure. If
+  // |result| is not nullptr, it is set to the result.
+  static std::shared_ptr<FlutterDesktopView> create(
+      std::shared_ptr<FlutterDesktopEngine> engine,
+      int width,
+      int height,
+      FlutterDesktopResult* result = nullptr) {
+    FlutterLinuxView* view = nullptr;
+    if (!internal::set_result(
+            flutter_linux_view_new(engine->engine_, width, height, &view),
+            result)) {
+      return nullptr;
+    }
+    return std::shared_ptr<FlutterDesktopView>(
+        new FlutterDesktopView(std::move(engine), view));
+  }
+
+  ~FlutterDesktopView() { flutter_linux_view_free(view_); }
+
+  FlutterDesktopView(const FlutterDesktopView&) = delete;
+  FlutterDesktopView& operator=(const FlutterDesktopView&) = delete;
+
+  // The ID Flutter uses for this view.
+  int64_t id() const { return flutter_linux_view_get_id(view_); }
+
+  // Sets the title of the window.
+  void set_title(const std::string& title) {
+    flutter_linux_view_set_title(view_, title.c_str());
+  }
+
+  // The engine this view shows.
+  const std::shared_ptr<FlutterDesktopEngine>& engine() const {
+    return engine_;
+  }
+
+ private:
+  FlutterDesktopView(std::shared_ptr<FlutterDesktopEngine> engine,
+                     FlutterLinuxView* view)
+      : engine_(std::move(engine)), view_(view) {}
+
+  // Keeps the engine alive while the view exists.
+  std::shared_ptr<FlutterDesktopEngine> engine_;
+  FlutterLinuxView* view_;
 };
 
 }  // namespace flutter

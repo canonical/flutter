@@ -4,14 +4,53 @@
 
 #include "flutter/shell/platform/linux_next/event_loop.h"
 
+#include <unistd.h>
+
 #include <chrono>
 #include <thread>
 #include <vector>
 
+#include "flutter/fml/unique_fd.h"
 #include "gtest/gtest.h"
 
 namespace flutter {
 namespace testing {
+
+namespace {
+
+// A source backed by a pipe.
+class PipeSource : public EventLoop::Source {
+ public:
+  PipeSource() {
+    int fds[2];
+    EXPECT_EQ(pipe(fds), 0);
+    read_fd_.reset(fds[0]);
+    write_fd_.reset(fds[1]);
+  }
+
+  int GetFd() const override { return read_fd_.get(); }
+
+  void Prepare() override { prepare_count++; }
+
+  void Dispatch(bool readable) override {
+    if (readable) {
+      char c;
+      EXPECT_EQ(read(read_fd_.get(), &c, 1), 1);
+      read_count++;
+    }
+  }
+
+  void Write() { EXPECT_EQ(write(write_fd_.get(), "x", 1), 1); }
+
+  int prepare_count = 0;
+  int read_count = 0;
+
+ private:
+  fml::UniqueFD read_fd_;
+  fml::UniqueFD write_fd_;
+};
+
+}  // namespace
 
 TEST(EventLoopTest, RunsTasksOnCurrentThread) {
   EventLoop loop;
@@ -92,6 +131,27 @@ TEST(EventLoopTest, QuitBeforeRun) {
   });
   loop.Run();
   EXPECT_TRUE(ran);
+}
+
+TEST(EventLoopTest, DispatchesSources) {
+  EventLoop loop;
+  PipeSource source;
+  loop.AddSource(&source);
+
+  loop.Iterate(false);
+  EXPECT_EQ(source.prepare_count, 1);
+  EXPECT_EQ(source.read_count, 0);
+
+  source.Write();
+  loop.Iterate(true);
+  EXPECT_EQ(source.prepare_count, 2);
+  EXPECT_EQ(source.read_count, 1);
+
+  loop.RemoveSource(&source);
+  source.Write();
+  loop.Iterate(false);
+  EXPECT_EQ(source.prepare_count, 2);
+  EXPECT_EQ(source.read_count, 1);
 }
 
 }  // namespace testing

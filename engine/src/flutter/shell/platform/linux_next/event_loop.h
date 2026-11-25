@@ -12,13 +12,16 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "flutter/fml/macros.h"
 #include "flutter/fml/unique_fd.h"
 
 namespace flutter {
 
-// An event loop that runs scheduled tasks on a single thread.
+// An event loop that runs on a single thread, waiting for file descriptor
+// events (e.g. from the Wayland connection) and scheduled tasks.
 //
 // Tasks can be posted from any thread. Everything else must be called on the
 // thread that created the loop.
@@ -27,6 +30,22 @@ class EventLoop {
   using Clock = std::chrono::steady_clock;
   using TimePoint = Clock::time_point;
   using Task = std::function<void()>;
+
+  // A file descriptor that the loop waits on.
+  class Source {
+   public:
+    virtual ~Source() = default;
+
+    // The file descriptor to wait for input on.
+    virtual int GetFd() const = 0;
+
+    // Called before the loop waits.
+    virtual void Prepare() {}
+
+    // Called after the loop has waited. |readable| is true if input is
+    // available on the file descriptor.
+    virtual void Dispatch(bool readable) = 0;
+  };
 
   EventLoop();
   ~EventLoop();
@@ -40,6 +59,13 @@ class EventLoop {
   // May be called from any thread.
   void PostTask(Task task, TimePoint target_time = TimePoint::min());
 
+  // Adds a source for the loop to wait on. The source must outlive the loop
+  // or be removed with RemoveSource.
+  void AddSource(Source* source);
+
+  // Stops waiting on |source|.
+  void RemoveSource(Source* source);
+
   // Runs the loop until Quit is called. If Quit was called before Run, this
   // returns immediately.
   void Run();
@@ -50,7 +76,7 @@ class EventLoop {
   void Quit();
 
   // Runs a single iteration of the loop. If |may_block| is true, this waits
-  // until a task is due or the loop is woken.
+  // until there is a source event or a task is due.
   void Iterate(bool may_block);
 
  private:
@@ -70,6 +96,11 @@ class EventLoop {
     };
   };
 
+  // The epoll IDs of the wake and timer file descriptors.
+  static constexpr uint64_t kWakeId = 1;
+  static constexpr uint64_t kTimerId = 2;
+  static constexpr uint64_t kFirstId = 3;
+
   // Wakes the loop if it is waiting.
   void WakeUp();
 
@@ -85,6 +116,11 @@ class EventLoop {
   fml::UniqueFD timer_fd_;
   TimePoint timer_time_ = TimePoint::max();
   std::atomic<bool> quit_ = false;
+
+  // The IDs epoll reports for each source. IDs aren't reused, so a removed
+  // source can't be confused with one added later.
+  std::vector<std::pair<uint64_t, Source*>> sources_;
+  uint64_t next_id_ = kFirstId;
 
   std::mutex tasks_mutex_;
   std::priority_queue<ScheduledTask,

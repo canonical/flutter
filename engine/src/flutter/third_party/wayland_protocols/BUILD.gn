@@ -1,0 +1,30 @@
+# Copyright 2013 The Flutter Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+
+if (!is_minimal_linux) {
+  pkg_config("wayland_client") {
+    packages = [ "wayland-client" ]
+  }
+} else {
+  config("wayland_client") {
+  }
+}
+
+source_set("wayland_protocols") {
+  visibility = [ "//flutter/shell/platform/linux_next/*" ]
+
+  public = [
+    "wayland-client-protocol.h",
+    "xdg-shell-client-protocol.h",
+  ]
+
+  sources = [
+    "wayland-protocol.c",
+    "xdg-shell-protocol.c",
+  ]
+
+  public_configs = [ ":wayland_client" ]
+}
